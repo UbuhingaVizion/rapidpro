@@ -257,7 +257,7 @@ sentry-sdk==0.19.5
     # via -r pip-requires.txt
 simplejson==3.16.0
     # via -r pip-requires.txt
-six==1.10.0
+six==1.11.0
     # via
     #   analytics-python
     #   cryptography
