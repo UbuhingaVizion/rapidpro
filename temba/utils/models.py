@@ -219,8 +219,10 @@ class JSONAsTextField(CheckFieldDefaultMixin, models.Field):
                 raise ValueError("JSONAsTextField should be a dict or a list, got %s => %s" % (type(data), data))
             else:
                 return data
+        elif isinstance(value, (list, dict)):  # if db column has been converted to JSONB, use value directly
+            return value
         else:
-            raise ValueError('Unexpected type "%s" for JSONAsTextField' % (type(value),))  # pragma: no cover
+            raise ValueError('Unexpected type "%s" for JSONAsTextField' % (type(value),))
 
     def get_db_prep_value(self, value, *args, **kwargs):
         # if the value is falsy we will save is as null
@@ -233,7 +235,10 @@ class JSONAsTextField(CheckFieldDefaultMixin, models.Field):
         if type(value) not in (list, dict, OrderedDict):
             raise ValueError("JSONAsTextField should be a dict or a list, got %s => %s" % (type(value), value))
 
-        return json.dumps(value)
+        serialized = json.dumps(value)
+
+        # strip out unicode sequences which aren't valid in JSONB
+        return serialized.replace("\\u0000", "")
 
     def to_python(self, value):
         if isinstance(value, str):

@@ -26,7 +26,7 @@ from temba.channels.models import Channel
 from temba.contacts.models import ContactGroup
 from temba.contacts.search.omnibox import omnibox_deserialize, omnibox_query, omnibox_results_to_dict
 from temba.formax import FormaxMixin
-from temba.orgs.views import ModalMixin, OrgObjPermsMixin, OrgPermsMixin
+from temba.orgs.views import DependencyDeleteModal, ModalMixin, OrgObjPermsMixin, OrgPermsMixin
 from temba.utils import analytics, json, on_transaction_commit
 from temba.utils.fields import (
     CheckboxWidget,
@@ -36,6 +36,7 @@ from temba.utils.fields import (
     OmniboxChoice,
     SelectMultipleWidget,
     SelectWidget,
+    TembaChoiceField,
 )
 from temba.utils.models import patch_queryset_count
 from temba.utils.views import BulkActionMixin, ComponentFormMixin
@@ -53,6 +54,7 @@ class SendMessageForm(Form):
         widget=OmniboxChoice(
             attrs={
                 "placeholder": _("Recipients, enter contacts or groups"),
+                "widget_only": True,
                 "groups": True,
                 "contacts": True,
                 "urns": True,
@@ -200,7 +202,10 @@ class InboxView(OrgPermsMixin, BulkActionMixin, SmartListView):
         if self.allow_export and self.has_org_perm("msgs.msg_export"):
             links.append(
                 dict(
-                    id="export-messages", title=_("Export"), href=self.derive_export_url(), modax=_("Export Messages")
+                    id="export-messages",
+                    title=_("Download"),
+                    href=self.derive_export_url(),
+                    modax=_("Download Messages"),
                 )
             )
         return links
@@ -310,7 +315,7 @@ class BroadcastCRUDL(SmartCRUDL):
 
         def get_queryset(self, **kwargs):
             qs = super().get_queryset(**kwargs)
-            return qs.select_related("schedule").order_by("-created_on")
+            return qs.select_related("org", "schedule").order_by("-created_on")
 
     class Send(OrgPermsMixin, ModalMixin, SmartFormView):
         title = _("Send Message")
@@ -404,7 +409,7 @@ class BroadcastCRUDL(SmartCRUDL):
                     super().form_valid(form)
 
                 analytics.track(
-                    self.request.user.username,
+                    self.request.user,
                     "temba.broadcast_created",
                     dict(contacts=len(contacts), groups=len(groups), urns=len(urns)),
                 )
@@ -431,9 +436,7 @@ class BroadcastCRUDL(SmartCRUDL):
 
 
 class TestMessageForm(forms.Form):
-    channel = forms.ModelChoiceField(
-        Channel.objects.filter(id__lt=0), help_text=_("Which channel will deliver the message")
-    )
+    channel = TembaChoiceField(Channel.objects.filter(id__lt=0), help_text=_("Which channel will deliver the message"))
     urn = forms.CharField(max_length=14, help_text=_("The URN of the contact delivering this message"))
     text = forms.CharField(max_length=160, widget=forms.Textarea, help_text=_("The message that is being delivered"))
 
@@ -589,14 +592,7 @@ class MsgCRUDL(SmartCRUDL):
             if "HTTP_X_PJAX" not in self.request.META:
                 return HttpResponseRedirect(self.get_success_url())
             else:  # pragma: no cover
-                response = self.render_to_response(
-                    self.get_context_data(
-                        form=form,
-                        success_url=self.get_success_url(),
-                        success_script=getattr(self, "success_script", None),
-                    )
-                )
-                response["Temba-Success"] = self.get_success_url()
+                response = self.render_modal_response(form)
                 response["REDIRECT"] = self.get_success_url()
                 return response
 
@@ -655,6 +651,7 @@ class MsgCRUDL(SmartCRUDL):
                 Broadcast.objects.filter(
                     org=self.request.user.get_org(), status__in=[QUEUED, INITIALIZING], schedule=None
                 )
+                .select_related("org")
                 .prefetch_related("groups", "contacts", "urns")
                 .order_by("-created_on")
             )
@@ -672,7 +669,7 @@ class MsgCRUDL(SmartCRUDL):
         allow_export = True
         show_channel_logs = True
 
-        def get_queryset(self, **kwargs):  # pragma: needs cover
+        def get_queryset(self, **kwargs):
             qs = super().get_queryset(**kwargs)
             return qs.prefetch_related("channel_logs").select_related("contact")
 
@@ -681,9 +678,11 @@ class MsgCRUDL(SmartCRUDL):
         template_name = "msgs/msg_failed.haml"
         success_message = ""
         system_label = SystemLabel.TYPE_FAILED
-        bulk_actions = ("resend",)
         allow_export = True
         show_channel_logs = True
+
+        def get_bulk_actions(self):
+            return () if self.request.org.is_suspended else ("resend",)
 
         def get_queryset(self, **kwargs):
             qs = super().get_queryset(**kwargs)
@@ -724,9 +723,9 @@ class MsgCRUDL(SmartCRUDL):
                 links.append(
                     dict(
                         id="export-messages",
-                        title=_("Export"),
+                        title=_("Download"),
                         href=self.derive_export_url(),
-                        modax=_("Export Messages"),
+                        modax=_("Download Messages"),
                     )
                 )
 
@@ -735,16 +734,26 @@ class MsgCRUDL(SmartCRUDL):
                     dict(title=_("Send All"), style="btn-primary", href="#", js_class="filter-send-all-send-button")
                 )
 
-            if self.has_org_perm("msgs.label_delete"):
-
-                links.append(
-                    dict(
-                        id="delete-label",
-                        title=_("Delete Label"),
-                        href=reverse("msgs.label_delete", args=[label.pk]),
-                        modax=_("Delete Label"),
+            if label.is_folder():
+                if self.has_org_perm("msgs.label_delete_folder"):
+                    links.append(
+                        dict(
+                            id="delete-folder",
+                            title=_("Delete Folder"),
+                            href=reverse("msgs.label_delete_folder", args=[label.id]),
+                            modax=_("Delete Folder"),
+                        )
                     )
-                )
+            else:
+                if self.has_org_perm("msgs.label_delete"):
+                    links.append(
+                        dict(
+                            id="delete-label",
+                            title=_("Delete Label"),
+                            href=reverse("msgs.label_delete", args=[label.uuid]),
+                            modax=_("Delete Label"),
+                        )
+                    )
 
             return links
 
@@ -787,7 +796,8 @@ class BaseLabelForm(forms.ModelForm):
 
     class Meta:
         model = Label
-        fields = "__all__"
+        fields = ("name",)
+        labels = {"name": _("Name")}
         widgets = {"name": InputWidget()}
 
 
@@ -796,7 +806,8 @@ class LabelForm(BaseLabelForm):
         Label.folder_objects.none(),
         required=False,
         label=_("Folder"),
-        widget=SelectWidget(attrs={"placeholder": _("Optional: Parent Folder"), "widget_only": True}),
+        widget=SelectWidget(attrs={"placeholder": _("Select folder")}),
+        help_text=_("Optional folder which can be used to group related labels."),
     )
 
     messages = forms.CharField(required=False, widget=forms.HiddenInput)
@@ -809,12 +820,11 @@ class LabelForm(BaseLabelForm):
 
         self.fields["folder"].queryset = Label.folder_objects.filter(org=self.org, is_active=True)
 
+    class Meta(BaseLabelForm.Meta):
+        fields = ("name", "folder")
+
 
 class FolderForm(BaseLabelForm):
-    name = forms.CharField(
-        label=_("Name"), help_text=_("Choose a name for your folder"), widget=InputWidget(attrs={"widget_only": False})
-    )
-
     def __init__(self, *args, **kwargs):
         self.org = kwargs.pop("org")
         self.existing = kwargs.pop("object", None)
@@ -824,7 +834,7 @@ class FolderForm(BaseLabelForm):
 
 class LabelCRUDL(SmartCRUDL):
     model = Label
-    actions = ("create", "create_folder", "update", "delete", "list")
+    actions = ("create", "create_folder", "update", "delete", "delete_folder", "list")
 
     class List(OrgPermsMixin, SmartListView):
         paginate_by = None
@@ -898,23 +908,27 @@ class LabelCRUDL(SmartCRUDL):
         def derive_fields(self):
             return ("name",) if self.get_object().is_folder() else ("name", "folder")
 
-    class Delete(ModalMixin, OrgObjPermsMixin, SmartDeleteView):
+    class Delete(DependencyDeleteModal):
+        cancel_url = "@msgs.msg_inbox"
+        success_url = "@msgs.msg_inbox"
+        success_message = _("Your label has been deleted.")
+
+    class DeleteFolder(ModalMixin, OrgObjPermsMixin, SmartDeleteView):
         success_url = "@msgs.msg_inbox"
         redirect_url = "@msgs.msg_inbox"
         cancel_url = "@msgs.msg_inbox"
-        success_message = ""
+        success_message = _("Your label folder has been deleted.")
         fields = ("uuid",)
         submit_button_name = _("Delete")
 
         def post(self, request, *args, **kwargs):
             self.object = self.get_object()
 
-            try:
-                self.object.release(self.request.user)
-                response = HttpResponse()
-                response["Temba-Success"] = self.get_success_url()
-                return response
-            except ValueError as e:  # pragma: needs cover
-                context = self.get_context_data(error=str(e))
-                del context["form"]
-                return self.render_to_response(context)
+            # don't actually release if a label has been added
+            if self.object.has_child_labels():
+                return self.render_to_response(self.get_context_data())
+
+            self.object.release(self.request.user)
+            response = HttpResponse()
+            response["Temba-Success"] = self.get_success_url()
+            return response

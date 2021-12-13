@@ -63,7 +63,7 @@ EMAIL_TIMEOUT = 10
 
 # Used when sending email from within a flow and the user hasn't configured
 # their own SMTP server.
-FLOW_FROM_EMAIL = "no-reply@temba.io"
+FLOW_FROM_EMAIL = "Temba <no-reply@temba.io>"
 
 # HTTP Headers using for outgoing requests to other services
 OUTGOING_REQUEST_HEADERS = {"User-agent": "RapidPro"}
@@ -111,9 +111,7 @@ LANGUAGES = (
     ("es", _("Spanish")),
     ("ru", _("Russian")),
 )
-
 DEFAULT_LANGUAGE = "en-us"
-DEFAULT_SMS_LANGUAGE = "en-us"
 
 SITE_ID = 1
 
@@ -141,9 +139,6 @@ STATICFILES_FINDERS = (
 # Make this unique, and don't share it with anybody.
 SECRET_KEY = "your own secret key"
 
-EMAIL_CONTEXT_PROCESSORS = ("temba.utils.email.link_components",)
-
-
 # -----------------------------------------------------------------------------------
 # Directory Configuration
 # -----------------------------------------------------------------------------------
@@ -156,6 +151,7 @@ STATICFILES_DIRS = (
     os.path.join(PROJECT_DIR, "../static"),
     os.path.join(PROJECT_DIR, "../media"),
     os.path.join(PROJECT_DIR, "../node_modules/@nyaruka/flow-editor/build"),
+    os.path.join(PROJECT_DIR, "../node_modules/@nyaruka/temba-components/dist/static"),
     os.path.join(PROJECT_DIR, "../node_modules"),
     os.path.join(PROJECT_DIR, "../node_modules/react/umd"),
     os.path.join(PROJECT_DIR, "../node_modules/react-dom/umd"),
@@ -177,7 +173,7 @@ TEMPLATES = [
         "BACKEND": "django.template.backends.django.DjangoTemplates",
         "DIRS": [
             os.path.join(PROJECT_DIR, "../templates"),
-            os.path.join(PROJECT_DIR, "../node_modules/@nyaruka/temba-components/build/templates"),
+            os.path.join(PROJECT_DIR, "../node_modules/@nyaruka/temba-components/dist/templates"),
         ],
         "OPTIONS": {
             "context_processors": [
@@ -190,6 +186,7 @@ TEMPLATES = [
                 "django.template.context_processors.request",
                 "temba.context_processors.branding",
                 "temba.context_processors.analytics",
+                "temba.context_processors.config",
                 "temba.orgs.context_processors.user_group_perms_processor",
                 "temba.channels.views.channel_status_processor",
                 "temba.orgs.context_processors.settings_includer",
@@ -309,6 +306,7 @@ LOGGING = {
         "pycountry": {"level": "ERROR", "handlers": ["console"], "propagate": False},
         "django.security.DisallowedHost": {"handlers": ["null"], "propagate": False},
         "django.db.backends": {"level": "ERROR", "handlers": ["console"], "propagate": False},
+        "temba.formax": {"level": "DEBUG" if DEBUG else "ERROR", "handlers": ["console"], "propagate": False},
     },
 }
 
@@ -387,6 +385,7 @@ PERMISSIONS = {
         "omnibox",
         "restore",
         "search",
+        "start",
         "update_fields",
         "update_fields_input",
     ),
@@ -402,13 +401,11 @@ PERMISSIONS = {
         "smtp_server",
         "api",
         "country",
-        "chatbase",
         "clear_cache",
         "create_login",
         "create_sub_org",
         "dashboard",
         "download",
-        "dtone_account",
         "edit",
         "edit_sub_org",
         "export",
@@ -421,8 +418,9 @@ PERMISSIONS = {
         "manage",
         "manage_accounts",
         "manage_accounts_sub_org",
-        "nexmo_account",
-        "nexmo_connect",
+        "manage_integrations",
+        "vonage_account",
+        "vonage_connect",
         "plan",
         "plivo_connect",
         "profile",
@@ -448,8 +446,6 @@ PERMISSIONS = {
         "create_caller",
         "errors",
         "facebook_whitelist",
-        "search_nexmo",
-        "search_numbers",
     ),
     "channels.channellog": ("connection",),
     "channels.channelevent": ("api", "calls"),
@@ -498,25 +494,14 @@ PERMISSIONS = {
         "update",
     ),
     "msgs.broadcast": ("api", "detail", "schedule", "schedule_list", "schedule_read", "send"),
-    "msgs.label": ("api", "create", "create_folder"),
+    "msgs.label": ("api", "create_folder", "delete_folder"),
     "orgs.topup": ("manage",),
     "policies.policy": ("admin", "history", "give_consent"),
     "request_logs.httplog": ("classifier", "ticketer"),
     "templates.template": ("api",),
-    "tickets.ticket": ("open", "closed", "filter", "update"),
+    "tickets.ticket": ("api", "assign", "assignee", "note"),
     "tickets.ticketer": ("api", "connect", "configure"),
-    "triggers.trigger": (
-        "archived",
-        "catchall",
-        "follow",
-        "inbound_call",
-        "keyword",
-        "missed_call",
-        "new_conversation",
-        "referral",
-        "register",
-        "schedule",
-    ),
+    "triggers.trigger": ("archived", "type"),
 }
 
 
@@ -524,7 +509,7 @@ PERMISSIONS = {
 GROUP_PERMISSIONS = {
     "Service Users": ("flows.flow_assets", "msgs.msg_create"),  # internal Temba services have limited permissions
     "Alpha": (),
-    "Beta": (),
+    "Beta": ("tickets.ticket_list",),
     "Dashboard": ("orgs.org_dashboard",),
     "Surveyors": (
         "contacts.contact_api",
@@ -606,6 +591,7 @@ GROUP_PERMISSIONS = {
         "contacts.contact_read",
         "contacts.contact_restore",
         "contacts.contact_search",
+        "contacts.contact_start",
         "contacts.contact_stopped",
         "contacts.contact_update",
         "contacts.contact_update_fields",
@@ -624,11 +610,9 @@ GROUP_PERMISSIONS = {
         "orgs.org_smtp_server",
         "orgs.org_api",
         "orgs.org_country",
-        "orgs.org_chatbase",
         "orgs.org_create_sub_org",
         "orgs.org_dashboard",
         "orgs.org_download",
-        "orgs.org_dtone_account",
         "orgs.org_edit",
         "orgs.org_edit_sub_org",
         "orgs.org_export",
@@ -637,8 +621,9 @@ GROUP_PERMISSIONS = {
         "orgs.org_languages",
         "orgs.org_manage_accounts",
         "orgs.org_manage_accounts_sub_org",
-        "orgs.org_nexmo_account",
-        "orgs.org_nexmo_connect",
+        "orgs.org_manage_integrations",
+        "orgs.org_vonage_account",
+        "orgs.org_vonage_connect",
         "orgs.org_plan",
         "orgs.org_plivo_connect",
         "orgs.org_profile",
@@ -663,8 +648,6 @@ GROUP_PERMISSIONS = {
         "channels.channel_delete",
         "channels.channel_list",
         "channels.channel_read",
-        "channels.channel_search_nexmo",
-        "channels.channel_search_numbers",
         "channels.channel_update",
         "channels.channelevent.*",
         "channels.channellog_list",
@@ -699,10 +682,7 @@ GROUP_PERMISSIONS = {
         "request_logs.httplog_read",
         "templates.template_api",
         "tickets.ticket.*",
-        "tickets.ticketer_api",
-        "tickets.ticketer_configure",
-        "tickets.ticketer_connect",
-        "tickets.ticketer_delete",
+        "tickets.ticketer.*",
         "triggers.trigger.*",
     ),
     "Editors": (
@@ -737,6 +717,7 @@ GROUP_PERMISSIONS = {
         "contacts.contact_read",
         "contacts.contact_restore",
         "contacts.contact_search",
+        "contacts.contact_start",
         "contacts.contact_stopped",
         "contacts.contact_update",
         "contacts.contact_update_fields",
@@ -772,7 +753,6 @@ GROUP_PERMISSIONS = {
         "channels.channel_delete",
         "channels.channel_list",
         "channels.channel_read",
-        "channels.channel_search_numbers",
         "channels.channel_update",
         "channels.channelevent.*",
         "flows.flow.*",
@@ -801,10 +781,7 @@ GROUP_PERMISSIONS = {
         "policies.policy_list",
         "policies.policy_give_consent",
         "templates.template_api",
-        "tickets.ticket_closed",
-        "tickets.ticket_filter",
-        "tickets.ticket_open",
-        "tickets.ticket_update",
+        "tickets.ticket.*",
         "tickets.ticketer_api",
         "triggers.trigger.*",
     ),
@@ -875,14 +852,27 @@ GROUP_PERMISSIONS = {
         "policies.policy_read",
         "policies.policy_list",
         "policies.policy_give_consent",
-        "tickets.ticket_closed",
-        "tickets.ticket_filter",
-        "tickets.ticket_open",
         "tickets.ticketer_api",
         "triggers.trigger_archived",
         "triggers.trigger_list",
+        "triggers.trigger_type",
     ),
-    "Agents": (),
+    "Agents": (
+        "contacts.contact_api",
+        "contacts.contact_history",
+        "contacts.contactfield_api",
+        "contacts.contactgroup_api",
+        "globals.global_api",
+        "msgs.broadcast_api",
+        "tickets.ticket_api",
+        "tickets.ticket_assign",
+        "tickets.ticket_assignee",
+        "tickets.ticket_list",
+        "tickets.ticket_note",
+        "orgs.org_home",
+        "orgs.org_profile",
+        "policies.policy_give_consent",
+    ),
     "Prometheus": (),
 }
 
@@ -943,6 +933,7 @@ CELERYBEAT_SCHEDULE = {
     "check-credits": {"task": "check_credits_task", "schedule": timedelta(seconds=900)},
     "check-elasticsearch-lag": {"task": "check_elasticsearch_lag", "schedule": timedelta(seconds=300)},
     "check-topup-expiration": {"task": "check_topup_expiration_task", "schedule": crontab(hour=2, minute=0)},
+    "delete-orgs": {"task": "delete_orgs_task", "schedule": crontab(hour=4, minute=0)},
     "fail-old-messages": {"task": "fail_old_messages", "schedule": crontab(hour=0, minute=0)},
     "resolve-twitter-ids-task": {"task": "resolve_twitter_ids_task", "schedule": timedelta(seconds=900)},
     "retry-errored-messages": {"task": "retry_errored_messages", "schedule": timedelta(seconds=60)},
@@ -990,7 +981,6 @@ CELERY_RESULT_BACKEND = None
 CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
 
-IS_PROD = False
 HOSTNAME = "localhost"
 
 # The URL and port of the proxy server to use when needed (if any, in requests format)
@@ -1074,6 +1064,11 @@ SEND_EMAILS = False
 # Whether to send receipts on TopUp purchases
 SEND_RECEIPTS = True
 
+INTEGRATION_TYPES = [
+    "temba.orgs.integrations.dtone.DTOneType",
+    "temba.orgs.integrations.chatbase.ChatbaseType",
+]
+
 CLASSIFIER_TYPES = [
     "temba.classifiers.types.wit.WitType",
     "temba.classifiers.types.luis.LuisType",
@@ -1092,11 +1087,12 @@ CHANNEL_TYPES = [
     "temba.channels.types.whatsapp.WhatsAppType",
     "temba.channels.types.textit_whatsapp.TextItWhatsAppType",
     "temba.channels.types.dialog360.Dialog360Type",
+    "temba.channels.types.zenvia_whatsapp.ZenviaWhatsAppType",
     "temba.channels.types.twilio.TwilioType",
     "temba.channels.types.twilio_whatsapp.TwilioWhatsappType",
     "temba.channels.types.twilio_messaging_service.TwilioMessagingServiceType",
     "temba.channels.types.signalwire.SignalWireType",
-    "temba.channels.types.nexmo.NexmoType",
+    "temba.channels.types.vonage.VonageType",
     "temba.channels.types.africastalking.AfricasTalkingType",
     "temba.channels.types.blackmyna.BlackmynaType",
     "temba.channels.types.bongolive.BongoLiveType",
@@ -1149,9 +1145,14 @@ CHANNEL_TYPES = [
     "temba.channels.types.wechat.WeChatType",
     "temba.channels.types.yo.YoType",
     "temba.channels.types.zenvia.ZenviaType",
+    "temba.channels.types.zenvia_sms.ZenviaSMSType",
     "temba.channels.types.android.AndroidType",
+    "temba.channels.types.discord.DiscordType",
     "temba.channels.types.rocketchat.RocketChatType",
 ]
+
+# set of ISO-639-3 codes of languages to allow in addition to all ISO-639-1 languages
+NON_ISO6391_LANGUAGES = {}
 
 # -----------------------------------------------------------------------------------
 # Store sessions in our cache

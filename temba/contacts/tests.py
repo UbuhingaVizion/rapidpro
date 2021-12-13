@@ -26,7 +26,7 @@ from temba.campaigns.models import Campaign, CampaignEvent, EventFire
 from temba.channels.models import Channel, ChannelEvent, ChannelLog
 from temba.contacts.search import SearchException, SearchResults, search_contacts
 from temba.contacts.views import ContactListView
-from temba.flows.models import Flow
+from temba.flows.models import Flow, FlowStart
 from temba.ivr.models import IVRCall
 from temba.locations.models import AdminBoundary
 from temba.mailroom import MailroomException, modifiers
@@ -43,6 +43,7 @@ from temba.tests import (
     mock_mailroom,
 )
 from temba.tests.engine import MockSessionWriter
+from temba.tickets.models import Ticketer
 from temba.triggers.models import Trigger
 from temba.utils import json
 from temba.utils.dates import datetime_to_str, datetime_to_timestamp
@@ -61,7 +62,7 @@ from .tasks import check_elasticsearch_lag, squash_contactgroupcounts
 from .templatetags.contacts import contact_field, history_class, history_icon
 
 
-class ContactCRUDLTest(TembaTest):
+class ContactCRUDLTest(CRUDLTestMixin, TembaTest):
     def setUp(self):
         super().setUp()
 
@@ -565,6 +566,38 @@ class ContactCRUDLTest(TembaTest):
         other_org_contact.refresh_from_db()
         self.assertTrue(other_org_contact.is_active)
 
+    @mock_mailroom
+    def test_start(self, mr_mocks):
+        sample_flows = list(self.org.flows.order_by("name"))
+        background_flow = self.get_flow("background")
+        self.get_flow("media_survey")
+        archived_flow = self.get_flow("color")
+        archived_flow.archive(self.admin)
+
+        contact = self.create_contact("Joe", phone="+593979000111")
+        start_url = reverse("contacts.contact_start", args=[contact.id])
+
+        response = self.assertUpdateFetch(start_url, allow_viewers=False, allow_editors=True, form_fields=["flow"])
+        self.assertEqual([background_flow] + sample_flows, list(response.context["form"].fields["flow"].queryset))
+
+        # try to submit without specifying a flow
+        self.assertUpdateSubmit(
+            start_url, data={}, form_errors={"flow": "This field is required."}, object_unchanged=contact
+        )
+
+        # submit with flow...
+        self.assertUpdateSubmit(start_url, data={"flow": background_flow.id})
+
+        # should now have a flow start
+        start = FlowStart.objects.get()
+        self.assertEqual(background_flow, start.flow)
+        self.assertEqual({contact}, set(start.contacts.all()))
+        self.assertTrue(start.restart_participants)
+        self.assertTrue(start.include_active)
+
+        # that has been queued to mailroom
+        self.assertEqual("start_flow", mr_mocks.queued_batch_tasks[-1]["type"])
+
 
 class ContactGroupTest(TembaTest):
     def setUp(self):
@@ -633,6 +666,9 @@ class ContactGroupTest(TembaTest):
         # put group back into evaluation state
         group.status = ContactGroup.STATUS_EVALUATING
         group.save(update_fields=("status",))
+
+        # dynamic groups should get their own icon
+        self.assertEqual(group.get_icon(), "atom")
 
         # can't update query again while it is in this state
         with self.assertRaises(ValueError):
@@ -984,6 +1020,7 @@ class ContactGroupCRUDLTest(TembaTest):
         self.other_org_group = self.create_group("Customers", contacts=[], org=self.org2)
 
     @override_settings(MAX_ACTIVE_CONTACTGROUPS_PER_ORG=10)
+    @patch.object(Org, "LIMIT_DEFAULTS", dict(groups=10))
     @mock_mailroom
     def test_create(self, mr_mocks):
         url = reverse("contacts.contactgroup_create")
@@ -1799,7 +1836,7 @@ class ContactTest(TembaTest):
             )
 
         # create twitter channel
-        Channel.create(self.org, self.user, None, "TT")
+        self.create_channel("TT", "Twitter", "nyaruka")
 
         # add add an external channel so numbers get normalized
         Channel.create(self.org, self.user, "RW", "EX", schemes=[URN.TEL_SCHEME])
@@ -1905,6 +1942,7 @@ class ContactTest(TembaTest):
         self.joe.created_on = timezone.now() - timedelta(days=1000)
         self.joe.save(update_fields=("created_on",))
 
+        self.create_broadcast(self.user, "A beautiful broadcast", contacts=[self.joe])
         self.create_campaign()
 
         # add a message with some attachments
@@ -1920,7 +1958,7 @@ class ContactTest(TembaTest):
         )
 
         # create some messages
-        for i in range(95):
+        for i in range(94):
             self.create_incoming_msg(
                 self.joe, "Inbound message %d" % i, created_on=timezone.now() - timedelta(days=(100 - i))
             )
@@ -1956,7 +1994,7 @@ class ContactTest(TembaTest):
         )
 
         # mark an outgoing message as failed
-        failed = Msg.objects.get(direction="O", contact=self.joe)
+        failed = Msg.objects.filter(direction="O", contact=self.joe).last()
         failed.status = "F"
         failed.save(update_fields=("status",))
         log = ChannelLog.objects.create(
@@ -1964,7 +2002,7 @@ class ContactTest(TembaTest):
         )
 
         # create an airtime transfer
-        AirtimeTransfer.objects.create(
+        transfer = AirtimeTransfer.objects.create(
             org=self.org,
             status="S",
             contact=self.joe,
@@ -1976,6 +2014,11 @@ class ContactTest(TembaTest):
         # create an event from the past
         scheduled = timezone.now() - timedelta(days=5)
         EventFire.objects.create(event=self.planting_reminder, contact=self.joe, scheduled=scheduled, fired=scheduled)
+
+        # two tickets for joe
+        ticketer = Ticketer.create(self.org, self.user, "internal", "Internal", {})
+        self.create_ticket(ticketer, self.joe, "Question 1", closed_on=timezone.now())
+        ticket = self.create_ticket(ticketer, self.joe, "Question 2")
 
         # create missed incoming and outgoing calls
         self.create_channel_event(
@@ -2002,33 +2045,61 @@ class ContactTest(TembaTest):
         # create a channel log for this call
         ChannelLog.objects.create(channel=self.channel, description="Its an ivr call", is_error=False, connection=call)
 
+        # add a note to our open ticket
+        ticket.events.create(
+            org=self.org,
+            contact=ticket.contact,
+            event_type="N",
+            note="I have a bad feeling about this",
+            created_by=self.admin,
+        )
+
+        # create an assignment
+        ticket.events.create(
+            org=self.org,
+            contact=ticket.contact,
+            event_type="A",
+            created_by=self.admin,
+            assignee=self.admin,
+        )
+
         # fetch our contact history
         self.login(self.admin)
-        with self.assertNumQueries(49):
+        with self.assertNumQueries(52):
             response = self.client.get(url + "?limit=100")
 
         # history should include all messages in the last 90 days, the channel event, the call, and the flow run
         history = response.context["events"]
-        self.assertEqual(95, len(history))
+        self.assertEqual(100, len(history))
 
-        def assertHistoryEvent(item, expected_type, msg_text=None):
-            self.assertEqual(expected_type, item["type"])
-            self.assertTrue(iso8601.parse_date(item["created_on"]))
-            if msg_text:
-                self.assertEqual(msg_text, item["msg"]["text"])
+        def assertHistoryEvent(events, index, expected_type, **kwargs):
+            item = events[index]
+            self.assertEqual(expected_type, item["type"], f"event type mismatch for item {index}")
+            self.assertTrue(iso8601.parse_date(item["created_on"]))  # check created_on exists and is ISO string
 
-        assertHistoryEvent(history[0], "call_started")
-        assertHistoryEvent(history[1], "channel_event")
-        assertHistoryEvent(history[2], "channel_event")
-        assertHistoryEvent(history[3], "channel_event")
-        assertHistoryEvent(history[4], "airtime_transferred")
-        assertHistoryEvent(history[5], "webhook_called")
-        assertHistoryEvent(history[6], "run_result_changed")
-        assertHistoryEvent(history[7], "msg_created")
-        assertHistoryEvent(history[8], "flow_entered")
-        assertHistoryEvent(history[9], "msg_received")
-        assertHistoryEvent(history[10], "campaign_fired")
-        assertHistoryEvent(history[-1], "msg_received", msg_text="Inbound message 11")
+            for path, expected in kwargs.items():
+                self.assertPathValue(item, path, expected, f"item {index}")
+
+        assertHistoryEvent(history, 0, "ticket_assigned", assignee__id=self.admin.id)
+        assertHistoryEvent(history, 1, "ticket_note_added", note="I have a bad feeling about this")
+        assertHistoryEvent(history, 2, "call_started", status="N")
+        assertHistoryEvent(history, 3, "channel_event", channel_event_type="new_conversation")
+        assertHistoryEvent(history, 4, "channel_event", channel_event_type="mo_miss")
+        assertHistoryEvent(history, 5, "channel_event", channel_event_type="mt_miss")
+        assertHistoryEvent(history, 6, "ticket_opened", ticket__subject="Question 2")
+        assertHistoryEvent(history, 7, "ticket_closed", ticket__subject="Question 1")
+        assertHistoryEvent(history, 8, "ticket_opened", ticket__subject="Question 1")
+        assertHistoryEvent(history, 9, "airtime_transferred", actual_amount=Decimal("100.00"))
+        assertHistoryEvent(history, 10, "webhook_called", url="https://example.com/")
+        assertHistoryEvent(history, 11, "run_result_changed", value="green")
+        assertHistoryEvent(history, 12, "msg_created", msg__text="What is your favorite color?")
+        assertHistoryEvent(history, 13, "flow_entered", flow__name="Colors")
+        assertHistoryEvent(history, 14, "msg_received", msg__text="Message caption")
+        assertHistoryEvent(
+            history, 15, "msg_created", msg__text="A beautiful broadcast", msg__created_by__email="User@nyaruka.com"
+        )
+        assertHistoryEvent(history, 16, "campaign_fired", campaign__name="Planting Reminders")
+        assertHistoryEvent(history, -1, "msg_received", msg__text="Inbound message 11")
 
         self.assertContains(response, "<audio ")
         self.assertContains(response, '<source type="audio/mp3" src="http://blah/file.mp3" />')
@@ -2040,10 +2111,19 @@ class ContactTest(TembaTest):
         )
         self.assertContains(response, reverse("channels.channellog_read", args=[log.id]))
         self.assertContains(response, reverse("channels.channellog_connection", args=[call.id]))
+        self.assertContains(response, "Transferred <b>100.00</b> <b>RWF</b> of airtime")
+        self.assertContains(response, reverse("airtime.airtimetransfer_read", args=[transfer.id]))
+
+        # can filter by ticket to only see ticket events from that ticket
+        response = self.client.get(url + f"?ticket={ticket.uuid}&limit=100")
+        history = response.context["events"]
+        assertHistoryEvent(history, 5, "channel_event", channel_event_type="mt_miss")
+        assertHistoryEvent(history, 6, "ticket_opened", ticket__subject="Question 2")
+        assertHistoryEvent(history, 7, "airtime_transferred", actual_amount=Decimal("100.00"))
 
         # can also fetch same page as JSON
         response_json = self.client.get(url + "?limit=100&_format=json").json()
-        self.assertEqual(95, len(response_json["events"]))
+        self.assertEqual(100, len(response_json["events"]))
 
         # fetch next page
         before = datetime_to_timestamp(timezone.now() - timedelta(days=90))
@@ -2056,15 +2136,15 @@ class ContactTest(TembaTest):
         # activity should include 11 remaining messages and the event fire
         history = response.context["events"]
         self.assertEqual(12, len(history))
-        assertHistoryEvent(history[0], "msg_received", msg_text="Inbound message 10")
-        assertHistoryEvent(history[10], "msg_received", msg_text="Inbound message 0")
-        assertHistoryEvent(history[11], "msg_received", msg_text="Very old inbound message")
+        assertHistoryEvent(history, 0, "msg_received", msg__text="Inbound message 10")
+        assertHistoryEvent(history, 10, "msg_received", msg__text="Inbound message 0")
+        assertHistoryEvent(history, 11, "msg_received", msg__text="Very old inbound message")
 
         response = self.fetch_protected(url + "?limit=100", self.admin)
         history = response.context["events"]
 
-        self.assertEqual(95, len(history))
-        assertHistoryEvent(history[7], "msg_created", msg_text="What is your favorite color?")
+        self.assertEqual(100, len(history))
+        assertHistoryEvent(history, 12, "msg_created", msg__text="What is your favorite color?")
 
         # if a new message comes in
         self.create_incoming_msg(self.joe, "Newer message")
@@ -2072,15 +2152,15 @@ class ContactTest(TembaTest):
 
         # now we'll see the message that just came in first, followed by the call event
         history = response.context["events"]
-        assertHistoryEvent(history[0], "msg_received", msg_text="Newer message")
-        assertHistoryEvent(history[1], "call_started")
+        assertHistoryEvent(history, 0, "msg_received", msg__text="Newer message")
+        assertHistoryEvent(history, 1, "ticket_assigned")
 
         recent_start = datetime_to_timestamp(timezone.now() - timedelta(days=1))
         response = self.fetch_protected(url + "?limit=100&after=%s" % recent_start, self.admin)
 
         # with our recent flag on, should not see the older messages
         events = response.context["events"]
-        self.assertEqual(11, len(events))
+        self.assertEqual(17, len(events))
         self.assertContains(response, "file.mp4")
 
         # can't view history of contact in another org
@@ -2094,7 +2174,7 @@ class ContactTest(TembaTest):
 
         # super users can view history of any contact
         response = self.fetch_protected(url + "?limit=100", self.superuser)
-        self.assertEqual(96, len(response.context["events"]))
+        self.assertEqual(100, len(response.context["events"]))
 
         response = self.fetch_protected(reverse("contacts.contact_history", args=[hans.uuid]), self.superuser)
         self.assertEqual(0, len(response.context["events"]))
@@ -2109,9 +2189,9 @@ class ContactTest(TembaTest):
             .save()
         )
 
-        response = self.fetch_protected(url + "?limit=100", self.admin)
+        response = self.fetch_protected(url + "?limit=200", self.admin)
         history = response.context["events"]
-        self.assertEqual(99, len(history))
+        self.assertEqual(104, len(history))
 
         # before date should not match our last activity, that only happens when we truncate
         self.assertNotEqual(
@@ -2119,19 +2199,24 @@ class ContactTest(TembaTest):
             datetime_to_timestamp(iso8601.parse_date(response.context["events"][-1]["created_on"])),
         )
 
-        assertHistoryEvent(history[0], "msg_created", msg_text="What is your favorite color?")
-        assertHistoryEvent(history[1], "flow_entered")
-        assertHistoryEvent(history[2], "flow_exited")
-        assertHistoryEvent(history[3], "msg_received", msg_text="Newer message")
-        assertHistoryEvent(history[4], "call_started")
-        assertHistoryEvent(history[5], "channel_event")
-        assertHistoryEvent(history[6], "channel_event")
-        assertHistoryEvent(history[7], "channel_event")
-        assertHistoryEvent(history[8], "airtime_transferred")
-        assertHistoryEvent(history[9], "webhook_called")
-        assertHistoryEvent(history[10], "run_result_changed")
-        assertHistoryEvent(history[11], "msg_created", msg_text="What is your favorite color?")
-        assertHistoryEvent(history[12], "flow_entered")
+        assertHistoryEvent(history, 0, "msg_created", msg__text="What is your favorite color?")
+        assertHistoryEvent(history, 1, "flow_entered")
+        assertHistoryEvent(history, 2, "flow_exited")
+        assertHistoryEvent(history, 3, "msg_received", msg__text="Newer message")
+        assertHistoryEvent(history, 4, "ticket_assigned")
+        assertHistoryEvent(history, 5, "ticket_note_added")
+        assertHistoryEvent(history, 6, "call_started")
+        assertHistoryEvent(history, 7, "channel_event")
+        assertHistoryEvent(history, 8, "channel_event")
+        assertHistoryEvent(history, 9, "channel_event")
+        assertHistoryEvent(history, 10, "ticket_opened")
+        assertHistoryEvent(history, 11, "ticket_closed")
+        assertHistoryEvent(history, 12, "ticket_opened")
+        assertHistoryEvent(history, 13, "airtime_transferred")
+        assertHistoryEvent(history, 14, "webhook_called")
+        assertHistoryEvent(history, 15, "run_result_changed")
+        assertHistoryEvent(history, 16, "msg_created", msg__text="What is your favorite color?")
+        assertHistoryEvent(history, 17, "flow_entered")
 
         # make our message event older than our planting reminder
         self.message_event.created_on = self.planting_reminder.created_on - timedelta(days=1)
@@ -2145,7 +2230,7 @@ class ContactTest(TembaTest):
         response = self.fetch_protected(
             url + "?limit=1&before=%d" % datetime_to_timestamp(scheduled + timedelta(minutes=5)), self.admin
         )
-        self.assertEqual(self.message_event.id, response.context["events"][0]["campaign_event"]["id"])
+        assertHistoryEvent(response.context["events"], 0, "campaign_fired", campaign_event__id=self.message_event.id)
 
         # now try the proper max history to test truncation
         response = self.fetch_protected(url + "?before=%d" % datetime_to_timestamp(timezone.now()), self.admin)
@@ -2907,7 +2992,7 @@ class ContactTest(TembaTest):
             reverse("orgs.org_languages"),
             dict(
                 primary_lang='{"name":"Haitian", "value":"hat"}',
-                languages=['{"name":"Official Aramaic", "value":"arc"}', '{"name":"Spanish", "value":"spa"}'],
+                languages=['{"name":"Kinyarwanda", "value":"kin"}', '{"name":"Spanish", "value":"spa"}'],
             ),
         )
 
@@ -3242,50 +3327,10 @@ class ContactTest(TembaTest):
         self.set_contact_field(self.joe, "cat", "")
         self.joe.refresh_from_db()
 
-        # we try a bit harder if we know it is a location field
-        state_uuid = str(
-            ContactField.get_or_create(self.org, self.user, "state", "State", value_type=ContactField.TYPE_STATE).uuid
-        )
-        self.set_contact_field(self.joe, "state", "i live in eastern province")
-        self.joe.refresh_from_db()
-        self.assertEqual(
-            self.joe.fields, {state_uuid: {"text": "i live in eastern province", "state": "Rwanda > Eastern Province"}}
-        )
-
-        # ok, let's test our other boundary levels
-        district_uuid = str(
-            ContactField.get_or_create(
-                self.org, self.user, "district", "District", value_type=ContactField.TYPE_DISTRICT
-            ).uuid
-        )
-        ward_uuid = str(
-            ContactField.get_or_create(self.org, self.user, "ward", "Ward", value_type=ContactField.TYPE_WARD).uuid
-        )
-        self.set_contact_field(self.joe, "district", "gatsibo")
-        self.set_contact_field(self.joe, "ward", "kageyo")
-        self.joe.refresh_from_db()
-
-        self.assertEqual(
-            self.joe.fields,
-            {
-                state_uuid: {"text": "i live in eastern province", "state": "Rwanda > Eastern Province"},
-                district_uuid: {
-                    "text": "gatsibo",
-                    "state": "Rwanda > Eastern Province",
-                    "district": "Rwanda > Eastern Province > Gatsibo",
-                },
-                ward_uuid: {
-                    "text": "kageyo",
-                    "state": "Rwanda > Eastern Province",
-                    "district": "Rwanda > Eastern Province > Gatsibo",
-                    "ward": "Rwanda > Eastern Province > Gatsibo > Kageyo",
-                },
-            },
-        )
-
-        # change our state to an invalid field value type
-        ContactField.user_fields.filter(key="state").update(value_type="Z")
-        bad_field = ContactField.user_fields.get(key="state")
+        # change a field to an invalid field value type
+        self.set_contact_field(self.joe, "cat", "xx")
+        ContactField.user_fields.filter(key="cat").update(value_type="Z")
+        bad_field = ContactField.user_fields.get(key="cat")
 
         with self.assertRaises(KeyError):
             self.joe.get_field_serialized(bad_field)
@@ -4312,240 +4357,6 @@ class ContactFieldTest(TembaTest):
         response = self.client.get(manage_fields_url)
         self.assertEqual(len(response.context["object_list"]), 2)
 
-    def test_view_create_valid(self):
-        # we have three fields
-        self.assertEqual(ContactField.user_fields.filter(org=self.org).count(), 3)
-        # there are not featured fields
-        self.assertEqual(ContactField.user_fields.filter(org=self.org, show_in_table=True).count(), 0)
-
-        self.login(self.admin)
-
-        create_url = reverse("contacts.contactfield_create")
-
-        response = self.client.get(create_url)
-        self.assertEqual(response.status_code, 200)
-
-        # we got a form with expected form fields
-        self.assertListEqual(
-            list(response.context["form"].fields.keys()), ["label", "value_type", "show_in_table", "loc"]
-        )
-
-        # a valid form
-        post_data = {"label": "this is a label", "value_type": "T", "show_in_table": True}
-
-        response = self.client.post(create_url, post_data)
-
-        self.assertEqual(response.status_code, 200)
-        self.assertNoFormErrors(response, post_data)
-
-        # after creating a field there should be 4
-        self.assertEqual(ContactField.user_fields.filter(org=self.org).count(), 4)
-        # newly created field is featured
-        self.assertEqual(ContactField.user_fields.filter(org=self.org, show_in_table=True).count(), 1)
-
-    def test_view_create_field_with_same_name_as_deleted_field(self):
-        create_url = reverse("contacts.contactfield_create")
-        self.login(self.admin)
-
-        # we have three fields
-        self.assertEqual(ContactField.user_fields.filter(org=self.org).count(), 3)
-
-        old_first = ContactField.get_or_create(self.org, self.admin, "first")
-        # a valid form
-        post_data = {"label": old_first.label, "value_type": old_first.value_type}
-
-        response = self.client.post(create_url, post_data)
-
-        # field cannot be created because there is an active field 'First'
-        self.assertFormError(response, "form", None, "Must be unique.")
-
-        # then we hide the field
-        ContactField.hide_field(self.org, self.admin, key="first")
-
-        # and try to create a new field
-        response = self.client.post(create_url, post_data)
-        self.assertNoFormErrors(response, post_data)
-
-        # after creating a field there should be 4
-        self.assertEqual(ContactField.user_fields.filter(org=self.org).count(), 4)
-        # there are two fields with "First" label, but only one is active
-        self.assertEqual(ContactField.user_fields.filter(org=self.org, label="First").count(), 2)
-
-        new_first = ContactField.get_or_create(self.org, self.admin, "first")
-
-        self.assertNotEqual(new_first.uuid, old_first.uuid)
-
-    def test_view_create_invalid(self):
-        self.login(self.admin)
-
-        create_cf_url = reverse("contacts.contactfield_create")
-
-        response = self.client.get(create_cf_url)
-        self.assertEqual(response.status_code, 200)
-
-        # we got a form with expected form fields
-        self.assertListEqual(
-            list(response.context["form"].fields.keys()), ["label", "value_type", "show_in_table", "loc"]
-        )
-
-        # an empty form
-        post_data = {}
-
-        response = self.client.post(create_cf_url, post_data)
-
-        self.assertEqual(response.status_code, 200)
-        self.assertFormError(response, "form", None, "Can only contain letters, numbers and hypens.")
-        self.assertFormError(response, "form", "value_type", "This field is required.")
-
-        # a form with an invalid label
-        post_data = {"label": "!@#"}
-
-        response = self.client.post(create_cf_url, post_data)
-
-        self.assertEqual(response.status_code, 200)
-        self.assertFormError(response, "form", None, "Can only contain letters, numbers and hypens.")
-
-        # a form trying to create a field that already exists
-        post_data = {"label": "First"}
-
-        response = self.client.post(create_cf_url, post_data)
-
-        self.assertEqual(response.status_code, 200)
-        self.assertFormError(response, "form", None, "Must be unique.")
-
-        # a form creating a field that does not have a valid key
-        post_data = {"label": "modified by"}
-
-        response = self.client.post(create_cf_url, post_data)
-
-        self.assertEqual(response.status_code, 200)
-        self.assertFormError(response, "form", None, "Can't be a reserved word")
-
-        with override_settings(MAX_ACTIVE_CONTACTFIELDS_PER_ORG=2):
-            # a valid form, but ORG has reached max active fields limit
-            post_data = {"label": "teefilter", "value_type": "T"}
-
-            response = self.client.post(create_cf_url, post_data)
-
-            self.assertEqual(response.status_code, 200)
-            self.assertFormError(response, "form", None, "Cannot create a new field as limit is 2.")
-
-        # value_type not supported
-        post_data = {"label": "teefilter", "value_type": "J"}
-
-        response = self.client.post(create_cf_url, post_data)
-
-        self.assertEqual(response.status_code, 200)
-        self.assertFormError(
-            response, "form", "value_type", "Select a valid choice. J is not one of the available choices."
-        )
-
-    def test_update(self):
-        cf_to_update = ContactField.user_fields.get(key="first")
-
-        self.login(self.admin)
-
-        update_url = reverse("contacts.contactfield_update", args=(cf_to_update.id,))
-
-        response = self.client.get(update_url)
-        self.assertEqual(response.status_code, 200)
-
-        initial_data = {"label": "First", "value_type": "T", "show_in_table": False}
-
-        # we got a form with expected form fields
-        self.assertListEqual(
-            list(response.context["form"].fields.keys()), ["label", "value_type", "show_in_table", "loc"]
-        )
-        self.assertDictEqual(response.context["form"].initial, initial_data)
-
-        initial_data["show_in_table"] = True
-        initial_data["label"] = "First 1"
-
-        response = self.client.post(update_url, initial_data)
-        self.assertEqual(response.status_code, 200)
-        self.assertNoFormErrors(response, initial_data)
-
-        cf_to_update.refresh_from_db()
-        self.assertEqual(cf_to_update.label, "First 1")
-
-        # can't update field in other org
-        response = self.client.post(
-            reverse("contacts.contactfield_update", args=[self.other_org_field.id]),
-            {"label": "Changed", "value_type": "T", "show_in_table": False},
-        )
-        self.assertLoginRedirect(response)
-
-        # check field isn't changed
-        self.other_org_field.refresh_from_db()
-        self.assertEqual("Other", self.other_org_field.label)
-
-    def test_view_update_invalid(self):
-        self.login(self.admin)
-
-        # cannot update a contact field which does not exist
-        update_cf_url = reverse("contacts.contactfield_update", args=(123_123,))
-
-        response = self.client.get(update_cf_url)
-        self.assertEqual(response.status_code, 404)
-
-        # cannot update a contact field which does not exist
-        response = self.client.post(update_cf_url, {})
-        self.assertEqual(response.status_code, 404)
-
-        # get a valid field to update
-        cf_to_update = ContactField.user_fields.get(key="first")
-        update_cf_url = reverse("contacts.contactfield_update", args=(cf_to_update.id,))
-
-        response = self.client.get(update_cf_url)
-
-        # we got a form with expected form fields
-        self.assertListEqual(
-            list(response.context["form"].fields.keys()), ["label", "value_type", "show_in_table", "loc"]
-        )
-
-        # an empty form
-        post_data = {}
-
-        response = self.client.post(update_cf_url, post_data)
-
-        self.assertEqual(response.status_code, 200)
-        self.assertFormError(response, "form", None, "Can only contain letters, numbers and hypens.")
-        self.assertFormError(response, "form", "value_type", "This field is required.")
-
-        # a form with an invalid label
-        post_data = {"label": "!@#"}
-
-        response = self.client.post(update_cf_url, post_data)
-
-        self.assertEqual(response.status_code, 200)
-        self.assertFormError(response, "form", None, "Can only contain letters, numbers and hypens.")
-
-        # a form trying to create a field that already exists
-        post_data = {"label": "Second"}
-
-        response = self.client.post(update_cf_url, post_data)
-
-        self.assertEqual(response.status_code, 200)
-        self.assertFormError(response, "form", None, "Must be unique.")
-
-        # a form creating a field that does not have a valid key
-        post_data = {"label": "modified by"}
-
-        response = self.client.post(update_cf_url, post_data)
-
-        self.assertEqual(response.status_code, 200)
-        self.assertFormError(response, "form", None, "Can't be a reserved word")
-
-        # value_type not supported
-        post_data = {"label": "teefilter", "value_type": "J"}
-
-        response = self.client.post(update_cf_url, post_data)
-
-        self.assertEqual(response.status_code, 200)
-        self.assertFormError(
-            response, "form", "value_type", "Select a valid choice. J is not one of the available choices."
-        )
-
     def test_view_delete(self):
         cf_to_delete = ContactField.user_fields.get(key="first")
         self.assertTrue(cf_to_delete.is_active)
@@ -4749,6 +4560,129 @@ class ContactFieldCRUDLTest(TembaTest, CRUDLTestMixin):
 
         self.other_org_field = ContactField.get_or_create(self.org2, self.admin2, "other", "Other")
 
+    def test_create(self):
+        create_url = reverse("contacts.contactfield_create")
+
+        self.assertCreateFetch(
+            create_url, allow_viewers=False, allow_editors=True, form_fields=["label", "value_type", "show_in_table"]
+        )
+
+        # try to submit with empty name
+        self.assertCreateSubmit(
+            create_url,
+            {"label": "", "value_type": "T", "show_in_table": True},
+            form_errors={"label": "This field is required."},
+        )
+
+        # try to submit with invalid name
+        self.assertCreateSubmit(
+            create_url,
+            {"label": "???", "value_type": "T", "show_in_table": True},
+            form_errors={"label": "Can only contain letters, numbers and hypens."},
+        )
+
+        # try to submit with something that would be an invalid key
+        self.assertCreateSubmit(
+            create_url,
+            {"label": "UUID", "value_type": "T", "show_in_table": True},
+            form_errors={"label": "Can't be a reserved word."},
+        )
+
+        # try to submit with name of existing field
+        self.assertCreateSubmit(
+            create_url,
+            {"label": "AGE", "value_type": "N", "show_in_table": True},
+            form_errors={"label": "Must be unique."},
+        )
+
+        # submit with valid data
+        self.assertCreateSubmit(
+            create_url,
+            {"label": "Goats", "value_type": "N", "show_in_table": True},
+            new_obj_query=ContactField.user_fields.filter(
+                org=self.org, label="Goats", value_type="N", show_in_table=True
+            ),
+            success_status=200,
+        )
+
+        # it's also ok to create a field with the same name as a deleted field
+        ContactField.hide_field(self.org, self.admin, "age")
+
+        self.assertCreateSubmit(
+            create_url,
+            {"label": "Age", "value_type": "N", "show_in_table": True},
+            new_obj_query=ContactField.user_fields.filter(
+                org=self.org, label="Age", value_type="N", show_in_table=True
+            ),
+            success_status=200,
+        )
+
+        # simulate an org which has reached the limit for fields
+        with override_settings(MAX_ACTIVE_CONTACTFIELDS_PER_ORG=2), patch.object(Org, "LIMIT_DEFAULTS", {"fields": 2}):
+            self.assertCreateSubmit(
+                create_url,
+                {"label": "Sheep", "value_type": "T", "show_in_table": True},
+                form_errors={"__all__": "Cannot create a new field as limit is 2."},
+            )
+
+    def test_update(self):
+        update_url = reverse("contacts.contactfield_update", args=[self.age.id])
+
+        self.assertUpdateFetch(
+            update_url,
+            allow_viewers=False,
+            allow_editors=True,
+            form_fields={"label": "Age", "value_type": "N", "show_in_table": True},
+        )
+
+        # try submit without change
+        self.assertUpdateSubmit(
+            update_url, {"label": "Age", "value_type": "N", "show_in_table": True}, success_status=200
+        )
+
+        # try to submit with empty name
+        self.assertUpdateSubmit(
+            update_url,
+            {"label": "", "value_type": "N", "show_in_table": True},
+            form_errors={"label": "This field is required."},
+            object_unchanged=self.age,
+        )
+
+        # try to submit with invalid name
+        self.assertUpdateSubmit(
+            update_url,
+            {"label": "???", "value_type": "N", "show_in_table": True},
+            form_errors={"label": "Can only contain letters, numbers and hypens."},
+            object_unchanged=self.age,
+        )
+
+        # try to submit with a name that is used by another field
+        self.assertUpdateSubmit(
+            update_url,
+            {"label": "GENDER", "value_type": "N", "show_in_table": True},
+            form_errors={"label": "Must be unique."},
+            object_unchanged=self.age,
+        )
+
+        # submit with different name and type
+        self.assertUpdateSubmit(
+            update_url, {"label": "Age In Years", "value_type": "T", "show_in_table": False}, success_status=200
+        )
+
+        self.age.refresh_from_db()
+        self.assertEqual("Age In Years", self.age.label)
+        self.assertEqual("T", self.age.value_type)
+        self.assertFalse(self.age.show_in_table)
+
+        # simulate an org which has reached the limit for fields - should still be able to update a field
+        with override_settings(MAX_ACTIVE_CONTACTFIELDS_PER_ORG=2), patch.object(Org, "LIMIT_DEFAULTS", {"fields": 2}):
+            self.assertUpdateSubmit(
+                update_url, {"label": "Age 2", "value_type": "T", "show_in_table": True}, success_status=200
+            )
+
+        self.age.refresh_from_db()
+        self.assertEqual("Age 2", self.age.label)
+
     def test_list(self):
         list_url = reverse("contacts.contactfield_list")
 
@@ -4761,19 +4695,26 @@ class ContactFieldCRUDLTest(TembaTest, CRUDLTestMixin):
         self.assertNotContains(response, "You are approaching the limit")
 
         with override_settings(MAX_ACTIVE_CONTACTFIELDS_PER_ORG=10):
-            response = self.requestView(list_url, self.admin)
+            with patch.object(Org, "LIMIT_DEFAULTS", dict(fields=10)):
+                response = self.requestView(list_url, self.admin)
 
-            self.assertContains(response, "You are approaching the limit")
+                self.assertContains(response, "You are approaching the limit")
 
         with override_settings(MAX_ACTIVE_CONTACTFIELDS_PER_ORG=3):
-            response = self.requestView(list_url, self.admin)
+            with patch.object(Org, "LIMIT_DEFAULTS", dict(fields=3)):
+                response = self.requestView(list_url, self.admin)
 
-            self.assertContains(response, "You have reached the limit")
+                self.assertContains(response, "You have reached the limit")
 
 
 class URNTest(TembaTest):
     def test_facebook_urn(self):
         self.assertTrue(URN.validate("facebook:ref:asdf"))
+
+    def test_discord_urn(self):
+        self.assertEqual("discord:750841288886321253", URN.from_discord("750841288886321253"))
+        self.assertTrue(URN.validate(URN.from_discord("750841288886321253")))
+        self.assertFalse(URN.validate(URN.from_discord("not-a-discord-id")))
 
     def test_whatsapp_urn(self):
         self.assertTrue(URN.validate("whatsapp:12065551212"))
@@ -5687,16 +5628,18 @@ class ContactImportTest(TembaTest):
         for test in tests:
             self.assertEqual(test[1], imp._parse_value(test[0], tz=kgl))
 
-    def test_default_group_name(self):
+    def test_get_default_group_name(self):
+        self.create_group("Testers", contacts=[])
         tests = [
             ("simple.csv", "Simple"),
+            ("testers.csv", "Testers 1"),  # group called Testers already exists
             ("contact-imports.csv", "Contact Imports"),
             ("abc_@@é.csv", "Abc É"),
             ("a_@@é.csv", "Import"),  # would be too short
             (f"{'x' * 100}.csv", "Xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"),  # truncated
         ]
         for test in tests:
-            self.assertEqual(test[1], ContactImport(original_filename=test[0])._default_group_name())
+            self.assertEqual(test[1], ContactImport(org=self.org, original_filename=test[0]).get_default_group_name())
 
 
 class ContactImportCRUDLTest(TembaTest, CRUDLTestMixin):
@@ -5712,18 +5655,6 @@ class ContactImportCRUDLTest(TembaTest, CRUDLTestMixin):
         def upload(path):
             with open(path, "rb") as f:
                 return SimpleUploadedFile(path, content=f.read())
-
-        # try uploading when we've already reached our group limit
-        self.create_group("Testers", contacts=[])
-        with override_settings(MAX_ACTIVE_CONTACTGROUPS_PER_ORG=1):
-            response = self.client.post(create_url, {"file": upload("media/test_imports/simple.xlsx")})
-            self.assertFormError(
-                response,
-                "form",
-                "__all__",
-                "This workspace has reached the limit of 1 groups. "
-                "You must delete existing ones before you can perform an import.",
-            )
 
         # try uploading an empty CSV file
         response = self.client.post(create_url, {"file": upload("media/test_imports/empty.csv")})
@@ -5763,6 +5694,76 @@ class ContactImportCRUDLTest(TembaTest, CRUDLTestMixin):
         self.assertEqual(302, response.status_code)
         self.assertEqual(read_url, response.url)
 
+    @mock_mailroom
+    def test_creating_new_group(self, mr_mocks):
+        self.login(self.admin)
+        imp = self.create_contact_import("media/test_imports/simple.csv")
+        preview_url = reverse("contacts.contactimport_preview", args=[imp.id])
+        read_url = reverse("contacts.contactimport_read", args=[imp.id])
+
+        # create some groups
+        self.create_group("Testers", contacts=[])
+        self.create_group("Doctors", contacts=[])
+
+        # try creating new group but not providing a name
+        response = self.client.post(preview_url, {"add_to_group": True, "group_mode": "N", "new_group_name": "  "})
+        self.assertFormError(response, "form", "new_group_name", "Required.")
+
+        # try creating new group but providing an invalid name
+        response = self.client.post(preview_url, {"add_to_group": True, "group_mode": "N", "new_group_name": "????"})
+        self.assertFormError(response, "form", "new_group_name", "Invalid group name.")
+
+        # try creating new group but providing a name of an existing group
+        response = self.client.post(
+            preview_url, {"add_to_group": True, "group_mode": "N", "new_group_name": "testERs"}
+        )
+        self.assertFormError(response, "form", "new_group_name", "Already exists.")
+
+        # try creating new group when we've already reached our group limit
+        with patch.object(Org, "LIMIT_DEFAULTS", {"groups": 2}):
+            response = self.client.post(
+                preview_url, {"add_to_group": True, "group_mode": "N", "new_group_name": "Import"}
+            )
+            self.assertFormError(response, "form", "__all__", "This workspace has reached the limit of 2 groups.")
+
+        # finally create new group...
+        response = self.client.post(preview_url, {"add_to_group": True, "group_mode": "N", "new_group_name": "Import"})
+        self.assertRedirect(response, read_url)
+
+        new_group = ContactGroup.user_groups.get(name="Import")
+        imp.refresh_from_db()
+        self.assertEqual(new_group, imp.group)
+
+    @mock_mailroom
+    def test_using_existing_group(self, mr_mocks):
+        self.login(self.admin)
+        imp = self.create_contact_import("media/test_imports/simple.csv")
+        preview_url = reverse("contacts.contactimport_preview", args=[imp.id])
+        read_url = reverse("contacts.contactimport_read", args=[imp.id])
+
+        # create some groups
+        self.create_field("age", "Age", ContactField.TYPE_NUMBER)
+        testers = self.create_group("Testers", contacts=[])
+        doctors = self.create_group("Doctors", contacts=[])
+        self.create_group("No Age", query='age = ""')
+
+        # only static groups appear as options
+        response = self.client.get(preview_url)
+        self.assertEqual([doctors, testers], list(response.context["form"].fields["existing_group"].queryset))
+
+        # try submitting without group
+        response = self.client.post(preview_url, {"add_to_group": True, "group_mode": "E", "existing_group": ""})
+        self.assertFormError(response, "form", "existing_group", "Required.")
+
+        # finally try with actual group...
+        response = self.client.post(
+            preview_url, {"add_to_group": True, "group_mode": "E", "existing_group": doctors.id}
+        )
+        self.assertRedirect(response, read_url)
+
+        imp.refresh_from_db()
+        self.assertEqual(doctors, imp.group)
+
     def test_preview_with_mappings(self):
         self.create_field("age", "Age", ContactField.TYPE_NUMBER)
 
@@ -5775,6 +5776,10 @@ class ContactImportCRUDLTest(TembaTest, CRUDLTestMixin):
             allow_viewers=False,
             allow_editors=True,
             form_fields=[
+                "add_to_group",
+                "group_mode",
+                "new_group_name",
+                "existing_group",
                 "column_4_include",
                 "column_4_name",
                 "column_4_value_type",
@@ -5794,6 +5799,7 @@ class ContactImportCRUDLTest(TembaTest, CRUDLTestMixin):
                 "column_5_include": True,
                 "column_5_name": "age",
                 "column_5_value_type": "N",
+                "add_to_group": False,
             },
         )
         self.assertEqual(1, len(response.context["form"].errors))
@@ -5809,6 +5815,7 @@ class ContactImportCRUDLTest(TembaTest, CRUDLTestMixin):
                 "column_5_include": True,
                 "column_5_name": "goats",
                 "column_5_value_type": "N",
+                "add_to_group": False,
             },
         )
         self.assertEqual(1, len(response.context["form"].errors))
@@ -5824,6 +5831,7 @@ class ContactImportCRUDLTest(TembaTest, CRUDLTestMixin):
                 "column_5_include": True,
                 "column_5_name": "#$%^@",
                 "column_5_value_type": "N",
+                "add_to_group": False,
             },
         )
         self.assertEqual(1, len(response.context["form"].errors))
@@ -5841,6 +5849,7 @@ class ContactImportCRUDLTest(TembaTest, CRUDLTestMixin):
                 "column_5_include": True,
                 "column_5_name": "",
                 "column_5_value_type": "T",
+                "add_to_group": False,
             },
         )
         self.assertEqual(1, len(response.context["form"].errors))
@@ -5856,6 +5865,7 @@ class ContactImportCRUDLTest(TembaTest, CRUDLTestMixin):
                 "column_5_include": False,
                 "column_5_name": "",
                 "column_5_value_type": "T",
+                "add_to_group": False,
             },
         )
         self.assertEqual(302, response.status_code)
