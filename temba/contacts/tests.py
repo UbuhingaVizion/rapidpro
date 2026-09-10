@@ -9,8 +9,6 @@ from uuid import UUID
 
 import iso8601
 import pytz
-from openpyxl import load_workbook
-
 from django.conf import settings
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.validators import ValidationError
@@ -21,6 +19,7 @@ from django.db.utils import IntegrityError
 from django.test.utils import override_settings
 from django.urls import reverse
 from django.utils import timezone
+from openpyxl import load_workbook
 
 from temba.airtime.models import AirtimeTransfer
 from temba.campaigns.models import Campaign, CampaignEvent, EventFire
@@ -181,13 +180,13 @@ class ContactCRUDLTest(CRUDLTestMixin, TembaTest):
         mr_mocks.contact_search("age = 18", contacts=[frank], total=10020)
 
         # we return up to 10000 contacts when searching with ES, so last page is 200
-        url = f'{reverse("contacts.contact_list")}?{"search=age+%3D+18&page=200"}'
+        url = f"{reverse('contacts.contact_list')}?{'search=age+%3D+18&page=200'}"
         response = self.client.get(url)
 
         self.assertEqual(response.status_code, 200)
 
         # when user requests page 201, we return a 404, page not found
-        url = f'{reverse("contacts.contact_list")}?{"search=age+%3D+18&page=201"}'
+        url = f"{reverse('contacts.contact_list')}?{'search=age+%3D+18&page=201'}"
         response = self.client.get(url)
 
         self.assertEqual(response.status_code, 404)
@@ -1203,7 +1202,9 @@ class ContactGroupCRUDLTest(TembaTest, CRUDLTestMixin):
 
         # try to create a contact group whose name is too long
         response = self.client.post(url, {"name": "X" * 65})
-        self.assertFormError(response.context["form"], "name", "Ensure this value has at most 64 characters (it has 65).")
+        self.assertFormError(
+            response.context["form"], "name", "Ensure this value has at most 64 characters (it has 65)."
+        )
 
         # try to create with name that's already taken
         response = self.client.post(url, {"name": "Customers"})
@@ -1319,7 +1320,9 @@ class ContactGroupCRUDLTest(TembaTest, CRUDLTestMixin):
 
         # dependent on id
         response = self.client.post(url, dict(name="Frank", query="id = 123"))
-        self.assertFormError(response.context["form"], "query", 'You cannot create a smart group based on "id" or "group".')
+        self.assertFormError(
+            response.context["form"], "query", 'You cannot create a smart group based on "id" or "group".'
+        )
 
         response = self.client.post(url, dict(name="Frank", query='twitter = "hola"'))
 
@@ -1334,7 +1337,9 @@ class ContactGroupCRUDLTest(TembaTest, CRUDLTestMixin):
 
         # and check we can't change the query while that is the case
         response = self.client.post(url, dict(name="Frank", query='twitter = "hello"'))
-        self.assertFormError(response.context["form"], "query", "You cannot update the query of a group that is evaluating.")
+        self.assertFormError(
+            response.context["form"], "query", "You cannot update the query of a group that is evaluating."
+        )
 
         # but can change the name
         response = self.client.post(url, dict(name="Frank2", query='twitter = "hola"'))
@@ -3331,14 +3336,14 @@ class ContactTest(TembaTest):
             reverse("contacts.contact_update", args=[self.joe.id]),
             {"name": "Joe Spa"},
             follow=True,
-            headers={"temba-spa": True}
+            headers={"temba-spa": True},
         )
 
         self.client.post(
             reverse("contacts.contact_update_fields", args=[self.joe.id]),
             dict(contact_field=state.id, field_value="western province"),
             follow=True,
-            headers={"temba-spa": True}
+            headers={"temba-spa": True},
         )
 
         self.joe.refresh_from_db()
@@ -6166,7 +6171,9 @@ class ContactImportCRUDLTest(TembaTest, CRUDLTestMixin):
             response = self.client.post(
                 preview_url, {"add_to_group": True, "group_mode": "N", "new_group_name": "Import"}
             )
-            self.assertFormError(response.context["form"], "__all__", "This workspace has reached its limit of 2 groups.")
+            self.assertFormError(
+                response.context["form"], "__all__", "This workspace has reached its limit of 2 groups."
+            )
 
         # finally create new group...
         response = self.client.post(preview_url, {"add_to_group": True, "group_mode": "N", "new_group_name": "Import"})
@@ -6257,7 +6264,9 @@ class ContactImportCRUDLTest(TembaTest, CRUDLTestMixin):
             },
         )
         self.assertEqual(1, len(response.context["form"].errors))
-        self.assertFormError(response.context["form"], "__all__", "Field name for 'Field:Sheep' matches an existing field.")
+        self.assertFormError(
+            response.context["form"], "__all__", "Field name for 'Field:Sheep' matches an existing field."
+        )
 
         # if including a new fields, can't repeat names
         response = self.client.post(

@@ -40,7 +40,6 @@ def iso6391_to_iso6393(iso_code, country_code=None):
     cache_key = f"{'XX' if country_code is None else country_code}:{iso_code}"
 
     if cache_key not in migration_lang_cache:
-
         # build our key
         override_key = f"{country_code}:{iso_code}" if country_code else f"XX:{iso_code}"
         override = MIGRATION_OVERRIDES.get(override_key)

@@ -1,8 +1,7 @@
 from unittest.mock import patch
 
-from twilio.base.exceptions import TwilioRestException
-
 from django.urls import reverse
+from twilio.base.exceptions import TwilioRestException
 
 from temba.channels.models import Channel
 from temba.contacts.models import URN
@@ -47,14 +46,14 @@ class TwilioTypeTest(TembaTest):
             mock_get_twilio_client.return_value = None
 
             response = self.client.get(claim_twilio)
-            self.assertRedirects(response, f'{reverse("orgs.org_twilio_connect")}?claim_type=twilio')
+            self.assertRedirects(response, f"{reverse('orgs.org_twilio_connect')}?claim_type=twilio")
 
             mock_get_twilio_client.side_effect = TwilioRestException(
                 401, "http://twilio", msg="Authentication Failure", code=20003
             )
 
             response = self.client.get(claim_twilio)
-            self.assertRedirects(response, f'{reverse("orgs.org_twilio_connect")}?claim_type=twilio')
+            self.assertRedirects(response, f"{reverse('orgs.org_twilio_connect')}?claim_type=twilio")
 
         with patch("temba.tests.twilio.MockTwilioClient.MockAccounts.get") as mock_get:
             mock_get.return_value = MockTwilioClient.MockAccount("Trial")

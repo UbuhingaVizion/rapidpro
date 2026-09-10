@@ -4,17 +4,6 @@ from datetime import timedelta
 from urllib.parse import quote_plus
 
 import iso8601
-from smartmin.views import (
-    SmartCreateView,
-    SmartCRUDL,
-    SmartFormView,
-    SmartListView,
-    SmartReadView,
-    SmartTemplateView,
-    SmartUpdateView,
-    SmartView,
-)
-
 from django import forms
 from django.conf import settings
 from django.contrib import messages
@@ -31,6 +20,16 @@ from django.utils.functional import cached_property
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils.translation import gettext_lazy as _
 from django.views import View
+from smartmin.views import (
+    SmartCreateView,
+    SmartCRUDL,
+    SmartFormView,
+    SmartListView,
+    SmartReadView,
+    SmartTemplateView,
+    SmartUpdateView,
+    SmartView,
+)
 
 from temba.archives.models import Archive
 from temba.channels.models import Channel
@@ -235,14 +234,12 @@ class ContactListView(SpaMixin, OrgPermsMixin, BulkActionMixin, SmartListView):
             sort_field = sort_on
 
         if sort_field == "created_on":
-
             return (
                 sort_field,
                 sort_direction,
                 {"field_type": "attribute", "sort_direction": sort_direction, "field_name": "created_on"},
             )
         if sort_field == "last_seen_on":
-
             return (
                 sort_field,
                 sort_direction,
@@ -541,7 +538,7 @@ class ExportForm(Form):
         ).order_by(Upper("name"))
 
         self.fields["group_memberships"].help_text = _(
-            "Include group membership only for these groups. " "(Leave blank to ignore group memberships)."
+            "Include group membership only for these groups. (Leave blank to ignore group memberships)."
         )
 
 
@@ -666,7 +663,6 @@ class ContactCRUDL(SmartCRUDL):
             return JsonResponse({"results": menu})
 
     class Export(ModalMixin, OrgPermsMixin, SmartFormView):
-
         form_class = ExportForm
         submit_button_name = "Export"
         success_url = "@contacts.contact_list"
@@ -864,7 +860,6 @@ class ContactCRUDL(SmartCRUDL):
             links = []
 
             if self.object.status == Contact.STATUS_ACTIVE:
-
                 if not self.is_spa() and self.has_org_perm("msgs.broadcast_send"):
                     links.append(
                         dict(
@@ -944,7 +939,7 @@ class ContactCRUDL(SmartCRUDL):
                     dict(
                         title=_("Service"),
                         posterize=True,
-                        href=f'{reverse("orgs.org_service")}?organization={self.object.org_id}&redirect_url={reverse("contacts.contact_read", args=[self.get_object().uuid])}',
+                        href=f"{reverse('orgs.org_service')}?organization={self.object.org_id}&redirect_url={reverse('contacts.contact_read', args=[self.get_object().uuid])}",
                     )
                 )
 
@@ -1064,7 +1059,6 @@ class ContactCRUDL(SmartCRUDL):
             # serialize our contact sample
             json_contacts = []
             for contact in summary["sample"]:
-
                 primary_urn = contact.get_urn()
                 if primary_urn:
                     primary_urn = primary_urn.get_display(org=org, international=True)

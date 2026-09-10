@@ -6,7 +6,6 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("tickets", "0029_alter_ticketer_name_alter_ticketer_uuid"),
     ]

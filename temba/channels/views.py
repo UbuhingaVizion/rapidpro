@@ -11,17 +11,6 @@ import phonenumbers
 import pytz
 import requests
 import twilio.base.exceptions
-from smartmin.views import (
-    SmartCRUDL,
-    SmartFormView,
-    SmartListView,
-    SmartModelActionView,
-    SmartReadView,
-    SmartTemplateView,
-    SmartUpdateView,
-)
-from twilio.base.exceptions import TwilioRestException
-
 from django import forms
 from django.conf import settings
 from django.contrib import messages
@@ -35,6 +24,16 @@ from django.utils.encoding import force_bytes, force_str
 from django.utils.functional import cached_property
 from django.utils.translation import gettext_lazy as _
 from django.views.decorators.csrf import csrf_exempt
+from smartmin.views import (
+    SmartCRUDL,
+    SmartFormView,
+    SmartListView,
+    SmartModelActionView,
+    SmartReadView,
+    SmartTemplateView,
+    SmartUpdateView,
+)
+from twilio.base.exceptions import TwilioRestException
 
 from temba.contacts.models import URN
 from temba.msgs.models import Msg, SystemLabel
@@ -90,7 +89,6 @@ def channel_status_processor(request):
 
         channels = org.channels.filter(is_active=True)
         for channel in channels:
-
             if channel.created_on > cutoff:
                 continue
 
@@ -208,7 +206,6 @@ def sync(request, channel_id):
 
             # catchall for commands that deal with a single message
             if "msg_id" in cmd:
-
                 # make sure the negative ids are converted to long
                 msg_id = cmd["msg_id"]
                 if msg_id < 0:
@@ -842,7 +839,6 @@ class ChannelCRUDL(SmartCRUDL):
                 )
 
                 if self.object.is_android() or (self.object.parent and self.object.parent.is_android()):
-
                     sender = self.object.get_sender()
                     if sender and sender.is_delegate_sender():
                         links.append(
@@ -908,7 +904,7 @@ class ChannelCRUDL(SmartCRUDL):
                     dict(
                         title=_("Service"),
                         posterize=True,
-                        href=f'{reverse("orgs.org_service")}?organization={self.object.org_id}&redirect_url={reverse("channels.channel_read", args=[self.object.uuid])}',
+                        href=f"{reverse('orgs.org_service')}?organization={self.object.org_id}&redirect_url={reverse('channels.channel_read', args=[self.object.uuid])}",
                     )
                 )
 

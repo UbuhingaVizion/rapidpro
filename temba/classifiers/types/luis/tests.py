@@ -1,9 +1,8 @@
 import json
 from unittest.mock import patch
 
-from requests.exceptions import RequestException
-
 from django.urls import reverse
+from requests.exceptions import RequestException
 
 from temba.classifiers.models import Classifier
 from temba.request_logs.models import HTTPLog

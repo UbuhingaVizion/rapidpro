@@ -2,14 +2,12 @@ import logging
 from datetime import datetime, timedelta
 
 import pytz
-from django_redis import get_redis_connection
-
+from celery import shared_task
 from django.conf import settings
 from django.db.models import F
 from django.utils import timezone
 from django.utils.timesince import timesince
-
-from celery import shared_task
+from django_redis import get_redis_connection
 
 from temba.utils import chunk_list
 from temba.utils.celery import nonoverlapping_task

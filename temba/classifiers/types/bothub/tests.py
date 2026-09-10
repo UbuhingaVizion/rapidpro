@@ -1,9 +1,8 @@
 from unittest.mock import patch
 
-from requests import RequestException
-
 from django.contrib.auth.models import Group
 from django.urls import reverse
+from requests import RequestException
 
 from temba.classifiers.models import Classifier
 from temba.request_logs.models import HTTPLog

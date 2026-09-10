@@ -1,9 +1,7 @@
 import requests
-
 from django.conf import settings
 from django.forms import ValidationError
-from django.urls import path
-from django.urls import re_path
+from django.urls import path, re_path
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
@@ -97,9 +95,7 @@ class WhatsAppCloudType(ChannelType):
         resp = requests.post(url, data=data, headers=headers)
 
         if resp.status_code != 200:  # pragma: no cover
-            raise ValidationError(
-                _(f"Unable to register phone with ID {channel.address} from WABA with ID {waba_id}")
-            )
+            raise ValidationError(_(f"Unable to register phone with ID {channel.address} from WABA with ID {waba_id}"))
 
     def get_api_templates(self, channel):
         if not settings.WHATSAPP_ADMIN_SYSTEM_USER_TOKEN:  # pragma: no cover

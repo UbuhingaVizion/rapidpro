@@ -6,7 +6,6 @@ import temba.utils.fields
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("campaigns", "0045_squashed"),
     ]

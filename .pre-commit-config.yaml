@@ -4,12 +4,18 @@ repos:
     hooks:
       - id: django-upgrade
         args: [--target-version, "4.2"]
-  - repo: https://github.com/ikamensh/flynt/
-    rev: 1.0.6
-    hooks:
-    - id: flynt
   - repo: https://github.com/asottile/pyupgrade
     rev: v3.21.2
     hooks:
-    - id: pyupgrade
-      args: [--py312-plus]
+      - id: pyupgrade
+        args: [--py312-plus]
+  - repo: https://github.com/ikamensh/flynt/
+    rev: 1.0.6
+    hooks:
+      - id: flynt
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.6
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format

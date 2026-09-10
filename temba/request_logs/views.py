@@ -1,9 +1,8 @@
-from smartmin.views import SmartCRUDL, SmartListView, SmartReadView, smart_url
-
 from django.shortcuts import get_object_or_404
 from django.urls import reverse
 from django.utils.functional import cached_property
 from django.utils.translation import gettext_lazy as _
+from smartmin.views import SmartCRUDL, SmartListView, SmartReadView, smart_url
 
 from temba.classifiers.models import Classifier
 from temba.orgs.views import OrgObjPermsMixin, OrgPermsMixin

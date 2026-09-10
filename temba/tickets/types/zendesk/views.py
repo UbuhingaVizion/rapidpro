@@ -1,8 +1,6 @@
 import re
 from urllib.parse import urlparse
 
-from smartmin.views import SmartFormView, SmartReadView
-
 from django import forms
 from django.conf import settings
 from django.contrib import messages
@@ -15,6 +13,7 @@ from django.utils.translation import gettext_lazy as _
 from django.views.decorators.clickjacking import xframe_options_exempt
 from django.views.decorators.csrf import csrf_exempt
 from django.views.generic import View
+from smartmin.views import SmartFormView, SmartReadView
 
 from temba.orgs.views import OrgPermsMixin
 from temba.utils import json

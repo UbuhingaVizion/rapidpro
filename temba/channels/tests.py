@@ -1,14 +1,12 @@
-import datetime as dt
 import base64
 import copy
+import datetime as dt
 import hashlib
 import hmac
 import time
 from datetime import datetime, timedelta
 from unittest.mock import patch
 from urllib.parse import quote
-
-from smartmin.tests import SmartminTest
 
 from django.conf import settings
 from django.contrib.auth.models import Group, User
@@ -19,6 +17,7 @@ from django.test.utils import override_settings
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.encoding import force_bytes
+from smartmin.tests import SmartminTest
 
 from temba.channels.views import channel_status_processor
 from temba.contacts.models import URN, Contact, ContactGroup, ContactURN

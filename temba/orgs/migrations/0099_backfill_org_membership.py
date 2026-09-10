@@ -40,7 +40,6 @@ def reverse(apps, schema_editor):  # pragma: no cover
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("orgs", "0098_orgmembership_org_users_orgmembership_org_and_more"),
     ]

@@ -1,17 +1,6 @@
 from datetime import date, timedelta
 from urllib.parse import quote_plus
 
-from smartmin.views import (
-    SmartCreateView,
-    SmartCRUDL,
-    SmartDeleteView,
-    SmartFormView,
-    SmartListView,
-    SmartReadView,
-    SmartTemplateView,
-    SmartUpdateView,
-)
-
 from django import forms
 from django.conf import settings
 from django.contrib import messages
@@ -22,6 +11,16 @@ from django.urls import reverse
 from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils.translation import gettext_lazy as _
+from smartmin.views import (
+    SmartCreateView,
+    SmartCRUDL,
+    SmartDeleteView,
+    SmartFormView,
+    SmartListView,
+    SmartReadView,
+    SmartTemplateView,
+    SmartUpdateView,
+)
 
 from temba.archives.models import Archive
 from temba.channels.models import Channel
@@ -57,7 +56,6 @@ from .tasks import export_messages_task
 
 
 class SendMessageForm(Form):
-
     omnibox = OmniboxField(
         label=_("Recipients"),
         required=False,
@@ -406,7 +404,6 @@ class BroadcastCRUDL(SmartCRUDL):
                 get_params.update({"s": step_uuid})
                 send_to_flow_node.delay(org.pk, user.pk, text, **get_params)
             else:
-
                 omnibox = omnibox_deserialize(org, form.cleaned_data["omnibox"])
                 has_schedule = form.cleaned_data["schedule"]
 
@@ -617,7 +614,6 @@ class MsgCRUDL(SmartCRUDL):
                 return menu
 
     class Export(ModalMixin, OrgPermsMixin, SmartFormView):
-
         form_class = ExportForm
         submit_button_name = "Export"
         success_url = "@msgs.msg_inbox"
@@ -684,7 +680,7 @@ class MsgCRUDL(SmartCRUDL):
                 if not getattr(settings, "CELERY_TASK_ALWAYS_EAGER", False):  # pragma: needs cover
                     messages.info(
                         self.request,
-                        _("We are preparing your export. We will e-mail you at %s when " "it is ready.")
+                        _("We are preparing your export. We will e-mail you at %s when it is ready.")
                         % self.request.user.username,
                     )
 
@@ -692,8 +688,7 @@ class MsgCRUDL(SmartCRUDL):
                     dl_url = reverse("assets.download", kwargs=dict(type="message_export", pk=export.pk))
                     messages.info(
                         self.request,
-                        _("Export complete, you can find it here: %s (production users " "will get an email)")
-                        % dl_url,
+                        _("Export complete, you can find it here: %s (production users will get an email)") % dl_url,
                     )
 
             messages.success(self.request, self.derive_success_message())

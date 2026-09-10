@@ -31,7 +31,6 @@ def reverse(apps, schema_editor):
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("flows", "0288_flowlabel_is_system"),
     ]

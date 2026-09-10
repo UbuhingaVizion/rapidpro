@@ -60,7 +60,9 @@ class MailgunTypeTest(TembaTest):
 
         # submit with wrong code
         response = self.client.post(step2_url, {"verification_code": "XYZ"})
-        self.assertFormError(response.context["form"], "verification_code", ["Code does not match, please check your email."])
+        self.assertFormError(
+            response.context["form"], "verification_code", ["Code does not match, please check your email."]
+        )
 
         # submit with correct code
         response = self.client.post(step2_url, {"verification_code": code})
@@ -81,4 +83,6 @@ class MailgunTypeTest(TembaTest):
 
         # submit again after code has been cleared
         response = self.client.post(step2_url, {"verification_code": "12341"})
-        self.assertFormError(response.context["form"], "verification_code", ["No verification code found, please start over."])
+        self.assertFormError(
+            response.context["form"], "verification_code", ["No verification code found, please start over."]
+        )

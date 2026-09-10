@@ -8,7 +8,6 @@ from gettext import gettext as _
 from urllib.parse import urlparse
 
 from dateutil.relativedelta import relativedelta
-
 from django.conf import settings
 from django.db import models
 from django.db.models import Q

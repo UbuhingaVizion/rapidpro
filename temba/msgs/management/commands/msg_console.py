@@ -1,9 +1,9 @@
 import requests
-from colorama import Fore, init as colorama_init
-from requests.exceptions import ConnectionError
-
+from colorama import Fore
+from colorama import init as colorama_init
 from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
+from requests.exceptions import ConnectionError
 
 from temba import mailroom
 from temba.contacts.models import URN

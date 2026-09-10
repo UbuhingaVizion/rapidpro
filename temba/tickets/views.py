@@ -1,7 +1,5 @@
 from datetime import timedelta
 
-from smartmin.views import SmartCRUDL, SmartFormView, SmartListView, SmartReadView, SmartTemplateView, SmartUpdateView
-
 from django import forms
 from django.contrib.auth.models import User
 from django.db.models.aggregates import Max
@@ -11,6 +9,7 @@ from django.utils import timezone
 from django.utils.functional import cached_property
 from django.utils.html import mark_safe
 from django.utils.translation import gettext_lazy as _
+from smartmin.views import SmartCRUDL, SmartFormView, SmartListView, SmartReadView, SmartTemplateView, SmartUpdateView
 
 from temba.msgs.models import Msg
 from temba.notifications.views import NotificationTargetMixin

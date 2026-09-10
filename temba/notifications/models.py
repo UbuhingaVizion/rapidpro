@@ -389,9 +389,7 @@ class NotificationCount(SquashableModel):
             )
             INSERT INTO %(table)s("org_id", "user_id", "count", "is_squashed")
             VALUES (%%s, %%s, GREATEST(0, (SELECT SUM("count") FROM deleted)), TRUE);
-            """ % {
-            "table": cls._meta.db_table
-        }
+            """ % {"table": cls._meta.db_table}
 
         return sql, (distinct_set.org_id, distinct_set.user_id) * 2
 

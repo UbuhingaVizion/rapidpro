@@ -7,7 +7,6 @@ import temba.utils.uuid
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("classifiers", "0007_squashed"),
     ]

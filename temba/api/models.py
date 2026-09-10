@@ -2,14 +2,13 @@ import hmac
 import logging
 from hashlib import sha1
 
-from rest_framework.permissions import BasePermission
-from smartmin.models import SmartModel
-
 from django.conf import settings
 from django.contrib.auth.models import Group
 from django.db import models
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
+from rest_framework.permissions import BasePermission
+from smartmin.models import SmartModel
 
 from temba.orgs.models import Org, OrgRole, User
 from temba.utils.models import JSONAsTextField

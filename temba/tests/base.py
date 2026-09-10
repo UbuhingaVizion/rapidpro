@@ -5,8 +5,6 @@ from unittest.mock import patch
 
 import pytz
 import redis
-from smartmin.tests import SmartminTest, SmartminTestMixin
-
 from django.conf import settings
 from django.contrib.auth.models import Group
 from django.core import mail
@@ -15,6 +13,7 @@ from django.db import connection
 from django.db.migrations.executor import MigrationExecutor
 from django.test import TransactionTestCase
 from django.utils import timezone
+from smartmin.tests import SmartminTest, SmartminTestMixin
 
 from temba.archives.models import Archive
 from temba.channels.models import Channel, ChannelEvent, ChannelLog
@@ -710,7 +709,7 @@ class TembaTestMixin:
 
             actual.append(val)
 
-        self.assertEqual(expected, actual, f"mismatch in row {row_num+1}")
+        self.assertEqual(expected, actual, f"mismatch in row {row_num + 1}")
 
     def assertExcelSheet(self, sheet, rows, tz=None):
         """
@@ -822,9 +821,9 @@ class MigrationTest(TembaTest):
     migrate_to = None
 
     def setUp(self):
-        assert (
-            self.migrate_from and self.migrate_to
-        ), f"TestCase '{type(self).__name__}' must define migrate_from and migrate_to properties"
+        assert self.migrate_from and self.migrate_to, (
+            f"TestCase '{type(self).__name__}' must define migrate_from and migrate_to properties"
+        )
 
         # set up our temba test
         super().setUp()

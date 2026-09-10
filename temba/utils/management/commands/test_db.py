@@ -10,13 +10,12 @@ from datetime import timedelta
 from subprocess import CalledProcessError, check_call
 
 import pytz
-from django_redis import get_redis_connection
-
 from django.conf import settings
 from django.contrib.auth.models import Group
 from django.core.management import BaseCommand, CommandError
 from django.db import connection
 from django.utils import timezone
+from django_redis import get_redis_connection
 
 from temba.archives.models import Archive
 from temba.campaigns.models import Campaign, CampaignEvent
@@ -337,7 +336,6 @@ class Command(BaseCommand):
                     f"{type[0]}_{period}_{start.year}_{start.month}_{start.day}_{archive_hash}.jsonl.gz"
                 )
             else:
-
                 archive_url = (
                     f"https://dl-rapidpro-archives.s3.amazonaws.com/{org.id}/"
                     f"{type[0]}_{period}_{start.year}_{start.month}_{archive_hash}.jsonl.gz"

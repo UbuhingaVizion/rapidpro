@@ -1,11 +1,10 @@
 import types
 from enum import Enum
 
-from smartmin.models import SmartModel
-
 from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils.translation import gettext_lazy as _
+from smartmin.models import SmartModel
 
 from temba.utils.fields import NameValidator
 from temba.utils.uuid import is_uuid, uuid4
@@ -75,7 +74,7 @@ class TembaNameMixin(models.Model):
         count = 1
         while True:
             count_str = f" {count}"
-            name = f"{base_name[:cls.MAX_NAME_LEN - len(count_str)]}{count_str}" if count > 1 else base_name
+            name = f"{base_name[: cls.MAX_NAME_LEN - len(count_str)]}{count_str}" if count > 1 else base_name
             if not qs.filter(name__iexact=name).exists():
                 return name
             count += 1

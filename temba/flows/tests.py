@@ -7,9 +7,6 @@ from datetime import datetime, timedelta
 from unittest.mock import PropertyMock, patch
 
 import pytz
-from django_redis import get_redis_connection
-from openpyxl import load_workbook
-
 from django.conf import settings
 from django.contrib.auth.models import Group
 from django.db.models.functions import TruncDate
@@ -17,6 +14,8 @@ from django.test.utils import override_settings
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.encoding import force_str
+from django_redis import get_redis_connection
+from openpyxl import load_workbook
 
 from temba import mailroom
 from temba.api.models import Resthook
@@ -430,9 +429,9 @@ class FlowTest(TembaTest):
         self.assertEqual({color_split["uuid"]: 1}, active)
         self.assertEqual(
             {
-                f'{color_prompt["exits"][0]["uuid"]}:{color_split["uuid"]}': 1,
-                f'{color_split["exits"][-1]["uuid"]}:{color_other["uuid"]}': 1,
-                f'{color_other["exits"][0]["uuid"]}:{color_split["uuid"]}': 1,
+                f"{color_prompt['exits'][0]['uuid']}:{color_split['uuid']}": 1,
+                f"{color_split['exits'][-1]['uuid']}:{color_other['uuid']}": 1,
+                f"{color_other['exits'][0]['uuid']}:{color_split['uuid']}": 1,
             },
             visited,
         )
@@ -458,9 +457,9 @@ class FlowTest(TembaTest):
         self.assertEqual({color_split["uuid"]: 1}, active)
         self.assertEqual(
             {
-                f'{color_prompt["exits"][0]["uuid"]}:{color_split["uuid"]}': 1,
-                f'{color_split["exits"][-1]["uuid"]}:{color_other["uuid"]}': 2,
-                f'{color_other["exits"][0]["uuid"]}:{color_split["uuid"]}': 2,
+                f"{color_prompt['exits'][0]['uuid']}:{color_split['uuid']}": 1,
+                f"{color_split['exits'][-1]['uuid']}:{color_other['uuid']}": 2,
+                f"{color_other['exits'][0]['uuid']}:{color_split['uuid']}": 2,
             },
             visited,
         )
@@ -482,11 +481,11 @@ class FlowTest(TembaTest):
         self.assertEqual({beer_split["uuid"]: 1}, active)
         self.assertEqual(
             {
-                f'{color_prompt["exits"][0]["uuid"]}:{color_split["uuid"]}': 1,
-                f'{color_split["exits"][-1]["uuid"]}:{color_other["uuid"]}': 2,
-                f'{color_other["exits"][0]["uuid"]}:{color_split["uuid"]}': 2,
-                f'{color_split["exits"][2]["uuid"]}:{beer_prompt["uuid"]}': 1,
-                f'{beer_prompt["exits"][0]["uuid"]}:{beer_split["uuid"]}': 1,
+                f"{color_prompt['exits'][0]['uuid']}:{color_split['uuid']}": 1,
+                f"{color_split['exits'][-1]['uuid']}:{color_other['uuid']}": 2,
+                f"{color_other['exits'][0]['uuid']}:{color_split['uuid']}": 2,
+                f"{color_split['exits'][2]['uuid']}:{beer_prompt['uuid']}": 1,
+                f"{beer_prompt['exits'][0]['uuid']}:{beer_split['uuid']}": 1,
             },
             visited,
         )
@@ -513,11 +512,11 @@ class FlowTest(TembaTest):
         self.assertEqual({color_split["uuid"]: 1, beer_split["uuid"]: 1}, active)
         self.assertEqual(
             {
-                f'{color_prompt["exits"][0]["uuid"]}:{color_split["uuid"]}': 2,
-                f'{color_split["exits"][-1]["uuid"]}:{color_other["uuid"]}': 3,
-                f'{color_other["exits"][0]["uuid"]}:{color_split["uuid"]}': 3,
-                f'{color_split["exits"][2]["uuid"]}:{beer_prompt["uuid"]}': 1,
-                f'{beer_prompt["exits"][0]["uuid"]}:{beer_split["uuid"]}': 1,
+                f"{color_prompt['exits'][0]['uuid']}:{color_split['uuid']}": 2,
+                f"{color_split['exits'][-1]['uuid']}:{color_other['uuid']}": 3,
+                f"{color_other['exits'][0]['uuid']}:{color_split['uuid']}": 3,
+                f"{color_split['exits'][2]['uuid']}:{beer_prompt['uuid']}": 1,
+                f"{beer_prompt['exits'][0]['uuid']}:{beer_split['uuid']}": 1,
             },
             visited,
         )
@@ -559,14 +558,14 @@ class FlowTest(TembaTest):
         self.assertEqual({beer_split["uuid"]: 1}, active)
         self.assertEqual(
             {
-                f'{color_prompt["exits"][0]["uuid"]}:{color_split["uuid"]}': 2,
-                f'{color_split["exits"][-1]["uuid"]}:{color_other["uuid"]}': 3,
-                f'{color_other["exits"][0]["uuid"]}:{color_split["uuid"]}': 3,
-                f'{color_split["exits"][2]["uuid"]}:{beer_prompt["uuid"]}': 2,
-                f'{beer_prompt["exits"][0]["uuid"]}:{beer_split["uuid"]}': 2,
-                f'{beer_split["exits"][2]["uuid"]}:{name_prompt["uuid"]}': 1,
-                f'{name_prompt["exits"][0]["uuid"]}:{name_split["uuid"]}': 1,
-                f'{name_split["exits"][0]["uuid"]}:{end_prompt["uuid"]}': 1,
+                f"{color_prompt['exits'][0]['uuid']}:{color_split['uuid']}": 2,
+                f"{color_split['exits'][-1]['uuid']}:{color_other['uuid']}": 3,
+                f"{color_other['exits'][0]['uuid']}:{color_split['uuid']}": 3,
+                f"{color_split['exits'][2]['uuid']}:{beer_prompt['uuid']}": 2,
+                f"{beer_prompt['exits'][0]['uuid']}:{beer_split['uuid']}": 2,
+                f"{beer_split['exits'][2]['uuid']}:{name_prompt['uuid']}": 1,
+                f"{name_prompt['exits'][0]['uuid']}:{name_split['uuid']}": 1,
+                f"{name_split['exits'][0]['uuid']}:{end_prompt['uuid']}": 1,
             },
             visited,
         )
@@ -585,14 +584,14 @@ class FlowTest(TembaTest):
         self.assertEqual({beer_split["uuid"]: 1}, active)
         self.assertEqual(
             {
-                f'{color_prompt["exits"][0]["uuid"]}:{color_split["uuid"]}': 2,
-                f'{color_split["exits"][-1]["uuid"]}:{color_other["uuid"]}': 3,
-                f'{color_other["exits"][0]["uuid"]}:{color_split["uuid"]}': 3,
-                f'{color_split["exits"][2]["uuid"]}:{beer_prompt["uuid"]}': 2,
-                f'{beer_prompt["exits"][0]["uuid"]}:{beer_split["uuid"]}': 2,
-                f'{beer_split["exits"][2]["uuid"]}:{name_prompt["uuid"]}': 1,
-                f'{name_prompt["exits"][0]["uuid"]}:{name_split["uuid"]}': 1,
-                f'{name_split["exits"][0]["uuid"]}:{end_prompt["uuid"]}': 1,
+                f"{color_prompt['exits'][0]['uuid']}:{color_split['uuid']}": 2,
+                f"{color_split['exits'][-1]['uuid']}:{color_other['uuid']}": 3,
+                f"{color_other['exits'][0]['uuid']}:{color_split['uuid']}": 3,
+                f"{color_split['exits'][2]['uuid']}:{beer_prompt['uuid']}": 2,
+                f"{beer_prompt['exits'][0]['uuid']}:{beer_split['uuid']}": 2,
+                f"{beer_split['exits'][2]['uuid']}:{name_prompt['uuid']}": 1,
+                f"{name_prompt['exits'][0]['uuid']}:{name_split['uuid']}": 1,
+                f"{name_split['exits'][0]['uuid']}:{end_prompt['uuid']}": 1,
             },
             visited,
         )
@@ -626,14 +625,14 @@ class FlowTest(TembaTest):
         self.assertEqual({beer_split["uuid"]: 1}, active)
         self.assertEqual(
             {
-                f'{color_prompt["exits"][0]["uuid"]}:{color_split["uuid"]}': 1,
-                f'{color_split["exits"][-1]["uuid"]}:{color_other["uuid"]}': 1,
-                f'{color_other["exits"][0]["uuid"]}:{color_split["uuid"]}': 1,
-                f'{color_split["exits"][2]["uuid"]}:{beer_prompt["uuid"]}': 1,
-                f'{beer_prompt["exits"][0]["uuid"]}:{beer_split["uuid"]}': 1,
-                f'{beer_split["exits"][2]["uuid"]}:{name_prompt["uuid"]}': 0,
-                f'{name_prompt["exits"][0]["uuid"]}:{name_split["uuid"]}': 0,
-                f'{name_split["exits"][0]["uuid"]}:{end_prompt["uuid"]}': 0,
+                f"{color_prompt['exits'][0]['uuid']}:{color_split['uuid']}": 1,
+                f"{color_split['exits'][-1]['uuid']}:{color_other['uuid']}": 1,
+                f"{color_other['exits'][0]['uuid']}:{color_split['uuid']}": 1,
+                f"{color_split['exits'][2]['uuid']}:{beer_prompt['uuid']}": 1,
+                f"{beer_prompt['exits'][0]['uuid']}:{beer_split['uuid']}": 1,
+                f"{beer_split['exits'][2]['uuid']}:{name_prompt['uuid']}": 0,
+                f"{name_prompt['exits'][0]['uuid']}:{name_split['uuid']}": 0,
+                f"{name_split['exits'][0]['uuid']}:{end_prompt['uuid']}": 0,
             },
             visited,
         )
@@ -676,14 +675,14 @@ class FlowTest(TembaTest):
         self.assertEqual({}, active)
         self.assertEqual(
             {
-                f'{color_prompt["exits"][0]["uuid"]}:{color_split["uuid"]}': 1,
-                f'{color_split["exits"][-1]["uuid"]}:{color_other["uuid"]}': 1,
-                f'{color_other["exits"][0]["uuid"]}:{color_split["uuid"]}': 1,
-                f'{color_split["exits"][2]["uuid"]}:{beer_prompt["uuid"]}': 1,
-                f'{beer_prompt["exits"][0]["uuid"]}:{beer_split["uuid"]}': 1,
-                f'{beer_split["exits"][2]["uuid"]}:{name_prompt["uuid"]}': 1,
-                f'{name_prompt["exits"][0]["uuid"]}:{name_split["uuid"]}': 1,
-                f'{name_split["exits"][0]["uuid"]}:{end_prompt["uuid"]}': 1,
+                f"{color_prompt['exits'][0]['uuid']}:{color_split['uuid']}": 1,
+                f"{color_split['exits'][-1]['uuid']}:{color_other['uuid']}": 1,
+                f"{color_other['exits'][0]['uuid']}:{color_split['uuid']}": 1,
+                f"{color_split['exits'][2]['uuid']}:{beer_prompt['uuid']}": 1,
+                f"{beer_prompt['exits'][0]['uuid']}:{beer_split['uuid']}": 1,
+                f"{beer_split['exits'][2]['uuid']}:{name_prompt['uuid']}": 1,
+                f"{name_prompt['exits'][0]['uuid']}:{name_split['uuid']}": 1,
+                f"{name_split['exits'][0]['uuid']}:{end_prompt['uuid']}": 1,
             },
             visited,
         )
@@ -700,14 +699,14 @@ class FlowTest(TembaTest):
         self.assertEqual({}, active)
         self.assertEqual(
             {
-                f'{color_prompt["exits"][0]["uuid"]}:{color_split["uuid"]}': 0,
-                f'{color_split["exits"][-1]["uuid"]}:{color_other["uuid"]}': 0,
-                f'{color_other["exits"][0]["uuid"]}:{color_split["uuid"]}': 0,
-                f'{color_split["exits"][2]["uuid"]}:{beer_prompt["uuid"]}': 0,
-                f'{beer_prompt["exits"][0]["uuid"]}:{beer_split["uuid"]}': 0,
-                f'{beer_split["exits"][2]["uuid"]}:{name_prompt["uuid"]}': 0,
-                f'{name_prompt["exits"][0]["uuid"]}:{name_split["uuid"]}': 0,
-                f'{name_split["exits"][0]["uuid"]}:{end_prompt["uuid"]}': 0,
+                f"{color_prompt['exits'][0]['uuid']}:{color_split['uuid']}": 0,
+                f"{color_split['exits'][-1]['uuid']}:{color_other['uuid']}": 0,
+                f"{color_other['exits'][0]['uuid']}:{color_split['uuid']}": 0,
+                f"{color_split['exits'][2]['uuid']}:{beer_prompt['uuid']}": 0,
+                f"{beer_prompt['exits'][0]['uuid']}:{beer_split['uuid']}": 0,
+                f"{beer_split['exits'][2]['uuid']}:{name_prompt['uuid']}": 0,
+                f"{name_prompt['exits'][0]['uuid']}:{name_split['uuid']}": 0,
+                f"{name_split['exits'][0]['uuid']}:{end_prompt['uuid']}": 0,
             },
             visited,
         )
@@ -756,14 +755,14 @@ class FlowTest(TembaTest):
         self.assertEqual({color_split["uuid"]: 1}, active)
         self.assertEqual(
             {
-                f'{color_prompt["exits"][0]["uuid"]}:{color_split["uuid"]}': 1,
-                f'{color_split["exits"][-1]["uuid"]}:{color_other["uuid"]}': 1,
-                f'{color_other["exits"][0]["uuid"]}:{color_split["uuid"]}': 1,
-                f'{color_split["exits"][2]["uuid"]}:{beer_prompt["uuid"]}': 0,
-                f'{beer_prompt["exits"][0]["uuid"]}:{beer_split["uuid"]}': 0,
-                f'{beer_split["exits"][2]["uuid"]}:{name_prompt["uuid"]}': 0,
-                f'{name_prompt["exits"][0]["uuid"]}:{name_split["uuid"]}': 0,
-                f'{name_split["exits"][0]["uuid"]}:{end_prompt["uuid"]}': 0,
+                f"{color_prompt['exits'][0]['uuid']}:{color_split['uuid']}": 1,
+                f"{color_split['exits'][-1]['uuid']}:{color_other['uuid']}": 1,
+                f"{color_other['exits'][0]['uuid']}:{color_split['uuid']}": 1,
+                f"{color_split['exits'][2]['uuid']}:{beer_prompt['uuid']}": 0,
+                f"{beer_prompt['exits'][0]['uuid']}:{beer_split['uuid']}": 0,
+                f"{beer_split['exits'][2]['uuid']}:{name_prompt['uuid']}": 0,
+                f"{name_prompt['exits'][0]['uuid']}:{name_split['uuid']}": 0,
+                f"{name_split['exits'][0]['uuid']}:{end_prompt['uuid']}": 0,
             },
             visited,
         )
@@ -783,14 +782,14 @@ class FlowTest(TembaTest):
         self.assertEqual({}, active)
         self.assertEqual(
             {
-                f'{color_prompt["exits"][0]["uuid"]}:{color_split["uuid"]}': 1,
-                f'{color_split["exits"][-1]["uuid"]}:{color_other["uuid"]}': 1,
-                f'{color_other["exits"][0]["uuid"]}:{color_split["uuid"]}': 1,
-                f'{color_split["exits"][2]["uuid"]}:{beer_prompt["uuid"]}': 0,
-                f'{beer_prompt["exits"][0]["uuid"]}:{beer_split["uuid"]}': 0,
-                f'{beer_split["exits"][2]["uuid"]}:{name_prompt["uuid"]}': 0,
-                f'{name_prompt["exits"][0]["uuid"]}:{name_split["uuid"]}': 0,
-                f'{name_split["exits"][0]["uuid"]}:{end_prompt["uuid"]}': 0,
+                f"{color_prompt['exits'][0]['uuid']}:{color_split['uuid']}": 1,
+                f"{color_split['exits'][-1]['uuid']}:{color_other['uuid']}": 1,
+                f"{color_other['exits'][0]['uuid']}:{color_split['uuid']}": 1,
+                f"{color_split['exits'][2]['uuid']}:{beer_prompt['uuid']}": 0,
+                f"{beer_prompt['exits'][0]['uuid']}:{beer_split['uuid']}": 0,
+                f"{beer_split['exits'][2]['uuid']}:{name_prompt['uuid']}": 0,
+                f"{name_prompt['exits'][0]['uuid']}:{name_split['uuid']}": 0,
+                f"{name_split['exits'][0]['uuid']}:{end_prompt['uuid']}": 0,
             },
             visited,
         )
@@ -1949,7 +1948,9 @@ class FlowCRUDLTest(TembaTest, CRUDLTestMixin):
         # create a new flow with one existing keyword
         post_data = {"name": "Flow With Existing Keyword Triggers", "keyword_triggers": ["this", "is", "unique"]}
         response = self.client.post(reverse("flows.flow_create"), post_data)
-        self.assertFormError(response.context["form"], "keyword_triggers", '"unique" is already used for another flow.')
+        self.assertFormError(
+            response.context["form"], "keyword_triggers", '"unique" is already used for another flow.'
+        )
 
         # create another trigger so there are two in the way
         trigger = Trigger.objects.create(
@@ -2982,7 +2983,9 @@ class FlowCRUDLTest(TembaTest, CRUDLTestMixin):
 
         def assert_upload(filename, expected_type, expected_url):
             with open(filename, "rb") as data:
-                response = self.client.post(action_url, {"file": data, "action": ""}, headers={"x-forwarded-https": "https"})
+                response = self.client.post(
+                    action_url, {"file": data, "action": ""}, headers={"x-forwarded-https": "https"}
+                )
 
                 self.assertEqual(response.status_code, 200)
                 actual_type = response.json()["type"]
@@ -3013,7 +3016,9 @@ class FlowCRUDLTest(TembaTest, CRUDLTestMixin):
         # can't upload for flow in other org
         with open(f"{settings.MEDIA_ROOT}/test_media/steve marten.jpg", "rb") as data:
             upload_url = reverse("flows.flow_upload_media_action", args=[other_org_flow.uuid])
-            response = self.client.post(upload_url, {"file": data, "action": ""}, headers={"x-forwarded-https": "https"})
+            response = self.client.post(
+                upload_url, {"file": data, "action": ""}, headers={"x-forwarded-https": "https"}
+            )
             self.assertLoginRedirect(response)
 
         self.clear_storage()
@@ -3309,9 +3314,9 @@ class FlowCRUDLTest(TembaTest, CRUDLTestMixin):
                 "is_starting": False,
                 "nodes": {beer_split["uuid"]: 1},
                 "segments": {
-                    f'{color_prompt["exits"][0]["uuid"]}:{color_split["uuid"]}': 1,
-                    f'{color_split["exits"][2]["uuid"]}:{beer_prompt["uuid"]}': 1,
-                    f'{beer_prompt["exits"][0]["uuid"]}:{beer_split["uuid"]}': 1,
+                    f"{color_prompt['exits'][0]['uuid']}:{color_split['uuid']}": 1,
+                    f"{color_split['exits'][2]['uuid']}:{beer_prompt['uuid']}": 1,
+                    f"{beer_prompt['exits'][0]['uuid']}:{beer_split['uuid']}": 1,
                 },
             },
             response.json(),
@@ -3484,7 +3489,9 @@ msgstr "Bluuu"
         )
         response = self.requestView(step1_url, self.admin, post_data={"po_file": po_file})
         self.assertFormError(
-            response.context["form"], "po_file", "Contains translations in English which is the base language of this flow."
+            response.context["form"],
+            "po_file",
+            "Contains translations in English which is the base language of this flow.",
         )
 
         # submit with something that's in the base language of the flow
@@ -3603,18 +3610,18 @@ class FlowRunTest(TembaTest):
         self.assertEqual(
             set(run_json.keys()),
             {
-                    "id",
-                    "uuid",
-                    "flow",
-                    "contact",
-                    "responded",
-                    "path",
-                    "values",
-                    "created_on",
-                    "modified_on",
-                    "exited_on",
-                    "exit_type",
-                    "submitted_by",
+                "id",
+                "uuid",
+                "flow",
+                "contact",
+                "responded",
+                "path",
+                "values",
+                "created_on",
+                "modified_on",
+                "exited_on",
+                "exit_type",
+                "submitted_by",
             },
         )
 

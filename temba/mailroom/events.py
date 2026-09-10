@@ -2,7 +2,6 @@ from collections import defaultdict
 from datetime import datetime
 
 import iso8601
-
 from django.contrib.auth.models import User
 from django.urls import reverse
 

@@ -2,7 +2,6 @@ import calendar
 from datetime import date, datetime, time, timedelta
 
 import pytz
-
 from django.utils import timezone
 
 
@@ -17,7 +16,7 @@ def datetime_to_str(date_obj, format, tz):
     if not date_obj:
         return None
 
-    if type(date_obj) == date:
+    if type(date_obj) is date:
         date_obj = tz.localize(datetime.combine(date_obj, time(0, 0, 0)))
 
     if isinstance(date_obj, datetime):

@@ -6,7 +6,6 @@ import temba.utils.fields
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("flows", "0285_fix_invalid_names"),
     ]

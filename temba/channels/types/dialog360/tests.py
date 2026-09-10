@@ -1,10 +1,9 @@
 from unittest.mock import patch
 
-from django_redis import get_redis_connection
-from requests import RequestException
-
 from django.forms import ValidationError
 from django.urls import reverse
+from django_redis import get_redis_connection
+from requests import RequestException
 
 from temba.request_logs.models import HTTPLog
 from temba.templates.models import TemplateTranslation

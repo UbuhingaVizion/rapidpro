@@ -5,18 +5,6 @@ from urllib.parse import urlencode
 import iso8601
 import regex
 import requests
-from packaging.version import Version
-from smartmin.views import (
-    SmartCreateView,
-    SmartCRUDL,
-    SmartDeleteView,
-    SmartFormView,
-    SmartListView,
-    SmartReadView,
-    SmartTemplateView,
-    SmartUpdateView,
-)
-
 from django import forms
 from django.conf import settings
 from django.contrib import messages
@@ -30,6 +18,17 @@ from django.utils.functional import cached_property
 from django.utils.translation import gettext_lazy as _
 from django.views.decorators.csrf import csrf_exempt
 from django.views.generic import FormView
+from packaging.version import Version
+from smartmin.views import (
+    SmartCreateView,
+    SmartCRUDL,
+    SmartDeleteView,
+    SmartFormView,
+    SmartListView,
+    SmartReadView,
+    SmartTemplateView,
+    SmartUpdateView,
+)
 
 from temba import mailroom
 from temba.archives.models import Archive
@@ -1002,7 +1001,6 @@ class FlowCRUDL(SmartCRUDL):
                     data = json.load(json_file)
 
             for key, filename in data.get("files").items():
-
                 # tack on our prefix for dev mode
                 filename = prefix + filename
 
@@ -1113,7 +1111,7 @@ class FlowCRUDL(SmartCRUDL):
                     )
                 )
 
-            links.append(dict(divider=True)),
+            (links.append(dict(divider=True)),)
 
             if self.has_org_perm("orgs.org_export"):
                 links.append(dict(title=_("Export Definition"), href=f"{reverse('orgs.org_export')}?flow={flow.id}"))
@@ -1144,7 +1142,7 @@ class FlowCRUDL(SmartCRUDL):
                     dict(
                         title=_("Service"),
                         posterize=True,
-                        href=f'{reverse("orgs.org_service")}?organization={flow.org_id}&redirect_url={reverse("flows.flow_editor", args=[flow.uuid])}',
+                        href=f"{reverse('orgs.org_service')}?organization={flow.org_id}&redirect_url={reverse('flows.flow_editor', args=[flow.uuid])}",
                     )
                 )
 
@@ -1943,7 +1941,6 @@ class FlowCRUDL(SmartCRUDL):
 
     class Broadcast(OrgPermsMixin, ModalMixin):
         class Form(forms.ModelForm):
-
             flow = TembaChoiceField(
                 queryset=Flow.objects.none(),
                 required=True,
@@ -2088,7 +2085,7 @@ class FlowCRUDL(SmartCRUDL):
                 return JsonResponse(org.as_environment_def())
             else:
                 results = [{"iso": code, "name": languages.get_name(code)} for code in org.flow_languages]
-                return JsonResponse({"results": sorted(results, key=lambda l: l["name"])})
+                return JsonResponse({"results": sorted(results, key=lambda lang: lang["name"])})
 
 
 # this is just for adhoc testing of the preprocess url

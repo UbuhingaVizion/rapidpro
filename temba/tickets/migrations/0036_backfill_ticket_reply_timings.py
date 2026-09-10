@@ -57,7 +57,6 @@ def reverse(apps, schema_editor):
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("tickets", "0035_ticketdailytiming_ticket_replied_on_and_more"),
     ]

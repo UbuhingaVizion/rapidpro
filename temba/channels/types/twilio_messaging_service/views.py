@@ -1,10 +1,9 @@
-from smartmin.views import SmartFormView
-from twilio.base.exceptions import TwilioRestException
-
 from django import forms
 from django.http import HttpResponseRedirect
 from django.urls import reverse
 from django.utils.translation import gettext_lazy as _
+from smartmin.views import SmartFormView
+from twilio.base.exceptions import TwilioRestException
 
 from temba.channels.types.twilio.views import COUNTRY_CHOICES
 from temba.orgs.models import Org
@@ -35,11 +34,11 @@ class ClaimView(ClaimViewMixin, SmartFormView):
             self.client = org.get_twilio_client()
             if not self.client:
                 return HttpResponseRedirect(
-                    f'{reverse("orgs.org_twilio_connect")}?claim_type={self.channel_type.slug}'
+                    f"{reverse('orgs.org_twilio_connect')}?claim_type={self.channel_type.slug}"
                 )
             self.account = self.client.api.account.fetch()
         except TwilioRestException:
-            return HttpResponseRedirect(f'{reverse("orgs.org_twilio_connect")}?claim_type={self.channel_type.slug}')
+            return HttpResponseRedirect(f"{reverse('orgs.org_twilio_connect')}?claim_type={self.channel_type.slug}")
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)

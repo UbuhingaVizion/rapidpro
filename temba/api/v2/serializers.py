@@ -6,10 +6,9 @@ import iso8601
 import pycountry
 import pytz
 import regex
-from rest_framework import serializers
-
 from django.conf import settings
 from django.contrib.auth.models import User
+from rest_framework import serializers
 
 from temba import mailroom
 from temba.api.models import Resthook, ResthookSubscriber, WebHookEvent
@@ -66,7 +65,7 @@ def _normalize_extra(extra, count):
     elif isinstance(extra, dict):
         count += 1
         normalized = OrderedDict()
-        for (k, v) in extra.items():
+        for k, v in extra.items():
             (normalized[normalize_key(k)], count) = _normalize_extra(v, count)
 
             if count >= settings.FLOW_START_PARAMS_SIZE:
@@ -77,7 +76,7 @@ def _normalize_extra(extra, count):
     elif isinstance(extra, list):
         count += 1
         normalized = OrderedDict()
-        for (i, v) in enumerate(extra):
+        for i, v in enumerate(extra):
             (normalized[str(i)], count) = _normalize_extra(v, count)
 
             if count >= settings.FLOW_START_PARAMS_SIZE:
@@ -388,7 +387,6 @@ class CampaignEventWriteSerializer(WriteSerializer):
         flow = self.validated_data.get("flow")
 
         if self.instance:
-
             # we dont update, we only create
             self.instance = self.instance.recreate()
 

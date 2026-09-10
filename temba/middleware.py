@@ -82,7 +82,6 @@ class BrandingMiddleware:
 
 
 class ConsentMiddleware:  # pragma: no cover
-
     REQUIRES_CONSENT = ("/msg", "/contact", "/flow", "/trigger", "/org/home", "/campaign", "/channel", "/welcome")
 
     def __init__(self, get_response=None):

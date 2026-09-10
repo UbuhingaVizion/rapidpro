@@ -1,7 +1,6 @@
 from datetime import datetime
 
 import pytz
-
 from django.core import mail
 from django.test import override_settings
 from django.urls import reverse

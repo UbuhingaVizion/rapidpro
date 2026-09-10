@@ -13,15 +13,9 @@ import pyotp
 import pytz
 import stripe
 import stripe.error
-from django_redis import get_redis_connection
-from packaging.version import Version
-from requests import Session
-from smartmin.models import SmartModel
-from timezone_field import TimeZoneField
-from twilio.rest import Client as TwilioClient
-
 from django.conf import settings
-from django.contrib.auth.models import Group, Permission, User as AuthUser
+from django.contrib.auth.models import Group, Permission
+from django.contrib.auth.models import User as AuthUser
 from django.contrib.postgres.fields import ArrayField
 from django.core.exceptions import ValidationError
 from django.core.files import File
@@ -32,6 +26,12 @@ from django.utils import timezone
 from django.utils.functional import cached_property
 from django.utils.text import slugify
 from django.utils.translation import gettext_lazy as _
+from django_redis import get_redis_connection
+from packaging.version import Version
+from requests import Session
+from smartmin.models import SmartModel
+from timezone_field import TimeZoneField
+from twilio.rest import Client as TwilioClient
 
 from temba import mailroom
 from temba.archives.models import Archive
@@ -1333,13 +1333,10 @@ class Org(SmartModel):
         """
         if org.parent == self or self.parent == org.parent or self.parent == org:
             if self.get_credits_remaining() >= amount:
-
                 with self.lock_on(OrgLock.credits):
-
                     # now debit our account
                     debited = None
                     while amount or debited == 0:
-
                         # remove the credits from ourselves
                         (topup_id, debited) = self.select_most_recent_topup(amount)
 
@@ -1549,7 +1546,6 @@ class Org(SmartModel):
 
         # for our purposes, #1 and #2 are treated the same, we just always update the default card
         try:
-
             if not customer or customer.email != user.email:
                 # then go create a customer object for this user
                 customer = stripe.Customer.create(card=token, email=user.email, description="{ org: %d }" % self.pk)
@@ -1791,9 +1787,7 @@ class Org(SmartModel):
                         extension = path_pieces[-1]
 
         else:
-            raise Exception(
-                f"Received non-200 response ({response.status_code}) for request: {response.content}"
-            )
+            raise Exception(f"Received non-200 response ({response.status_code}) for request: {response.content}")
 
         return self.save_media(File(temp), extension)
 
@@ -2332,9 +2326,7 @@ class TopUpCredits(SquashableModel):
         )
         INSERT INTO %(table)s("topup_id", "used", "is_squashed")
         VALUES (%%s, GREATEST(0, (SELECT SUM("used") FROM deleted)), TRUE);
-        """ % {
-            "table": cls._meta.db_table
-        }
+        """ % {"table": cls._meta.db_table}
 
         return sql, (distinct_set.topup_id,) * 2
 

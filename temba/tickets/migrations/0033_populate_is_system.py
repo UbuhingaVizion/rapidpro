@@ -12,7 +12,6 @@ def populate_is_system(apps, schema_editor):  # pragma: no cover
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("tickets", "0032_team_is_system_ticketer_is_system_topic_is_system"),
     ]

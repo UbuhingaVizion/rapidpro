@@ -2,7 +2,6 @@ from abc import ABCMeta
 from datetime import date
 
 import openpyxl
-
 from django.conf import settings
 from django.db import models
 from django.db.models import Q, Sum
@@ -416,9 +415,7 @@ class TicketCount(SquashableModel):
             )
             INSERT INTO %(table)s("org_id", "assignee_id", "status", "count", "is_squashed")
             VALUES (%%s, %%s, %%s, GREATEST(0, (SELECT SUM("count") FROM removed)), TRUE);
-            """ % {
-                "table": cls._meta.db_table
-            }
+            """ % {"table": cls._meta.db_table}
 
             params = (distinct_set.org_id, distinct_set.assignee_id, distinct_set.status) * 2
         else:
@@ -428,9 +425,7 @@ class TicketCount(SquashableModel):
             )
             INSERT INTO %(table)s("org_id", "assignee_id", "status", "count", "is_squashed")
             VALUES (%%s, NULL, %%s, GREATEST(0, (SELECT SUM("count") FROM removed)), TRUE);
-            """ % {
-                "table": cls._meta.db_table
-            }
+            """ % {"table": cls._meta.db_table}
 
             params = (distinct_set.org_id, distinct_set.status) * 2
 

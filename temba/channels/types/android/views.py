@@ -1,9 +1,8 @@
 import phonenumbers
-from smartmin.views import SmartFormView
-
 from django import forms
 from django.urls import reverse
 from django.utils.translation import gettext_lazy as _
+from smartmin.views import SmartFormView
 
 from temba.apks.models import Apk
 from temba.orgs.models import Org

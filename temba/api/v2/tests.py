@@ -8,9 +8,6 @@ from urllib.parse import quote_plus
 
 import iso8601
 import pytz
-from rest_framework import serializers
-from rest_framework.test import APIClient
-
 from django.conf import settings
 from django.contrib.auth.models import Group
 from django.contrib.gis.geos import GEOSGeometry
@@ -19,6 +16,8 @@ from django.db import connection
 from django.test import override_settings
 from django.urls import reverse
 from django.utils import timezone
+from rest_framework import serializers
+from rest_framework.test import APIClient
 
 from temba.api.models import APIToken, Resthook, WebHookEvent
 from temba.archives.models import Archive
@@ -590,7 +589,9 @@ class APITest(TembaTest):
 
         # try to authenticate with invalid role
         response = self.client.post(url, {"username": "admin@nyaruka.com", "password": "Qwerty123", "role": "X"})
-        self.assertFormError(response.context["form"], "role", "Select a valid choice. X is not one of the available choices.")
+        self.assertFormError(
+            response.context["form"], "role", "Select a valid choice. X is not one of the available choices."
+        )
 
         # authenticate an admin as an admin
         response = self.client.post(url, {"username": "admin@nyaruka.com", "password": "Qwerty123", "role": "A"})
@@ -1073,9 +1074,7 @@ class APITest(TembaTest):
         campaign.save(update_fields=("is_active",))
 
         # can't update inactive or archived campaign
-        response = self.postJSON(
-            url, f"uuid={campaign.uuid}", data={"name": "Reminders III", "group": reporters.uuid}
-        )
+        response = self.postJSON(url, f"uuid={campaign.uuid}", data={"name": "Reminders III", "group": reporters.uuid})
         self.assertEqual(response.status_code, 404)
 
         campaign.is_active = True
@@ -1083,9 +1082,7 @@ class APITest(TembaTest):
         campaign.save(update_fields=("is_active", "is_archived"))
 
         # can't update inactive or archived campaign
-        response = self.postJSON(
-            url, f"uuid={campaign.uuid}", data={"name": "Reminders III", "group": reporters.uuid}
-        )
+        response = self.postJSON(url, f"uuid={campaign.uuid}", data={"name": "Reminders III", "group": reporters.uuid})
         self.assertEqual(response.status_code, 404)
 
     @mock_mailroom
@@ -2158,9 +2155,7 @@ class APITest(TembaTest):
         self.assertEqual(resp_json["fields"]["tag_activated_at"], "2017-11-11T13:12:13+02:00")
 
         # update contact with invalid ISO8601 timestamp value without timezone
-        response = self.postJSON(
-            url, f"uuid={self.joe.uuid}", {"fields": {"tag_activated_at": "2017-11-11T11:12:13"}}
-        )
+        response = self.postJSON(url, f"uuid={self.joe.uuid}", {"fields": {"tag_activated_at": "2017-11-11T11:12:13"}})
         self.assertEqual(response.status_code, 200)
         resp_json = response.json()
 
@@ -2204,7 +2199,7 @@ class APITest(TembaTest):
 
         with AnonymousOrg(self.org):
             # can't update via URN
-            response = self.postJSON(url, f"urn=tel:+250785555555", {})
+            response = self.postJSON(url, "urn=tel:+250785555555", {})
             self.assertEqual(response.status_code, 400)
             self.assertResponseError(response, None, "URN lookups not allowed for anonymous organizations")
 
@@ -3465,7 +3460,6 @@ class APITest(TembaTest):
 
         def assert_media_upload(filename, ext):
             with open(filename, "rb") as data:
-
                 post_data = dict(media_file=data, extension=ext, HTTP_X_FORWARDED_HTTPS="https")
                 response = self.client.post(url, post_data)
 

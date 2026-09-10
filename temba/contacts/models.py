@@ -11,9 +11,6 @@ import phonenumbers
 import pyexcel
 import pytz
 import regex
-from django_redis import get_redis_connection
-from smartmin.models import SmartModel
-
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.core.validators import validate_email
@@ -22,6 +19,8 @@ from django.db.models import Count, F, Max, Q, Sum, Value
 from django.db.models.functions import Concat, Lower
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
+from django_redis import get_redis_connection
+from smartmin.models import SmartModel
 
 from temba import mailroom
 from temba.assets.models import register_asset_store
@@ -1142,7 +1141,6 @@ class Contact(LegacyUUIDMixin, SmartModel):
 
             # any urns currently owned by us
             for urn in self.urns.all():
-
                 # release any messages attached with each urn,
                 # these could include messages that began life
                 # on a different contact
@@ -1776,9 +1774,7 @@ class ContactGroupCount(SquashableModel):
         )
         INSERT INTO %(table)s("group_id", "count", "is_squashed")
         VALUES (%%s, GREATEST(0, (SELECT SUM("count") FROM deleted)), TRUE);
-        """ % {
-            "table": cls._meta.db_table
-        }
+        """ % {"table": cls._meta.db_table}
 
         return sql, (distinct_set.group_id,) * 2
 

@@ -1,9 +1,8 @@
-from smartmin.models import SmartModel
-
 from django.db import models
 from django.db.models import Q
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
+from smartmin.models import SmartModel
 
 from temba.channels.models import Channel
 from temba.contacts.models import Contact, ContactGroup
@@ -150,9 +149,9 @@ class Trigger(SmartModel):
         assert flow.flow_type != Flow.TYPE_SURVEY, "can't create triggers for surveyor flows"
         assert trigger_type != cls.TYPE_KEYWORD or keyword, "keyword can't be empty for keyword triggers"
         assert trigger_type != cls.TYPE_SCHEDULE or schedule, "schedule must be provided for scheduled triggers"
-        assert (
-            trigger_type == cls.TYPE_SCHEDULE or not contacts
-        ), "contacts can only be provided for scheduled triggers"
+        assert trigger_type == cls.TYPE_SCHEDULE or not contacts, (
+            "contacts can only be provided for scheduled triggers"
+        )
 
         trigger = cls.objects.create(
             org=org,
@@ -186,9 +185,7 @@ class Trigger(SmartModel):
         Returns keys that represents the scopes that this trigger can operate against (and might conflict with other triggers with)
         """
         groups = ["**"] if not self.groups else [str(g.id) for g in self.groups.all().order_by("id")]
-        return [
-            f"{self.trigger_type}_{self.channel_id!s}_{group}_{self.keyword!s}" for group in groups
-        ]
+        return [f"{self.trigger_type}_{self.channel_id!s}_{group}_{self.keyword!s}" for group in groups]
 
     def archive(self, user):
         self.modified_by = user

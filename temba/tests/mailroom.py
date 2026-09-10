@@ -6,12 +6,11 @@ from decimal import Decimal
 from functools import wraps
 from unittest.mock import call, patch
 
-from django_redis import get_redis_connection
-
 from django.conf import settings
 from django.contrib.auth.models import User
 from django.db import connection
 from django.utils import timezone
+from django_redis import get_redis_connection
 
 from temba import mailroom
 from temba.campaigns.models import CampaignEvent, EventFire

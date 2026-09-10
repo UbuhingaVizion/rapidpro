@@ -6,7 +6,6 @@ import temba.utils.fields
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("contacts", "0162_alter_contactfield_field_type_and_more"),
     ]

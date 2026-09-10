@@ -146,15 +146,15 @@ class ExternalTypeTest(TembaTest):
         self.assertEqual(
             set(response.context["form"].fields.keys()),
             {
-                    "url",
-                    "method",
-                    "encoding",
-                    "content_type",
-                    "max_length",
-                    "send_authorization",
-                    "body",
-                    "mt_response_check",
-                    "loc",
+                "url",
+                "method",
+                "encoding",
+                "content_type",
+                "max_length",
+                "send_authorization",
+                "body",
+                "mt_response_check",
+                "loc",
             },
         )
 

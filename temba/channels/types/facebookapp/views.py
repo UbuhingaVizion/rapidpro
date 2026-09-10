@@ -1,10 +1,9 @@
 import requests
-from smartmin.views import SmartFormView, SmartModelActionView
-
 from django import forms
 from django.conf import settings
 from django.urls import reverse
 from django.utils.translation import gettext_lazy as _
+from smartmin.views import SmartFormView, SmartModelActionView
 
 from temba.orgs.views import ModalMixin, OrgObjPermsMixin
 

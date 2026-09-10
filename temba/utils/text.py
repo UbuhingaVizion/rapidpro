@@ -9,7 +9,6 @@ from os import urandom
 
 import chardet
 import regex
-
 from django.utils.encoding import force_str
 from django.utils.text import slugify
 
@@ -128,7 +127,7 @@ def truncate(text, max_len):
     Truncates text to be less than max_len characters. If truncation is required, text ends with ...
     """
     if len(text) > max_len:
-        return f"{text[:max_len - 3]}..."
+        return f"{text[: max_len - 3]}..."
     else:
         return text
 

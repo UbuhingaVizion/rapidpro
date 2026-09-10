@@ -1,5 +1,4 @@
 import phonenumbers
-
 from django import forms
 from django.utils.translation import gettext_lazy as _
 
@@ -19,7 +18,7 @@ class ClaimView(AuthenticatedExternalClaimView):
             max_length=14,
             min_length=1,
             label=_("Number"),
-            help_text=_("The phone number or short code you are connecting with country code. " "ex: +250788123124"),
+            help_text=_("The phone number or short code you are connecting with country code. ex: +250788123124"),
         )
         username = forms.CharField(label=_("Account Number"), help_text=_("Your Yo! account YBS account number"))
         password = forms.CharField(label=_("Gateway Password"), help_text=_("Your Yo! SMS Gateway password"))

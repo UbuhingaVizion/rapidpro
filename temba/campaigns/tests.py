@@ -1,7 +1,6 @@
 from datetime import timedelta
 
 import pytz
-
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.urls import reverse
@@ -280,7 +279,7 @@ class CampaignTest(TembaTest):
         current_year = timezone.now().year
 
         # update the planting date for our contacts
-        self.set_contact_field(self.farmer1, "planting_date", f"1/10/{current_year-2}")
+        self.set_contact_field(self.farmer1, "planting_date", f"1/10/{current_year - 2}")
 
         # don't log in, try to create a new campaign
         response = self.client.get(reverse("campaigns.campaign_create"))
@@ -396,7 +395,9 @@ class CampaignTest(TembaTest):
         )
 
         self.assertFormError(
-            response.context["form"], "__all__", f"Translation for 'Default' exceeds the {Msg.MAX_TEXT_LEN} character limit."
+            response.context["form"],
+            "__all__",
+            f"Translation for 'Default' exceeds the {Msg.MAX_TEXT_LEN} character limit.",
         )
 
         post_data = dict(
@@ -578,14 +579,14 @@ class CampaignTest(TembaTest):
         self.assertEqual(5, len(mr_mocks.queued_batch_tasks))
 
         # set a planting date on our other farmer
-        self.set_contact_field(self.farmer2, "planting_date", f"1/6/{current_year+1}")
+        self.set_contact_field(self.farmer2, "planting_date", f"1/6/{current_year + 1}")
 
         # should have an event fire now
         fires = EventFire.objects.filter(event__is_active=True)
         self.assertEqual(1, len(fires))
 
         # setting a planting date on our outside contact has no effect
-        self.set_contact_field(self.nonfarmer, "planting_date", f"1/7/{current_year+3}")
+        self.set_contact_field(self.nonfarmer, "planting_date", f"1/7/{current_year + 3}")
         self.assertEqual(1, EventFire.objects.filter(event__is_active=True).count())
 
         planting_date_field = self.org.fields.get(key="planting_date")
@@ -594,7 +595,7 @@ class CampaignTest(TembaTest):
 
         response = self.client.post(
             reverse("contacts.contact_update_fields", args=[self.farmer1.id]),
-            dict(contact_field=planting_date_field.id, field_value=f"4/8/{current_year-2}"),
+            dict(contact_field=planting_date_field.id, field_value=f"4/8/{current_year - 2}"),
         )
         self.assertRedirect(response, reverse("contacts.contact_read", args=[self.farmer1.uuid]))
 

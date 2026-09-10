@@ -3,12 +3,11 @@ import subprocess
 import sys
 
 import pytz
-from django_redis import get_redis_connection
-
 from django.conf import settings
 from django.core.management import BaseCommand, CommandError, call_command
 from django.db import connection
 from django.utils import timezone
+from django_redis import get_redis_connection
 
 from temba.campaigns.models import Campaign, CampaignEvent
 from temba.channels.models import Channel

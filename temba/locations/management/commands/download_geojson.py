@@ -2,7 +2,6 @@ import os
 
 import regex
 import requests
-
 from django.core.management.base import BaseCommand
 
 
@@ -47,9 +46,7 @@ class Command(BaseCommand):
         [geojson] = filter(lambda obj: obj["path"] == "geojson", data["tree"])
         geojson_sha = geojson["sha"]
 
-        files = requests.get(
-            f"https://api.github.com/repos/{repo}/git/trees/{geojson_sha}", headers=headers
-        ).json()
+        files = requests.get(f"https://api.github.com/repos/{repo}/git/trees/{geojson_sha}", headers=headers).json()
 
         if not os.path.exists(destination_dir):
             os.makedirs(destination_dir)

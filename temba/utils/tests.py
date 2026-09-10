@@ -8,16 +8,14 @@ from decimal import Decimal
 from unittest.mock import PropertyMock, patch
 
 import pytz
-from django_redis import get_redis_connection
-from openpyxl import load_workbook
-
+from celery.app.task import Task
 from django.conf import settings
 from django.forms import ValidationError
 from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone, translation
-
-from celery.app.task import Task
+from django_redis import get_redis_connection
+from openpyxl import load_workbook
 
 from temba.campaigns.models import Campaign
 from temba.contacts.models import Contact, ExportContactsTask

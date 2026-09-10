@@ -6,7 +6,6 @@ from . import InstallSQL
 
 
 class Migration(migrations.Migration):
-
     dependencies = []
 
     operations = [InstallSQL("0004_functions"), InstallSQL("0004_indexes"), InstallSQL("0004_triggers")]

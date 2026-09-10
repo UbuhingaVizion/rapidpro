@@ -1,7 +1,6 @@
-from smartmin.views import SmartReadView, SmartUpdateView
-
 from django.urls import reverse
 from django.utils.translation import gettext_lazy as _
+from smartmin.views import SmartReadView, SmartUpdateView
 
 from temba.channels.models import Channel
 from temba.orgs.views import OrgPermsMixin

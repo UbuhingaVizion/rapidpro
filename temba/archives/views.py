@@ -1,10 +1,9 @@
 from gettext import gettext as _
 
-from smartmin.views import SmartCRUDL, SmartListView, SmartReadView
-
 from django.db.models import Sum
 from django.http import HttpResponseRedirect
 from django.urls import reverse
+from smartmin.views import SmartCRUDL, SmartListView, SmartReadView
 
 from temba.orgs.views import OrgObjPermsMixin, OrgPermsMixin
 from temba.utils.views import SpaMixin
@@ -13,7 +12,6 @@ from .models import Archive
 
 
 class ArchiveCRUDL(SmartCRUDL):
-
     model = Archive
     actions = ("read", "run", "message")
     permissions = True

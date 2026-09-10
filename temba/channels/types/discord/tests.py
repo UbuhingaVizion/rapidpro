@@ -1,7 +1,6 @@
 from unittest.mock import patch
 
 import requests
-
 from django.urls import reverse
 
 from temba.contacts.models import URN
@@ -20,7 +19,7 @@ def mocked_requests_get(*args, **kwargs):
             return self.data
 
     headers = kwargs["headers"]
-    if not ("Authorization" in headers):
+    if "Authorization" not in headers:
         return MockedResponse({}, 401)
     elif headers["Authorization"] == "Bot fake-valid-token":
         return MockedResponse({"username": "Rapidpro-Test-Bot-Do-Not-Use"}, 200)

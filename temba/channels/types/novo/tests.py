@@ -1,5 +1,4 @@
 import pytz
-
 from django.urls import reverse
 
 from temba.tests import TembaTest

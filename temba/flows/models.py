@@ -6,11 +6,6 @@ from datetime import datetime
 
 import iso8601
 import pytz
-from django_redis import get_redis_connection
-from packaging.version import Version
-from smartmin.models import SmartModel
-from xlsxlite.writer import XLSXBook
-
 from django.conf import settings
 from django.contrib.auth.models import Group, User
 from django.contrib.postgres.fields import ArrayField
@@ -20,6 +15,10 @@ from django.db.models import Max, Q, Sum
 from django.db.models.functions import Lower, TruncDate
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
+from django_redis import get_redis_connection
+from packaging.version import Version
+from smartmin.models import SmartModel
+from xlsxlite.writer import XLSXBook
 
 from temba import mailroom
 from temba.assets.models import register_asset_store
@@ -1503,9 +1502,7 @@ class FlowCategoryCount(SquashableModel):
         )
         INSERT INTO %(table)s("flow_id", "node_uuid", "result_key", "result_name", "category_name", "count", "is_squashed")
         VALUES (%%s, %%s, %%s, %%s, %%s, GREATEST(0, (SELECT SUM("count") FROM removed)), TRUE);
-        """ % {
-            "table": cls._meta.db_table
-        }
+        """ % {"table": cls._meta.db_table}
 
         params = (
             distinct_set.flow_id,
@@ -1549,9 +1546,7 @@ class FlowPathCount(SquashableModel):
         )
         INSERT INTO %(table)s("flow_id", "from_uuid", "to_uuid", "period", "count", "is_squashed")
         VALUES (%%s, %%s, %%s, date_trunc('hour', %%s), GREATEST(0, (SELECT SUM("count") FROM removed)), TRUE);
-        """ % {
-            "table": cls._meta.db_table
-        }
+        """ % {"table": cls._meta.db_table}
 
         params = (distinct_set.flow_id, distinct_set.from_uuid, distinct_set.to_uuid, distinct_set.period) * 2
         return sql, params
@@ -1589,9 +1584,7 @@ class FlowNodeCount(SquashableModel):
         )
         INSERT INTO %(table)s("flow_id", "node_uuid", "count", "is_squashed")
         VALUES (%%s, %%s, GREATEST(0, (SELECT SUM("count") FROM removed)), TRUE);
-        """ % {
-            "table": cls._meta.db_table
-        }
+        """ % {"table": cls._meta.db_table}
 
         return sql, (distinct_set.node_uuid, distinct_set.flow_id, distinct_set.node_uuid)
 
@@ -1626,9 +1619,7 @@ class FlowRunCount(SquashableModel):
             )
             INSERT INTO %(table)s("flow_id", "exit_type", "count", "is_squashed")
             VALUES (%%s, %%s, GREATEST(0, (SELECT SUM("count") FROM removed)), TRUE);
-            """ % {
-                "table": cls._meta.db_table
-            }
+            """ % {"table": cls._meta.db_table}
 
             params = (distinct_set.flow_id, distinct_set.exit_type) * 2
         else:
@@ -1638,9 +1629,7 @@ class FlowRunCount(SquashableModel):
             )
             INSERT INTO %(table)s("flow_id", "exit_type", "count", "is_squashed")
             VALUES (%%s, NULL, GREATEST(0, (SELECT SUM("count") FROM removed)), TRUE);
-            """ % {
-                "table": cls._meta.db_table
-            }
+            """ % {"table": cls._meta.db_table}
 
             params = (distinct_set.flow_id,) * 2
 
@@ -2138,9 +2127,7 @@ class FlowStartCount(SquashableModel):
         )
         INSERT INTO %(table)s("start_id", "count", "is_squashed")
         VALUES (%%s, GREATEST(0, (SELECT SUM("count") FROM deleted)), TRUE);
-        """ % {
-            "table": cls._meta.db_table
-        }
+        """ % {"table": cls._meta.db_table}
 
         return sql, (distinct_set.start_id,) * 2
 

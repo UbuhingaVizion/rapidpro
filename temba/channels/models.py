@@ -7,12 +7,6 @@ from urllib.parse import quote_plus
 from xml.sax.saxutils import escape
 
 import phonenumbers
-from django_countries.fields import CountryField
-from phonenumbers import NumberParseException
-from pyfcm import FCMNotification
-from smartmin.models import SmartModel
-from twilio.base.exceptions import TwilioRestException
-
 from django.conf import settings
 from django.contrib.auth.models import Group, User
 from django.contrib.postgres.fields import ArrayField
@@ -25,6 +19,11 @@ from django.template import Context, Engine, TemplateDoesNotExist
 from django.urls import path
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
+from django_countries.fields import CountryField
+from phonenumbers import NumberParseException
+from pyfcm import FCMNotification
+from smartmin.models import SmartModel
+from twilio.base.exceptions import TwilioRestException
 
 from temba import mailroom
 from temba.orgs.models import DependencyMixin, Org
@@ -1087,9 +1086,7 @@ class ChannelCount(SquashableModel):
             )
             INSERT INTO %(table)s("channel_id", "count_type", "day", "count", "is_squashed")
             VALUES (%%s, %%s, %%s, GREATEST(0, (SELECT SUM("count") FROM removed)), TRUE);
-            """ % {
-                "table": cls._meta.db_table
-            }
+            """ % {"table": cls._meta.db_table}
 
             params = (distinct_set.channel_id, distinct_set.count_type, distinct_set.day) * 2
         else:
@@ -1099,9 +1096,7 @@ class ChannelCount(SquashableModel):
             )
             INSERT INTO %(table)s("channel_id", "count_type", "day", "count", "is_squashed")
             VALUES (%%s, %%s, NULL, GREATEST(0, (SELECT SUM("count") FROM removed)), TRUE);
-            """ % {
-                "table": cls._meta.db_table
-            }
+            """ % {"table": cls._meta.db_table}
 
             params = (distinct_set.channel_id, distinct_set.count_type) * 2
 
@@ -1454,7 +1449,6 @@ class Alert(SmartModel):
             in (SyncEvent.STATUS_DISCHARGING, SyncEvent.STATUS_UNKNOWN, SyncEvent.STATUS_NOT_CHARGING)
             and int(sync.power_level) < 25
         ):
-
             alerts = Alert.objects.filter(sync_event__channel=sync.channel, alert_type=cls.TYPE_POWER, ended_on=None)
 
             if not alerts:
@@ -1542,7 +1536,7 @@ class Alert(SmartModel):
             existing = channels.get(sent["channel"], dict(queued=None))
             existing["sent"] = sent["latest_sent"]
 
-        for (channel_id, value) in channels.items():
+        for channel_id, value in channels.items():
             # we haven't sent any messages in the past six hours
             if not value["sent"] or value["sent"] < six_hours_ago:
                 channel = Channel.objects.get(pk=channel_id)

@@ -1,7 +1,6 @@
 from datetime import datetime, timedelta
 
 import pytz
-
 from django.urls import reverse
 from django.utils import timezone
 

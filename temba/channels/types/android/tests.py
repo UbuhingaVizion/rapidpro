@@ -315,7 +315,9 @@ class AndroidTypeTest(TembaTest):
             reverse("channels.types.android.claim"), dict(claim_code=claim_code, phone_number="+250788123124")
         )
         self.assertFormError(
-            response.context["form"], "phone_number", "Another channel has this number. Please remove that channel first."
+            response.context["form"],
+            "phone_number",
+            "Another channel has this number. Please remove that channel first.",
         )
 
         # create channel in another org

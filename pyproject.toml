@@ -69,14 +69,12 @@ repository = "http://github.com/rapidpro/rapidpro"
 
 [dependency-groups]
 dev = [
-    "pre-commit>=3.7.0",
-    "black>=24.4.2,<25",
-    "coverage>=7.6.0,<8",
-    "flake8>=7.1.0,<8",
-    "isort>=5.13.2,<6",
-    "codecov>=2.1.13,<3",
-    "responses>=0.25.3,<0.26",
-    "beautifulsoup4>=4.12.3,<5",
+    "pre-commit==4.6.2",
+    "ruff==0.16.6",
+    "coverage==7.16.0",
+    "codecov==2.1.13",
+    "responses==0.25.8",
+    "beautifulsoup4==4.15.0",
 ]
 
 [tool.uv.build-backend]
@@ -88,3 +86,26 @@ build-backend = "uv_build"
 
 [tool.uv]
 package = false
+
+[tool.ruff]
+line-length = 119
+target-version = "py312"
+exclude = [
+    ".direnv",
+    ".venv",
+    "env",
+    "config",
+    "static/bower",
+    "sitestatic/bower",
+]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
+ignore = [
+    "E203", # whitespace before ':' (conflicts with the formatter)
+    "E501", # line too long (handled by the formatter)
+    "F405", # may be undefined from star imports
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["temba"]

@@ -25,7 +25,6 @@ def reverse(apps, schema_editor):
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("contacts", "0165_alter_contactfield_managers"),
     ]

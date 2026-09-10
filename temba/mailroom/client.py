@@ -2,7 +2,6 @@ import logging
 from dataclasses import asdict, dataclass, field
 
 import requests
-
 from django.conf import settings
 
 from temba.utils import json

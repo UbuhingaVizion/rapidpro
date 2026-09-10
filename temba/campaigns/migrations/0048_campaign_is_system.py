@@ -4,7 +4,6 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("campaigns", "0047_alter_campaign_uuid_alter_campaignevent_uuid"),
     ]

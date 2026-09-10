@@ -1,5 +1,4 @@
-from django.urls import include, path
-from django.urls import re_path
+from django.urls import include, path, re_path
 
 from .models import Ticketer
 from .views import TicketCRUDL, TicketerCRUDL

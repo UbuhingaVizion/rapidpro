@@ -2,11 +2,10 @@ import contextlib
 from uuid import UUID
 
 import iso8601
+from django.db import transaction
 from rest_framework import generics, mixins, status
 from rest_framework.pagination import CursorPagination
 from rest_framework.response import Response
-
-from django.db import transaction
 
 from temba.api.models import APIPermission, SSLPermission
 from temba.api.support import InvalidQueryError

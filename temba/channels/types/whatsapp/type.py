@@ -1,5 +1,4 @@
 import requests
-
 from django.forms import ValidationError
 from django.urls import re_path, reverse
 from django.utils import timezone

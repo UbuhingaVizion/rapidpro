@@ -1,7 +1,6 @@
-from smartmin.views import SmartFormView
-
 from django import forms
 from django.utils.translation import gettext_lazy as _
+from smartmin.views import SmartFormView
 
 from temba.utils.fields import SelectWidget
 
@@ -21,7 +20,7 @@ class ClaimView(ClaimViewMixin, SmartFormView):
             max_length=14,
             min_length=1,
             label=_("Number"),
-            help_text=_("The phone number or short code you are connecting with country code. " "ex: +250788123124"),
+            help_text=_("The phone number or short code you are connecting with country code. ex: +250788123124"),
         )
         sender_id = forms.CharField(
             label=_("Sender ID"), help_text=_("The sender ID provided by Macrokiosk to use their API")

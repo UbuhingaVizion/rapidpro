@@ -33,7 +33,7 @@ urlpatterns = [
 ]
 
 if DEBUG:  # pragma: needs cover
-    urlpatterns.append(path("style/", Style.as_view(), {}, "public.public_style")),
+    (urlpatterns.append(path("style/", Style.as_view(), {}, "public.public_style")),)
 
 
 urlpatterns += LeadCRUDL().as_urlpatterns()

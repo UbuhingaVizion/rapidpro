@@ -1,7 +1,6 @@
 from django.conf import settings
 from django.conf.urls.static import static
-from django.urls import include, path
-from django.urls import re_path
+from django.urls import include, path, re_path
 from django.views.generic import RedirectView
 from django.views.i18n import JavaScriptCatalog
 
@@ -58,10 +57,9 @@ def handler500(request):
     Templates: `500.html`
     Context: None
     """
-    from sentry_sdk import last_event_id
-
     from django.http import HttpResponseServerError
     from django.template import loader
+    from sentry_sdk import last_event_id
 
     t = loader.get_template("500.html")
     return HttpResponseServerError(t.render({"request": request, "sentry_id": last_event_id()}))  # pragma: needs cover

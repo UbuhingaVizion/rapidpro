@@ -79,7 +79,9 @@ class ZendeskTypeTest(TembaTest):
         )
         response = self.client.post(connect_url, {"subdomain": "chispa"})
         self.assertFormError(
-            response.context["form"], "subdomain", ["There is already a ticketing service configured for this subdomain."]
+            response.context["form"],
+            "subdomain",
+            ["There is already a ticketing service configured for this subdomain."],
         )
 
         # submitting with valid subdomain redirects us to Zendesk
@@ -179,7 +181,7 @@ class ZendeskTypeTest(TembaTest):
                 "instance_push_id": "push1234",
                 "zendesk_access_token": "sesame",
             },
-            headers={"referer": "https://example.zendesk.com/channels"}
+            headers={"referer": "https://example.zendesk.com/channels"},
         )
 
         self.assertEqual(200, response.status_code)

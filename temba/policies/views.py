@@ -1,12 +1,11 @@
 from gettext import gettext as _
 
-from smartmin.views import SmartCreateView, SmartCRUDL, SmartFormView, SmartListView, SmartReadView, SmartUpdateView
-
 from django import forms
 from django.db.models import Max
 from django.http import HttpResponseRedirect
 from django.urls import reverse
 from django.utils import timezone
+from smartmin.views import SmartCreateView, SmartCRUDL, SmartFormView, SmartListView, SmartReadView, SmartUpdateView
 
 from temba.orgs.views import OrgPermsMixin
 from temba.utils import analytics
@@ -44,7 +43,6 @@ class PolicyCRUDL(SmartCRUDL):
         pass
 
     class Create(ComponentFormMixin, SmartCreateView):
-
         # make sure we only have one active policy at a time
         def post_save(self, obj):
             Policy.objects.filter(policy_type=obj.policy_type, is_active=True).exclude(id=obj.id).update(
@@ -114,13 +112,11 @@ class PolicyCRUDL(SmartCRUDL):
 
         def form_valid(self, form):
             if form.cleaned_data["consent"]:
-
                 analytics.change_consent(self.request.user, True)
 
                 for policy in Policy.get_policies_needing_consent(self.request.user):
                     Consent.objects.create(policy=policy, user=self.request.user)
             else:
-
                 # only revoke consent for currently active policies
                 active_policies = Policy.objects.filter(is_active=True, requires_consent=True).values_list(
                     "id", flat=True

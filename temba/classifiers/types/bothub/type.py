@@ -1,5 +1,4 @@
 import requests
-
 from django.utils import timezone
 
 from temba.request_logs.models import HTTPLog

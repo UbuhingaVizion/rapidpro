@@ -1,5 +1,4 @@
 import requests
-
 from django.forms import ValidationError
 from django.urls import re_path, reverse
 from django.utils import timezone
@@ -71,7 +70,6 @@ class Dialog360Type(ChannelType):
 
         start = timezone.now()
         try:
-
             templates_url = f"{channel.config.get(Channel.CONFIG_BASE_URL, '')}/v1/configs/templates"
 
             response = requests.get(templates_url, headers=self.get_headers(channel))

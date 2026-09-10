@@ -60,9 +60,7 @@ jobs:
 
       - name: Initialize environment
         run: |
-          uv venv
-          uv pip install .
-          uv pip install black flake8 isort coverage codecov responses beautifulsoup4
+          uv sync --frozen
           npm install
           sudo npm install -g less
           ln -s ${{ github.workspace }}/temba/settings.py.dev ${{ github.workspace }}/temba/settings.py
@@ -77,8 +75,9 @@ jobs:
 
       - name: Run pre-test checks
         run: |
-          # test that everything is well formatted, no missing migrations etc
-          .venv/bin/python ./code_check.py --debug
+          # test that everything is well formatted, linted, and has no missing migrations
+          .venv/bin/pre-commit run --all-files
+          .venv/bin/python manage.py makemigrations --check --dry-run
           # check we can collect and compress all static files
           .venv/bin/python manage.py collectstatic --noinput --verbosity=0
           .venv/bin/python manage.py compress --extension=".haml" --settings=temba.settings_compress

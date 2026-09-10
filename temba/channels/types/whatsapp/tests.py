@@ -1,10 +1,9 @@
 from unittest.mock import call, patch
 
-from django_redis import get_redis_connection
-from requests import RequestException
-
 from django.forms import ValidationError
 from django.urls import reverse
+from django_redis import get_redis_connection
+from requests import RequestException
 
 from temba.request_logs.models import HTTPLog
 from temba.templates.models import TemplateTranslation
@@ -84,9 +83,11 @@ class WhatsAppTypeTest(TembaTest):
         #         self.assertContains(response, "check user id and access token")
 
         # then success
-        with patch("requests.post") as mock_post, patch("requests.get") as mock_get, patch(
-            "requests.patch"
-        ) as mock_patch:
+        with (
+            patch("requests.post") as mock_post,
+            patch("requests.get") as mock_get,
+            patch("requests.patch") as mock_patch,
+        ):
             mock_post.return_value = MockResponse(200, '{"users": [{"token": "abc123"}]}')
             mock_get.return_value = MockResponse(200, '{"data": []}')
             mock_patch.return_value = MockResponse(200, '{"data": []}')
@@ -273,9 +274,11 @@ class WhatsAppTypeTest(TembaTest):
             self.assertContains(response, "check user id and access token")
 
         # success claim
-        with patch("requests.post") as mock_post, patch("requests.get") as mock_get, patch(
-            "requests.patch"
-        ) as mock_patch:
+        with (
+            patch("requests.post") as mock_post,
+            patch("requests.get") as mock_get,
+            patch("requests.patch") as mock_patch,
+        ):
             mock_post.return_value = MockResponse(200, '{"users": [{"token": "abc123"}]}')
             mock_get.return_value = MockResponse(200, '{"data": []}')
             mock_patch.return_value = MockResponse(200, '{"data": []}')

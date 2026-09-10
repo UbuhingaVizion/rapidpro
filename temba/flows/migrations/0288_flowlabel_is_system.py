@@ -4,7 +4,6 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("flows", "0287_alter_flowlabel_unique_together_flowlabel_created_by_and_more"),
     ]

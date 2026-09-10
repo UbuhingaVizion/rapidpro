@@ -5,7 +5,6 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("tickets", "0031_team_ticketdailycount_and_more"),
         ("orgs", "0094_alter_org_parent"),

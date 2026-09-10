@@ -10,8 +10,6 @@ import stripe
 import stripe.error
 from bs4 import BeautifulSoup
 from dateutil.relativedelta import relativedelta
-from smartmin.users.models import FailedLogin, RecoveryToken
-
 from django.conf import settings
 from django.contrib.auth.models import Group
 from django.core import mail
@@ -19,6 +17,7 @@ from django.core.exceptions import ValidationError
 from django.test.utils import override_settings
 from django.urls import reverse
 from django.utils import timezone
+from smartmin.users.models import FailedLogin, RecoveryToken
 
 from temba import mailroom
 from temba.airtime.models import AirtimeTransfer
@@ -208,7 +207,7 @@ class UserTest(TembaTest):
                 },
             ),
         )
-        for (org, perm, checks) in tests:
+        for org, perm, checks in tests:
             self.assertTrue(self.superuser.has_org_perm(org, perm))
 
             for user, has_perm in checks.items():
@@ -1022,7 +1021,6 @@ class OrgDeleteTest(TembaNonAtomicTest):
                 # org is still around but has been released
                 self.assertTrue(Org.objects.filter(id=org.id, is_active=False).exclude(deleted_on=None).exists())
             else:
-
                 org.refresh_from_db()
                 self.assertIsNone(org.deleted_on)
                 self.assertFalse(org.is_active)
@@ -1295,7 +1293,7 @@ class OrgTest(TembaTest):
                 "email": "administrator@temba.com",
                 "current_password": "Qwerty123",
             },
-            headers={"x-formax": True}
+            headers={"x-formax": True},
         )
         self.assertEqual(200, response.status_code)
 
@@ -1315,14 +1313,20 @@ class OrgTest(TembaTest):
             url = reverse("api.v2.broadcasts")
             data = dict(contacts=[mark.uuid], text="You are a distant cousin to a wealthy person.")
             return self.client.post(
-                url + ".json", json.dumps(data), content_type="application/json", headers={"x-forwarded-https": "https"}
+                url + ".json",
+                json.dumps(data),
+                content_type="application/json",
+                headers={"x-forwarded-https": "https"},
             )
 
         def start_flow_via_api():
             url = reverse("api.v2.flow_starts")
             data = dict(flow=flow.uuid, urns=["tel:+250788123123"])
             return self.client.post(
-                url + ".json", json.dumps(data), content_type="application/json", headers={"x-forwarded-https": "https"}
+                url + ".json",
+                json.dumps(data),
+                content_type="application/json",
+                headers={"x-forwarded-https": "https"},
             )
 
         self.org.flag()
@@ -1718,7 +1722,9 @@ class OrgTest(TembaTest):
         )
 
         self.assertFormError(
-            response.context["form"], "invite_emails", "One of the emails you entered has an existing user on the workspace."
+            response.context["form"],
+            "invite_emails",
+            "One of the emails you entered has an existing user on the workspace.",
         )
 
         # do not allow multiple invite on the same email
@@ -1736,7 +1742,9 @@ class OrgTest(TembaTest):
         )
 
         self.assertFormError(
-            response.context["form"], "invite_emails", "One of the emails you entered has an existing user on the workspace."
+            response.context["form"],
+            "invite_emails",
+            "One of the emails you entered has an existing user on the workspace.",
         )
 
         # no error for inactive invite
@@ -2425,7 +2433,7 @@ class OrgTest(TembaTest):
                 self.assertFormError(
                     response.context["form"],
                     "__all__",
-                    "The Twilio account SID and Token seem invalid. " "Please check them again and retry.",
+                    "The Twilio account SID and Token seem invalid. Please check them again and retry.",
                 )
 
             self.client.post(connect_url, post_data)
@@ -2495,12 +2503,12 @@ class OrgTest(TembaTest):
                     self.assertFalse(self.org.is_connected_to_twilio())
 
                     response = self.client.post(
-                        f'{reverse("orgs.org_twilio_connect")}?claim_type=twilio', post_data, follow=True
+                        f"{reverse('orgs.org_twilio_connect')}?claim_type=twilio", post_data, follow=True
                     )
                     self.assertEqual(response.request["PATH_INFO"], reverse("channels.types.twilio.claim"))
 
                     response = self.client.post(
-                        f'{reverse("orgs.org_twilio_connect")}?claim_type=twilio_messaging_service',
+                        f"{reverse('orgs.org_twilio_connect')}?claim_type=twilio_messaging_service",
                         post_data,
                         follow=True,
                     )
@@ -2509,12 +2517,12 @@ class OrgTest(TembaTest):
                     )
 
                     response = self.client.post(
-                        f'{reverse("orgs.org_twilio_connect")}?claim_type=twilio_whatsapp', post_data, follow=True
+                        f"{reverse('orgs.org_twilio_connect')}?claim_type=twilio_whatsapp", post_data, follow=True
                     )
                     self.assertEqual(response.request["PATH_INFO"], reverse("channels.types.twilio_whatsapp.claim"))
 
                     response = self.client.post(
-                        f'{reverse("orgs.org_twilio_connect")}?claim_type=unknown', post_data, follow=True
+                        f"{reverse('orgs.org_twilio_connect')}?claim_type=unknown", post_data, follow=True
                     )
                     self.assertEqual(response.request["PATH_INFO"], reverse("channels.channel_claim"))
 
@@ -2593,7 +2601,9 @@ class OrgTest(TembaTest):
 
         # try to create one with name that's too long
         response = self.client.post(resthook_url, {"new_slug": "x" * 100})
-        self.assertFormError(response.context["form"], "new_slug", "Ensure this value has at most 50 characters (it has 100).")
+        self.assertFormError(
+            response.context["form"], "new_slug", "Ensure this value has at most 50 characters (it has 100)."
+        )
 
         # now try to create with valid name/slug
         response = self.client.post(resthook_url, {"new_slug": "mother-registration "})
@@ -2976,7 +2986,7 @@ class OrgTest(TembaTest):
         # simulate invalid credentials
         with patch("requests.get") as mock_get:
             mock_get.return_value = MockResponse(
-                401, "Could not verify your access level for that URL." "\nYou have to login with proper credentials"
+                401, "Could not verify your access level for that URL.\nYou have to login with proper credentials"
             )
             response = self.client.post(connect_url, dict(auth_id="auth-id", auth_token="auth-token"))
             self.assertContains(
@@ -3649,8 +3659,12 @@ class OrgCRUDLTest(TembaTest, CRUDLTestMixin):
         self.assertFormError(
             response.context["form"], "last_name", "Ensure this value has at most 150 characters (it has 162)."
         )
-        self.assertFormError(response.context["form"], "name", "Ensure this value has at most 128 characters (it has 136).")
-        self.assertFormError(response.context["form"], "email", "Ensure this value has at most 150 characters (it has 159).")
+        self.assertFormError(
+            response.context["form"], "name", "Ensure this value has at most 128 characters (it has 136)."
+        )
+        self.assertFormError(
+            response.context["form"], "email", "Ensure this value has at most 150 characters (it has 159)."
+        )
         self.assertFormError(response.context["form"], "email", "Enter a valid email address.")
 
     def test_org_grant_form_clean(self):
@@ -4009,7 +4023,9 @@ class OrgCRUDLTest(TembaTest, CRUDLTestMixin):
         # try to submit for an org we don't belong to
         response = self.client.post(choose_url, {"organization": org4.id})
         self.assertFormError(
-            response.context["form"], "organization", "Select a valid choice. That choice is not one of the available choices."
+            response.context["form"],
+            "organization",
+            "Select a valid choice. That choice is not one of the available choices.",
         )
 
         # user clicks org 2...
@@ -4034,7 +4050,9 @@ class OrgCRUDLTest(TembaTest, CRUDLTestMixin):
         )
         self.assertFormError(response.context["form"], "name", "This field is required.")
         self.assertFormError(
-            response.context["form"], "timezone", "Select a valid choice. Bad/Timezone is not one of the available choices."
+            response.context["form"],
+            "timezone",
+            "Select a valid choice. Bad/Timezone is not one of the available choices.",
         )
         self.assertFormError(
             response.context["form"], "date_format", "Select a valid choice. X is not one of the available choices."
@@ -4632,7 +4650,9 @@ class BulkExportTest(TembaTest):
         post_data = dict(import_file=open(f"{settings.MEDIA_ROOT}/test_flows/too_old.json", "rb"))
         response = self.client.post(reverse("orgs.org_import"), post_data)
         self.assertFormError(
-            response.context["form"], "import_file", "This file is no longer valid. Please export a new version and try again."
+            response.context["form"],
+            "import_file",
+            "This file is no longer valid. Please export a new version and try again.",
         )
 
         # try a file which can be migrated forwards

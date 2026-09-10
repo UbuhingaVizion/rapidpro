@@ -12,7 +12,6 @@ import temba.utils.uuid
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("orgs", "0094_alter_org_parent"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),

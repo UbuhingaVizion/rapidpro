@@ -3,9 +3,8 @@ import uuid
 from secrets import token_urlsafe
 from unittest.mock import patch
 
-from requests.exceptions import Timeout
-
 from django.urls import reverse
+from requests.exceptions import Timeout
 
 from temba.channels.models import Channel
 from temba.tests import MockResponse, TembaTest
@@ -184,7 +183,7 @@ class RocketChatViewTest(RocketChatMixin):
             domain = data["base_url"].replace("http://", "").replace("https://", "").split("/")[0]
             expected = f"{RocketChatType.name}: {domain}"
             if len(expected) > max_length:
-                expected = f"{expected[:max_length-3]}..."
+                expected = f"{expected[: max_length - 3]}..."
             self.assertEqual(channel.name, expected)
             self.assertFalse(channel.config[RocketChatType.CONFIG_BASE_URL].endswith("/"))
 
@@ -202,7 +201,9 @@ class RocketChatViewTest(RocketChatMixin):
         response = self.submit_form(data)
         # retry with same base_url
         response = self.submit_form(data)
-        self.assertFormError(response.context["form"], "base_url", "There is already a channel configured for this URL.")
+        self.assertFormError(
+            response.context["form"], "base_url", "There is already a channel configured for this URL."
+        )
 
         data.pop("base_url")
         response = self.submit_form(data)

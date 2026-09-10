@@ -14,23 +14,6 @@ import iso8601
 import pyotp
 import pytz
 import requests
-from packaging.version import Version
-from smartmin.users.models import FailedLogin, PasswordHistory, RecoveryToken
-from smartmin.users.views import Login, UserUpdateForm
-from smartmin.views import (
-    SmartCreateView,
-    SmartCRUDL,
-    SmartDeleteView,
-    SmartFormView,
-    SmartListView,
-    SmartModelActionView,
-    SmartModelFormView,
-    SmartReadView,
-    SmartTemplateView,
-    SmartUpdateView,
-)
-from twilio.rest import Client
-
 from django import forms
 from django.conf import settings
 from django.contrib import messages
@@ -54,6 +37,22 @@ from django.utils.text import slugify
 from django.utils.translation import gettext_lazy as _
 from django.views.decorators.csrf import csrf_exempt
 from django.views.generic import View
+from packaging.version import Version
+from smartmin.users.models import FailedLogin, PasswordHistory, RecoveryToken
+from smartmin.users.views import Login, UserUpdateForm
+from smartmin.views import (
+    SmartCreateView,
+    SmartCRUDL,
+    SmartDeleteView,
+    SmartFormView,
+    SmartListView,
+    SmartModelActionView,
+    SmartModelFormView,
+    SmartReadView,
+    SmartTemplateView,
+    SmartUpdateView,
+)
+from twilio.rest import Client
 
 from temba.api.models import APIToken, Resthook
 from temba.campaigns.models import Campaign
@@ -826,7 +825,7 @@ class UserCRUDL(SmartCRUDL):
                 RecoveryToken.objects.create(token=token, user=user)
                 FailedLogin.objects.filter(username__iexact=user.username).delete()
 
-                context = dict(user=user, path=f'{reverse("users.user_recover", args=[token])}')
+                context = dict(user=user, path=f"{reverse('users.user_recover', args=[token])}")
                 send_template_email(email, subject, template, context, self.request.branding)
 
             else:
@@ -1304,7 +1303,6 @@ class OrgCRUDL(SmartCRUDL):
                     )
 
                 if self.has_org_perm("archives.archive_message"):
-
                     items = [
                         self.create_menu_item(
                             name=_("Messages"),
@@ -1338,7 +1336,6 @@ class OrgCRUDL(SmartCRUDL):
                 return menu
 
             else:
-
                 return [
                     self.create_menu_item(
                         menu_id="messages", name=_("Messages"), icon="message-square", endpoint="msgs.msg_menu"
@@ -2120,7 +2117,7 @@ class OrgCRUDL(SmartCRUDL):
                     dict(
                         title=_("Service"),
                         posterize=True,
-                        href=f'{reverse("orgs.org_service")}?organization={org.pk}&redirect_url={reverse("msgs.msg_inbox", args=[])}',
+                        href=f"{reverse('orgs.org_service')}?organization={org.pk}&redirect_url={reverse('msgs.msg_inbox', args=[])}",
                     )
                 )
 
@@ -2992,7 +2989,6 @@ class OrgCRUDL(SmartCRUDL):
 
         def form_valid(self, form):
             if self.get_step() == 1:
-
                 org = self.form.cleaned_data.get("org", None)
 
                 context = self.get_context_data()
@@ -3483,7 +3479,6 @@ class OrgCRUDL(SmartCRUDL):
             formax.add_section("archives", reverse("archives.archive_message"), icon="icon-box", action="link")
 
     class TwilioAccount(ComponentFormMixin, InferOrgMixin, OrgPermsMixin, SmartUpdateView):
-
         success_message = ""
 
         class TwilioKeys(forms.ModelForm):
@@ -3529,7 +3524,7 @@ class OrgCRUDL(SmartCRUDL):
             if client:
                 account_sid = client.auth[0]
                 sid_length = len(account_sid)
-                context["account_sid"] = f"{'\u066D' * (sid_length - 16)}{account_sid[-16:]}"
+                context["account_sid"] = f"{'\u066d' * (sid_length - 16)}{account_sid[-16:]}"
             return context
 
         def derive_initial(self):

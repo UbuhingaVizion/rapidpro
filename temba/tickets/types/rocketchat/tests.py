@@ -3,10 +3,9 @@ import uuid
 from secrets import token_urlsafe
 from unittest.mock import patch
 
-from requests.exceptions import Timeout
-
 from django.contrib.auth.models import Group
 from django.urls import reverse
+from requests.exceptions import Timeout
 
 from temba.tests import MockResponse, TembaTest
 from temba.tickets.models import Ticketer

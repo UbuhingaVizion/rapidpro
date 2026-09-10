@@ -1,10 +1,9 @@
 import json
 from unittest.mock import call, patch
 
-from requests import RequestException
-
 from django.test import override_settings
 from django.urls import reverse
+from requests import RequestException
 
 from temba.request_logs.models import HTTPLog
 from temba.templates.models import TemplateTranslation
@@ -150,7 +149,6 @@ class WhatsAppCloudTypeTest(TembaTest):
 
         with patch("requests.get") as wa_cloud_get:
             with patch("requests.post") as wa_cloud_post:
-
                 wa_cloud_get.side_effect = [
                     # pre-process missing permissions
                     MockResponse(
@@ -181,7 +179,6 @@ class WhatsAppCloudTypeTest(TembaTest):
 
         with patch("requests.get") as wa_cloud_get:
             with patch("requests.post") as wa_cloud_post:
-
                 wa_cloud_get.side_effect = [
                     # pre-process for get
                     MockResponse(
@@ -389,7 +386,6 @@ class WhatsAppCloudTypeTest(TembaTest):
 
         with patch("requests.get") as wa_cloud_get:
             with patch("requests.post") as wa_cloud_post:
-
                 wa_cloud_get.side_effect = [
                     # pre-process for get
                     MockResponse(

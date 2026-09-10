@@ -1,6 +1,5 @@
 import iso8601
 import requests
-
 from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 
