@@ -1215,7 +1215,7 @@ class FlowCRUDL(SmartCRUDL):
             download_url = reverse("flows.flow_download_translation") + "?" + urlencode(params, doseq=True)
 
             # if this is an XHR request, we need to return a structured response that it can parse
-            if "HTTP_X_PJAX" in self.request.META:
+            if "x-pjax" in self.request.headers:
                 response = self.render_modal_response(form)
                 response["Temba-Success"] = download_url
                 return response
@@ -1501,7 +1501,7 @@ class FlowCRUDL(SmartCRUDL):
                         _("Export complete, you can find it here: %s (production users will get an email)") % dl_url,
                     )
 
-            if "HTTP_X_PJAX" not in self.request.META:
+            if "x-pjax" not in self.request.headers:
                 return HttpResponseRedirect(self.get_success_url())
             else:  # pragma: no cover
                 response = self.render_modal_response(form)

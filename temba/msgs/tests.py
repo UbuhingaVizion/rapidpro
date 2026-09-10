@@ -1228,7 +1228,7 @@ class MsgTest(TembaTest):
         # check sending an invalid date
         response = self.client.post(reverse("msgs.msg_export") + "?l=I", {"export_all": 1, "start_date": "xyz"})
         self.assertEqual(response.status_code, 200)
-        self.assertFormError(response, "form", "start_date", "Enter a valid date.")
+        self.assertFormError(response.context["form"], "start_date", "Enter a valid date.")
 
         # test as anon org to check that URNs don't end up in exports
         with AnonymousOrg(self.org):
@@ -2013,7 +2013,7 @@ class BroadcastCRUDLTest(TembaTest, CRUDLTestMixin):
         response = self.client.post(
             send_url, {"text": "Broken", "omnibox": omnibox_serialize(self.org, [], [], json_encode=True)}
         )
-        self.assertFormError(response, "form", "omnibox", "At least one recipient is required.")
+        self.assertFormError(response.context["form"], "omnibox", "At least one recipient is required.")
 
         # try to submit with an invalid URN
         response = self.client.post(
@@ -2023,7 +2023,7 @@ class BroadcastCRUDLTest(TembaTest, CRUDLTestMixin):
                 "omnibox": omnibox_serialize(self.org, [], [], raw_urns=["tel:$$$$$$"], json_encode=True),
             },
         )
-        self.assertFormError(response, "form", "omnibox", "'tel:$$$$$$' is not a valid URN.")
+        self.assertFormError(response.context["form"], "omnibox", "'tel:$$$$$$' is not a valid URN.")
 
         # if we release our send channel we also can't start send
         self.channel.release(self.admin)
@@ -2144,7 +2144,7 @@ class BroadcastCRUDLTest(TembaTest, CRUDLTestMixin):
             reverse("msgs.broadcast_update", args=[broadcast.pk]),
             dict(omnibox=omnibox, message="Empty contacts", schedule=True),
         )
-        self.assertFormError(response, "form", None, "At least one recipient is required")
+        self.assertFormError(response.context["form"], None, "At least one recipient is required")
 
 
 class LabelTest(TembaTest):
@@ -2361,8 +2361,7 @@ class LabelCRUDLTest(TembaTest, CRUDLTestMixin):
         with override_settings(ORG_LIMIT_DEFAULTS={"labels": current_count}):
             response = self.client.post(create_url, {"name": "CoolStuff"})
             self.assertFormError(
-                response,
-                "form",
+                response.context["form"],
                 "name",
                 "This workspace has reached its limit of 2 labels. "
                 "You must delete existing ones before you can create new ones.",

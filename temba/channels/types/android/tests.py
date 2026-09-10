@@ -96,7 +96,7 @@ class AndroidTypeTest(TembaTest):
             reverse("channels.types.android.claim"), dict(claim_code=android1.claim_code, phone_number="078123")
         )
         self.assertEqual(response.status_code, 200)
-        self.assertFormError(response, "form", "phone_number", "Invalid phone number, try again.")
+        self.assertFormError(response.context["form"], "phone_number", "Invalid phone number, try again.")
 
         # claim our channel
         response = self.client.post(
@@ -190,7 +190,7 @@ class AndroidTypeTest(TembaTest):
         # try to claim a bogus channel
         response = self.client.post(reverse("channels.types.android.claim"), dict(claim_code="Your Mom"))
         self.assertEqual(response.status_code, 200)
-        self.assertFormError(response, "form", "claim_code", "Invalid claim code, please check and try again.")
+        self.assertFormError(response.context["form"], "claim_code", "Invalid claim code, please check and try again.")
 
         # check our primary tel channel is the same as our outgoing
         default_sender = self.org.get_send_channel(URN.TEL_SCHEME)
@@ -204,12 +204,12 @@ class AndroidTypeTest(TembaTest):
         response = self.client.post(
             reverse("channels.channel_create_bulk_sender") + "?connection=NX", dict(connection="NX")
         )
-        self.assertFormError(response, "form", "channel", "Can't add sender for that number")
+        self.assertFormError(response.context["form"], "channel", "Can't add sender for that number")
 
         # try to claim a bulk Vonage sender (without adding account to org)
         claim_bulk_url = reverse("channels.channel_create_bulk_sender") + "?connection=NX&channel=%d" % android2.pk
         response = self.client.post(claim_bulk_url, dict(connection="NX", channel=android2.pk))
-        self.assertFormError(response, "form", "connection", "A connection to a Vonage account is required")
+        self.assertFormError(response.context["form"], "connection", "A connection to a Vonage account is required")
 
         # send channel is still our Android device
         self.assertEqual(self.org.get_send_channel(URN.TEL_SCHEME), android2)
@@ -315,7 +315,7 @@ class AndroidTypeTest(TembaTest):
             reverse("channels.types.android.claim"), dict(claim_code=claim_code, phone_number="+250788123124")
         )
         self.assertFormError(
-            response, "form", "phone_number", "Another channel has this number. Please remove that channel first."
+            response.context["form"], "phone_number", "Another channel has this number. Please remove that channel first."
         )
 
         # create channel in another org

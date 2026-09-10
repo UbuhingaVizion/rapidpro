@@ -3266,7 +3266,7 @@ class FlowStartsEndpoint(ListAPIMixin, WriteAPIMixin, BaseAPIView):
 
     def get_serializer_context(self):
         context = super().get_serializer_context()
-        context["is_zapier"] = "Zapier" in self.request.META.get("HTTP_USER_AGENT", "")
+        context["is_zapier"] = "Zapier" in self.request.headers.get("user-agent", "")
         return context
 
     def post_save(self, instance):

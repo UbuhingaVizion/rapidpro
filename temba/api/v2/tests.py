@@ -73,7 +73,7 @@ class APITest(TembaTest):
         if query:
             url += "?" + query
 
-        return self.client.get(url, HTTP_X_FORWARDED_HTTPS="https")
+        return self.client.get(url, headers={"x-forwarded-https": "https"})
 
     def fetchJSON(self, url, query=None, raw_url=False, readonly_models: set = None):
         if not raw_url:
@@ -82,7 +82,7 @@ class APITest(TembaTest):
                 url += "?" + query
 
         with self.mockReadOnly(assert_models=readonly_models):
-            response = self.client.get(url, content_type="application/json", HTTP_X_FORWARDED_HTTPS="https")
+            response = self.client.get(url, content_type="application/json", headers={"x-forwarded-https": "https"})
 
         # this will fail if our response isn't valid json
         response.json()
@@ -103,7 +103,7 @@ class APITest(TembaTest):
         if query:
             url = url + "?" + query
 
-        return self.client.delete(url, content_type="application/json", HTTP_X_FORWARDED_HTTPS="https")
+        return self.client.delete(url, content_type="application/json", headers={"x-forwarded-https": "https"})
 
     def assertEndpointAccess(self, url, query=None, fetch_returns=200):
         self.client.logout()
@@ -136,7 +136,7 @@ class APITest(TembaTest):
         self.assertEqual(response.status_code, fetch_returns)
 
         # 405 for OPTIONS requests
-        response = self.client.options(url, HTTP_X_FORWARDED_HTTPS="https")
+        response = self.client.options(url, headers={"x-forwarded-https": "https"})
         self.assertEqual(response.status_code, 405)
 
     def assertResultsById(self, response, expected):
@@ -171,7 +171,7 @@ class APITest(TembaTest):
         self.login(self.admin)
 
         response = self.client.get(
-            reverse("api.v2.fields") + ".json", content_type="application/json", HTTP_X_FORWARDED_HTTPS="https"
+            reverse("api.v2.fields") + ".json", content_type="application/json", headers={"x-forwarded-https": "https"}
         )
         self.assertContains(response, "Server Error. Site administrators have been notified.", status_code=500)
 
@@ -590,7 +590,7 @@ class APITest(TembaTest):
 
         # try to authenticate with invalid role
         response = self.client.post(url, {"username": "admin@nyaruka.com", "password": "Qwerty123", "role": "X"})
-        self.assertFormError(response, "form", "role", "Select a valid choice. X is not one of the available choices.")
+        self.assertFormError(response.context["form"], "role", "Select a valid choice. X is not one of the available choices.")
 
         # authenticate an admin as an admin
         response = self.client.post(url, {"username": "admin@nyaruka.com", "password": "Qwerty123", "role": "A"})
@@ -3481,7 +3481,7 @@ class APITest(TembaTest):
         assert_media_upload("%s/test_media/snow.mp4" % settings.MEDIA_ROOT, "mp4")
 
         # missing file
-        response = self.client.post(url, dict(), HTTP_X_FORWARDED_HTTPS="https")
+        response = self.client.post(url, dict(), headers={"x-forwarded-https": "https"})
         self.assertEqual(response.status_code, 400)
         self.clear_storage()
 

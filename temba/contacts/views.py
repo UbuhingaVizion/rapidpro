@@ -740,7 +740,7 @@ class ContactCRUDL(SmartCRUDL):
                         self.request,
                         _("Export complete, you can find it here: %s (production users will get an email)") % dl_url,
                     )
-            if "HTTP_X_PJAX" not in self.request.META:
+            if "x-pjax" not in self.request.headers:
                 return HttpResponseRedirect(redirect or reverse("contacts.contact_list"))
             else:  # pragma: no cover
                 response = self.render_to_response(
@@ -1100,7 +1100,7 @@ class ContactCRUDL(SmartCRUDL):
         def get_gear_links(self):
             links = []
 
-            is_spa = "HTTP_TEMBA_SPA" in self.request.META
+            is_spa = "temba-spa" in self.request.headers
             search = self.request.GET.get("search")
 
             # define save search conditions
@@ -1210,7 +1210,7 @@ class ContactCRUDL(SmartCRUDL):
         def get_gear_links(self):
             links = []
 
-            is_spa = "HTTP_TEMBA_SPA" in self.request.META
+            is_spa = "temba-spa" in self.request.headers
 
             if self.has_org_perm("contacts.contactfield_list") and not is_spa:
                 links.append(dict(title=_("Manage Fields"), href=reverse("contacts.contactfield_list")))
@@ -1320,7 +1320,7 @@ class ContactCRUDL(SmartCRUDL):
         submit_button_name = _("Save Changes")
 
         def get_success_url(self):
-            if "HTTP_TEMBA_SPA" in self.request.META:
+            if "temba-spa" in self.request.headers:
                 return "hide"
             return super().get_success_url()
 
@@ -1414,7 +1414,7 @@ class ContactCRUDL(SmartCRUDL):
         submit_button_name = _("Save Changes")
 
         def get_success_url(self):
-            if "HTTP_TEMBA_SPA" in self.request.META:
+            if "temba-spa" in self.request.headers:
                 return "hide"
             return super().get_success_url()
 

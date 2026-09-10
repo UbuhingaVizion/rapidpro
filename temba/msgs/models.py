@@ -871,7 +871,7 @@ class SystemLabelCount(SquashableModel):
         return {lb: counts_by_type.get(lb, 0) for lb, n in SystemLabel.TYPE_CHOICES}
 
     class Meta:
-        index_together = ("org", "label_type")
+        indexes = [models.Index(fields=("org", "label_type"))]
 
 
 class Label(LegacyUUIDMixin, TembaModel, DependencyMixin):

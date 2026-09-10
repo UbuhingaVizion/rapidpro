@@ -49,7 +49,7 @@ class ArchiveCRUDL(SmartCRUDL):
         def get_context_data(self, **kwargs):
             context = super().get_context_data(**kwargs)
 
-            if "HTTP_X_FORMAX" in self.request.META:  # no additional data needed if request is only for formax
+            if "x-formax" in self.request.headers:  # no additional data needed if request is only for formax
                 context["archive_count"] = Archive.objects.filter(org=self.org, rollup=None).count()
                 context["record_count"] = (
                     Archive.objects.filter(org=self.org, rollup=None)

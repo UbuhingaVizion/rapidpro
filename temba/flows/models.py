@@ -1563,7 +1563,7 @@ class FlowPathCount(SquashableModel):
         return {"%s:%s" % (t[0], t[1]): t[2] for t in totals}
 
     class Meta:
-        index_together = ["flow", "from_uuid", "to_uuid", "period"]
+        indexes = [models.Index(fields=["flow", "from_uuid", "to_uuid", "period"])]
 
 
 class FlowNodeCount(SquashableModel):
@@ -1652,7 +1652,7 @@ class FlowRunCount(SquashableModel):
         return {t[0]: t[1] for t in totals}
 
     class Meta:
-        index_together = ("flow", "exit_type")
+        indexes = [models.Index(fields=("flow", "exit_type"))]
 
 
 class ExportFlowResultsTask(BaseExportTask):

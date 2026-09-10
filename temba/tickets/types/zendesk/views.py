@@ -247,7 +247,7 @@ class AdminUIView(SmartFormView):
         When Zendesk initially requests this view, it makes a POST, which we don't want to confuse with a POST
         of the form, so we check the referer.
         """
-        referer = urlparse(self.request.META.get("HTTP_REFERER", "")).netloc
+        referer = urlparse(self.request.headers.get("referer", "")).netloc
         return referer.endswith("zendesk.com")
 
     def get_form_kwargs(self):

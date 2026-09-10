@@ -130,7 +130,7 @@ class GlobalCRUDL(SmartCRUDL):
             org_globals = self.org.globals.filter(is_active=True)
             all_count = org_globals.count()
 
-            if "HTTP_X_FORMAX" in self.request.META:
+            if "x-formax" in self.request.headers:
                 context["global_count"] = all_count
             else:
                 unused_count = Global.annotate_usage(org_globals).filter(usage_count=0).count()

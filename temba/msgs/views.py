@@ -437,7 +437,7 @@ class BroadcastCRUDL(SmartCRUDL):
                     dict(contacts=len(contacts), groups=len(groups), urns=len(urns)),
                 )
 
-            if "HTTP_X_PJAX" in self.request.META:
+            if "x-pjax" in self.request.headers:
                 success_url = "hide"
                 if has_schedule:
                     success_url = reverse("msgs.broadcast_schedule_read", args=[broadcast.id])
@@ -698,7 +698,7 @@ class MsgCRUDL(SmartCRUDL):
 
             messages.success(self.request, self.derive_success_message())
 
-            if "HTTP_X_PJAX" not in self.request.META:
+            if "x-pjax" not in self.request.headers:
                 return HttpResponseRedirect(self.get_success_url())
             else:  # pragma: no cover
                 response = self.render_modal_response(form)

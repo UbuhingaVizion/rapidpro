@@ -22,7 +22,7 @@ from django.db.models import Max, Q, Sum
 from django.db.models.signals import pre_save
 from django.dispatch import receiver
 from django.template import Context, Engine, TemplateDoesNotExist
-from django.urls import re_path
+from django.urls import path
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
@@ -138,7 +138,7 @@ class ChannelType(metaclass=ABCMeta):
         """
         claim_view_kwargs = self.claim_view_kwargs if self.claim_view_kwargs else {}
         claim_view_kwargs["channel_type"] = self
-        return re_path(r"^claim$", self.claim_view.as_view(**claim_view_kwargs), name="claim")
+        return path("claim", self.claim_view.as_view(**claim_view_kwargs), name="claim")
 
     def get_update_form(self):
         if self.update_form is None:
@@ -1108,7 +1108,7 @@ class ChannelCount(SquashableModel):
         return sql, params
 
     class Meta:
-        index_together = ["channel", "count_type", "day"]
+        indexes = [models.Index(fields=["channel", "count_type", "day"])]
 
 
 class ChannelEvent(models.Model):

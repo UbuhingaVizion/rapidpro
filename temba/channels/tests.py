@@ -1,3 +1,4 @@
+import datetime as dt
 import base64
 import copy
 import hashlib
@@ -176,7 +177,7 @@ class ChannelTest(TembaTest):
 
         # we cannot add multiple callers
         response = self.client.post(reverse("channels.channel_create_caller"), post_data)
-        self.assertFormError(response, "form", "channel", "A caller has already been added for that number")
+        self.assertFormError(response.context["form"], "channel", "A caller has already been added for that number")
 
         # should now have the option to disable
         self.login(self.admin)
@@ -186,7 +187,7 @@ class ChannelTest(TembaTest):
         # try adding a caller for an invalid channel
         response = self.client.post("%s?channel=20000" % reverse("channels.channel_create_caller"))
         self.assertEqual(200, response.status_code)
-        self.assertFormError(response, "form", "channel", "A caller cannot be added for that number")
+        self.assertFormError(response.context["form"], "channel", "A caller cannot be added for that number")
 
         # disable our twilio connection
         with patch("temba.channels.types.twilio.TwilioType.deactivate"):
@@ -2079,12 +2080,12 @@ class ChannelLogTest(TembaTest):
         self.assertContains(response, "{&quot;say&quot;: &quot;Hello&quot;}")
 
         # if duration isn't set explicitly, it can be calculated
-        call.started_on = datetime(2019, 8, 12, 11, 4, 0, 0, timezone.utc)
+        call.started_on = datetime(2019, 8, 12, 11, 4, 0, 0, dt.timezone.utc)
         call.status = IVRCall.STATUS_IN_PROGRESS
         call.duration = None
         call.save(update_fields=("started_on", "status", "duration"))
 
-        with patch("django.utils.timezone.now", return_value=datetime(2019, 8, 12, 11, 4, 30, 0, timezone.utc)):
+        with patch("django.utils.timezone.now", return_value=datetime(2019, 8, 12, 11, 4, 30, 0, dt.timezone.utc)):
             response = self.client.get(
                 reverse("channels.channellog_list", args=[self.channel.uuid]) + "?connections=1"
             )
@@ -2755,7 +2756,7 @@ class FacebookWhitelistTest(TembaTest):
         with patch("requests.post") as mock:
             mock.return_value = MockResponse(400, '{"error": { "message": "FB Error" } }')
             response = self.client.post(whitelist_url, dict(whitelisted_domain="https://foo.bar"))
-            self.assertFormError(response, "form", None, "FB Error")
+            self.assertFormError(response.context["form"], None, "FB Error")
 
         with patch("requests.post") as mock:
             mock.return_value = MockResponse(200, '{ "ok": "true" }')

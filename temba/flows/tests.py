@@ -1941,8 +1941,7 @@ class FlowCRUDLTest(TembaTest, CRUDLTestMixin):
         post_data = {"name": "Flow With Unformated Keyword Triggers", "keyword_triggers": ["this is", "it"]}
         response = self.client.post(reverse("flows.flow_create"), post_data)
         self.assertFormError(
-            response,
-            "form",
+            response.context["form"],
             "keyword_triggers",
             "Must be single words, less than 16 characters, containing only letters and numbers.",
         )
@@ -1950,7 +1949,7 @@ class FlowCRUDLTest(TembaTest, CRUDLTestMixin):
         # create a new flow with one existing keyword
         post_data = {"name": "Flow With Existing Keyword Triggers", "keyword_triggers": ["this", "is", "unique"]}
         response = self.client.post(reverse("flows.flow_create"), post_data)
-        self.assertFormError(response, "form", "keyword_triggers", '"unique" is already used for another flow.')
+        self.assertFormError(response.context["form"], "keyword_triggers", '"unique" is already used for another flow.')
 
         # create another trigger so there are two in the way
         trigger = Trigger.objects.create(
@@ -1959,7 +1958,7 @@ class FlowCRUDLTest(TembaTest, CRUDLTestMixin):
 
         response = self.client.post(reverse("flows.flow_create"), post_data)
         self.assertFormError(
-            response, "form", "keyword_triggers", '"this", "unique" are already used for another flow.'
+            response.context["form"], "keyword_triggers", '"this", "unique" are already used for another flow.'
         )
         trigger.delete()
 
@@ -2310,7 +2309,7 @@ class FlowCRUDLTest(TembaTest, CRUDLTestMixin):
         self.assertEqual([flow2], list(response.context["object_list"]))
 
         # in the spa view, labels are flattened
-        response = self.client.get(reverse("flows.flow_filter", args=[label1.uuid]), HTTP_TEMBA_SPA="1")
+        response = self.client.get(reverse("flows.flow_filter", args=[label1.uuid]), headers={"temba-spa": "1"})
         self.assertEqual(len(response.context["labels_flat"]), 2)
 
     def test_get_definition(self):
@@ -2983,7 +2982,7 @@ class FlowCRUDLTest(TembaTest, CRUDLTestMixin):
 
         def assert_upload(filename, expected_type, expected_url):
             with open(filename, "rb") as data:
-                response = self.client.post(action_url, {"file": data, "action": ""}, HTTP_X_FORWARDED_HTTPS="https")
+                response = self.client.post(action_url, {"file": data, "action": ""}, headers={"x-forwarded-https": "https"})
 
                 self.assertEqual(response.status_code, 200)
                 actual_type = response.json()["type"]
@@ -3014,7 +3013,7 @@ class FlowCRUDLTest(TembaTest, CRUDLTestMixin):
         # can't upload for flow in other org
         with open(f"{settings.MEDIA_ROOT}/test_media/steve marten.jpg", "rb") as data:
             upload_url = reverse("flows.flow_upload_media_action", args=[other_org_flow.uuid])
-            response = self.client.post(upload_url, {"file": data, "action": ""}, HTTP_X_FORWARDED_HTTPS="https")
+            response = self.client.post(upload_url, {"file": data, "action": ""}, headers={"x-forwarded-https": "https"})
             self.assertLoginRedirect(response)
 
         self.clear_storage()
@@ -3444,7 +3443,7 @@ class FlowCRUDLTest(TembaTest, CRUDLTestMixin):
             self.assertEqual('attachment; filename="favorites.spa.po"', response["Content-Disposition"])
 
         # check submitting the form from a modal
-        response = self.client.post(export_url, data={}, HTTP_X_PJAX=True)
+        response = self.client.post(export_url, data={}, headers={"x-pjax": True})
         self.assertEqual(f"/flow/download_translation/?flow={flow.id}&language=", response["Temba-Success"])
 
     def test_import_translation(self):
@@ -3463,11 +3462,11 @@ class FlowCRUDLTest(TembaTest, CRUDLTestMixin):
 
         # submit with something that's empty
         response = self.requestView(step1_url, self.admin, post_data={"po_file": io.BytesIO(b"")})
-        self.assertFormError(response, "form", "po_file", "The submitted file is empty.")
+        self.assertFormError(response.context["form"], "po_file", "The submitted file is empty.")
 
         # submit with something that's not a valid PO file
         response = self.requestView(step1_url, self.admin, post_data={"po_file": io.BytesIO(b"msgid")})
-        self.assertFormError(response, "form", "po_file", "File doesn't appear to be a valid PO file.")
+        self.assertFormError(response.context["form"], "po_file", "File doesn't appear to be a valid PO file.")
 
         # submit with something that's in the base language of the flow
         po_file = io.BytesIO(
@@ -3485,7 +3484,7 @@ msgstr "Bluuu"
         )
         response = self.requestView(step1_url, self.admin, post_data={"po_file": po_file})
         self.assertFormError(
-            response, "form", "po_file", "Contains translations in English which is the base language of this flow."
+            response.context["form"], "po_file", "Contains translations in English which is the base language of this flow."
         )
 
         # submit with something that's in the base language of the flow
@@ -3504,8 +3503,7 @@ msgstr "Bleu"
         )
         response = self.requestView(step1_url, self.admin, post_data={"po_file": po_file})
         self.assertFormError(
-            response,
-            "form",
+            response.context["form"],
             "po_file",
             "Contains translations in French which is not a supported translation language.",
         )

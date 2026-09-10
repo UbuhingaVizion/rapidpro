@@ -34,8 +34,8 @@ class ExternalTypeTest(TembaTest):
 
         # fail due to missing number and invalid URL
         response = self.client.post(url, post_data)
-        self.assertFormError(response, "form", "url", "Cannot be a local or private host.")
-        self.assertFormError(response, "form", "number", "This field is required.")
+        self.assertFormError(response.context["form"], "url", "Cannot be a local or private host.")
+        self.assertFormError(response.context["form"], "number", "This field is required.")
 
         # change scheme to Ext and add valid URL
         ext_url = "http://test.com/send.php?from={{from}}&text={{text}}&to={{to}}"
@@ -44,7 +44,7 @@ class ExternalTypeTest(TembaTest):
 
         # fail due to missing address
         response = self.client.post(url, post_data)
-        self.assertFormError(response, "form", "address", "This field is required.")
+        self.assertFormError(response.context["form"], "address", "This field is required.")
 
         # update to valid number
         post_data["scheme"] = "tel"

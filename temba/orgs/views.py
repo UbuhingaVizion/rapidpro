@@ -224,7 +224,7 @@ class ModalMixin(SmartFormView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
 
-        if "HTTP_X_PJAX" in self.request.META and "HTTP_X_FORMAX" not in self.request.META:  # pragma: no cover
+        if "x-pjax" in self.request.headers and "x-formax" not in self.request.headers:  # pragma: no cover
             context["base_template"] = "smartmin/modal.html"
         if "success_url" in kwargs:  # pragma: no cover
             context["success_url"] = kwargs["success_url"]
@@ -262,7 +262,7 @@ class ModalMixin(SmartFormView):
 
             messages.success(self.request, self.derive_success_message())
 
-            if "HTTP_X_PJAX" not in self.request.META:
+            if "x-pjax" not in self.request.headers:
                 return HttpResponseRedirect(self.get_success_url())
             else:  # pragma: no cover
                 return self.render_modal_response(form)
@@ -2636,7 +2636,7 @@ class OrgCRUDL(SmartCRUDL):
             self.object = form.save(commit=False)
             parent = self.org
             parent.create_sub_org(self.object.name, self.object.timezone, self.request.user)
-            if "HTTP_X_PJAX" not in self.request.META:
+            if "x-pjax" not in self.request.headers:
                 return HttpResponseRedirect(self.get_success_url())
             else:  # pragma: no cover
                 return self.render_modal_response()
@@ -3036,9 +3036,9 @@ class OrgCRUDL(SmartCRUDL):
 
         def get_template_names(self):
             if (
-                "android" in self.request.META.get("HTTP_X_REQUESTED_WITH", "")
+                "android" in self.request.headers.get("x-requested-with", "")
                 or "mobile" in self.request.GET
-                or "Android" in self.request.META.get("HTTP_USER_AGENT", "")
+                or "Android" in self.request.headers.get("user-agent", "")
             ):
                 return ["orgs/org_surveyor_mobile.haml"]
             else:
@@ -3578,7 +3578,7 @@ class OrgCRUDL(SmartCRUDL):
             context = super().get_context_data(**kwargs)
             sub_orgs = Org.objects.filter(is_active=True, parent=self.get_object())
             context["sub_orgs"] = sub_orgs
-            context["is_spa"] = "HTTP_TEMBA_SPA" in self.request.META
+            context["is_spa"] = "temba-spa" in self.request.headers
             return context
 
     class EditSubOrg(SpaMixin, ModalMixin, Edit):
@@ -3769,7 +3769,7 @@ class OrgCRUDL(SmartCRUDL):
             return context
 
         def get(self, request, *args, **kwargs):
-            if self.request.META.get("HTTP_X_REQUESTED_WITH") == "XMLHttpRequest":
+            if self.request.headers.get("x-requested-with") == "XMLHttpRequest":
                 initial = self.request.GET.get("initial", "").split(",")
                 matches = []
 
@@ -3876,7 +3876,7 @@ class TopUpCRUDL(SmartCRUDL):
             return context
 
         def get_template_names(self):
-            if "HTTP_X_FORMAX" in self.request.META:
+            if "x-formax" in self.request.headers:
                 return ["orgs/topup_list_summary.haml"]
             else:
                 return super().get_template_names()

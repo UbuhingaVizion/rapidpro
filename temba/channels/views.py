@@ -921,7 +921,7 @@ class ChannelCRUDL(SmartCRUDL):
             sync_events = SyncEvent.objects.filter(channel=channel.id).order_by("-created_on")
             context["last_sync"] = sync_events.first()
 
-            if "HTTP_X_FORMAX" in self.request.META:  # no additional data needed if request is only for formax
+            if "x-formax" in self.request.headers:  # no additional data needed if request is only for formax
                 return context
 
             if not channel.is_active:  # pragma: needs cover

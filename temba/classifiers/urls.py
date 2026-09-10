@@ -1,4 +1,4 @@
-from django.conf.urls import include
+from django.urls import include, path
 from django.urls import re_path
 
 from .models import Classifier
@@ -15,6 +15,6 @@ for cl_type in Classifier.get_types():
         type_urls.append(re_path("^%s/" % cl_type.slug, include(cl_urls)))
 
 urlpatterns = [
-    re_path(r"^", include(ClassifierCRUDL().as_urlpatterns())),
-    re_path(r"^classifiers/types/", include(type_urls)),
+    path("", include(ClassifierCRUDL().as_urlpatterns())),
+    path("classifiers/types/", include(type_urls)),
 ]
