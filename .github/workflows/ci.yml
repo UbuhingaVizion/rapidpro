@@ -8,7 +8,6 @@ jobs:
       postgis-version: "3.3"
       redis-version: "7.2"
       node-version: "20"
-      elastic-version: "7.17.2"
       rpindexer-version: "7.4.0"
       mailroom-version: "7.5.36"
       ELASTICSEARCH_URL: "http://127.0.0.1:9200"
@@ -17,6 +16,14 @@ jobs:
       matrix:
         pg-version: ["13", "14"]
     runs-on: ubuntu-latest
+    services:
+      elastic:
+        image: elasticsearch:7.17.9
+        ports:
+          - 9200:9200
+          - 9300:9300
+        env:
+          discovery.type: single-node
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -48,11 +55,6 @@ jobs:
         uses: zhulik/redis-action@v1.0.0
         with:
           redis version: ${{ env.redis-version }}
-
-      - name: Install ElasticSearch
-        uses: nyaruka/elasticsearch-action@master
-        with:
-          elastic version: ${{ env.elastic-version }}
 
       - name: Install Node
         uses: actions/setup-node@v4
