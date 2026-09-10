@@ -10,6 +10,7 @@
 .commit
 
 rp-indexer
+mailroom
 
 # temba
 dump.rdb

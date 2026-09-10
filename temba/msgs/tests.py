@@ -139,10 +139,11 @@ class MsgTest(TembaTest):
         self.assertEqual(1, msg1.channel_logs.count())  # logs still there
 
         # test a hard delete as part of a contact removal
+        msg2_id = msg2.id
         msg2.delete()
         self.assertEqual(1, Msg.objects.all().count())
         self.assertEqual(self.org._calculate_credits_used()[0], 2)  # used credits unchanged
-        self.assertEqual(0, msg2.channel_logs.count())  # logs should be gone
+        self.assertEqual(0, ChannelLog.objects.filter(msg_id=msg2_id).count())  # logs should be gone
 
     def test_get_sync_commands(self):
         msg1 = self.create_outgoing_msg(self.joe, "Hello, we heard from you.")

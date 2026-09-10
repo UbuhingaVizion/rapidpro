@@ -11,6 +11,7 @@ jobs:
       elastic-version: "7.17.2"
       rpindexer-version: "7.4.0"
       mailroom-version: "7.5.36"
+      ELASTICSEARCH_URL: "http://127.0.0.1:9200"
       DJANGO_SETTINGS_MODULE: temba.settings_ci
     strategy:
       matrix:

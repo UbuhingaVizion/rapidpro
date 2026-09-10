@@ -1595,6 +1595,8 @@ class ChannelEventCRUDLTest(TembaTest, CRUDLTestMixin):
 
 class SyncEventTest(SmartminTest):
     def setUp(self):
+        self.create_anonymous_user()
+
         self.superuser = User.objects.create_superuser(username="super", email="super@user.com", password="super")
         self.user = self.create_user("tito")
         self.org = Org.objects.create(

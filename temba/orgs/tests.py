@@ -2093,7 +2093,13 @@ class OrgTest(TembaTest):
         # update one of our topups
         response = self.client.post(
             update_url,
-            {"is_active": True, "price": "0", "credits": "5000", "comment": "", "expires_on": "2025-04-03 13:47:46"},
+            {
+                "is_active": True,
+                "price": "0",
+                "credits": "5000",
+                "comment": "",
+                "expires_on": (timezone.now() + timedelta(days=365)).strftime("%Y-%m-%d %H:%M:%S"),
+            },
         )
         self.assertEqual(302, response.status_code)
 
@@ -3663,9 +3669,10 @@ class OrgCRUDLTest(TembaTest, CRUDLTestMixin):
             response.context["form"], "name", "Ensure this value has at most 128 characters (it has 136)."
         )
         self.assertFormError(
-            response.context["form"], "email", "Ensure this value has at most 150 characters (it has 159)."
+            response.context["form"],
+            "email",
+            ["Enter a valid email address.", "Ensure this value has at most 150 characters (it has 159)."],
         )
-        self.assertFormError(response.context["form"], "email", "Enter a valid email address.")
 
     def test_org_grant_form_clean(self):
         grant_url = reverse("orgs.org_grant")

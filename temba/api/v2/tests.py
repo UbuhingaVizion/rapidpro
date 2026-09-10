@@ -158,9 +158,9 @@ class APITest(TembaTest):
             self.assertIn("detail", resp_json)
             self.assertEqual(resp_json["detail"], expected_message)
 
-    def assert404(self, response):
+    def assert404(self, response, model):
         self.assertEqual(response.status_code, 404)
-        self.assertEqual(response.json(), {"detail": "Not found."})
+        self.assertEqual(response.json(), {"detail": f"No {model} matches the given query."})
 
     @override_settings(REST_HANDLE_EXCEPTIONS=True)
     @patch("temba.api.v2.views.FieldsEndpoint.get_queryset")
@@ -1060,7 +1060,7 @@ class APITest(TembaTest):
 
         # can't update campaign in other org
         response = self.postJSON(url, f"uuid={spam.uuid}", {"name": "Won't work", "group": spammers.uuid})
-        self.assert404(response)
+        self.assert404(response, "Campaign")
 
     def test_campaigns_does_not_update_inactive_archived(self):
         url = reverse("api.v2.campaigns")
@@ -2001,11 +2001,11 @@ class APITest(TembaTest):
 
         # try to update a contact with non-existent UUID
         response = self.postJSON(url, "uuid=ad6acad9-959b-4d70-b144-5de2891e4d00", {})
-        self.assert404(response)
+        self.assert404(response, "Contact")
 
         # try to update a contact in another org
         response = self.postJSON(url, f"uuid={hans.uuid}", {})
-        self.assert404(response)
+        self.assert404(response, "Contact")
 
         # try to add a contact to a dynamic group
         response = self.postJSON(url, f"uuid={jean.uuid}", {"groups": [dyn_group.uuid]})
@@ -2071,11 +2071,11 @@ class APITest(TembaTest):
 
         # try deleting a contact by a non-existent URN
         response = self.deleteJSON(url, "urn=twitter:billy")
-        self.assert404(response)
+        self.assert404(response, "Contact")
 
         # try to delete a contact in another org
         response = self.deleteJSON(url, f"uuid={hans.uuid}")
-        self.assert404(response)
+        self.assert404(response, "Contact")
 
     def test_prevent_modifying_contacts_with_fields_that_have_null_chars(self):
         """
@@ -2597,11 +2597,11 @@ class APITest(TembaTest):
 
         # try to update with key of deleted field
         response = self.postJSON(url, "key=deleted", {"label": "Something", "value_type": "text"})
-        self.assert404(response)
+        self.assert404(response, "ContactField")
 
         # try to update with non-existent key
         response = self.postJSON(url, "key=not_ours", {"label": "Something", "value_type": "text"})
-        self.assert404(response)
+        self.assert404(response, "ContactField")
 
         # try to change type of date field used by campaign event
         response = self.postJSON(url, "key=registered", {"label": "Registered", "value_type": "text"})
@@ -3055,7 +3055,7 @@ class APITest(TembaTest):
 
         # can't update a group from other org
         response = self.postJSON(url, f"uuid={spammers.uuid}", {"name": "Won't work"})
-        self.assert404(response)
+        self.assert404(response, "ContactGroup")
 
         # try an empty delete request
         response = self.deleteJSON(url, None)
@@ -3075,7 +3075,7 @@ class APITest(TembaTest):
 
         # can't delete a group in another org
         response = self.deleteJSON(url, f"uuid={spammers.uuid}")
-        self.assert404(response)
+        self.assert404(response, "ContactGroup")
 
         for group in ContactGroup.objects.filter(is_system=False):
             group.release(self.admin)
@@ -3211,7 +3211,7 @@ class APITest(TembaTest):
 
         # can't update label from other org
         response = self.postJSON(url, f"uuid={spam.uuid}", {"name": "Won't work"})
-        self.assert404(response)
+        self.assert404(response, "Label")
 
         # try an empty delete request
         response = self.deleteJSON(url, None)
@@ -3227,7 +3227,7 @@ class APITest(TembaTest):
 
         # try to delete a label in another org
         response = self.deleteJSON(url, f"uuid={spam.uuid}")
-        self.assert404(response)
+        self.assert404(response, "Label")
 
         # try creating a new label after reaching the limit on labels
         current_count = Label.objects.filter(org=self.org, is_active=True).count()
@@ -4011,7 +4011,7 @@ class APITest(TembaTest):
 
         # try to delete a subscriber from another org
         response = self.deleteJSON(url, "id=%d" % other_org_subscriber.id)
-        self.assert404(response)
+        self.assert404(response, "ResthookSubscriber")
 
         # ok, let's look at the events on this resthook
         url = reverse("api.v2.resthook_events")
@@ -4815,7 +4815,7 @@ class APITest(TembaTest):
 
         # can't update topic from other org
         response = self.postJSON(url, f"uuid={other_org.uuid}", {"name": "Won't work"})
-        self.assert404(response)
+        self.assert404(response, "Topic")
 
         # can't update topic to same name as existing topic
         response = self.postJSON(url, f"uuid={support.uuid}", {"name": "General"})
