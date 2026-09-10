@@ -143,7 +143,7 @@ class Command(BaseCommand):  # pragma: no cover
             results = results.filter(created_on__gt=created_after)
 
         for result in results[:25]:
-            self.stdout.write("%s => %s ms" % (result.url, self._num_style(result.request_time)))
+            self.stdout.write(f"{result.url} => {self._num_style(result.request_time)} ms")
 
     def _print_summary(self, items):
         self.stdout.write("\nResponse Statistics:\n=================================")
@@ -171,7 +171,7 @@ class Command(BaseCommand):  # pragma: no cover
                 "   * non-200s: %s (%d%%)"
                 % (self._num_style(item["failures"]["non200"]["count"]), item["failures"]["non200"]["%"])
             )
-            self.stdout.write("   * all: %s" % ", ".join(all_codes))
+            self.stdout.write(f"   * all: {', '.join(all_codes)}")
 
     def _url_to_key(self, url, by_key):
         parsed_url = urlparse(url)

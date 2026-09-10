@@ -187,7 +187,7 @@ class Trigger(SmartModel):
         """
         groups = ["**"] if not self.groups else [str(g.id) for g in self.groups.all().order_by("id")]
         return [
-            "%s_%s_%s_%s" % (self.trigger_type, str(self.channel_id), group, str(self.keyword)) for group in groups
+            f"{self.trigger_type}_{self.channel_id!s}_{group}_{self.keyword!s}" for group in groups
         ]
 
     def archive(self, user):

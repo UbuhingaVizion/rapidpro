@@ -62,7 +62,7 @@ class PolicyCRUDL(SmartCRUDL):
         @classmethod
         def derive_url_pattern(cls, path, action):
             archive_types = (choice[0] for choice in Policy.TYPE_CHOICES)
-            return r"^%s/(%s)/$" % (path, "|".join(archive_types))
+            return rf"^{path}/({'|'.join(archive_types)})/$"
 
         def get_requested_policy_type(self):
             return self.request.path.split("/")[-2]
@@ -110,7 +110,7 @@ class PolicyCRUDL(SmartCRUDL):
 
         @classmethod
         def derive_url_pattern(cls, path, action):
-            return r"^%s/consent/$" % path
+            return rf"^{path}/consent/$"
 
         def form_valid(self, form):
             if form.cleaned_data["consent"]:

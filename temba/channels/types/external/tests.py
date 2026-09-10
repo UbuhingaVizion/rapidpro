@@ -138,15 +138,14 @@ class ExternalTypeTest(TembaTest):
         self.assertIsNone(channel.country.code)
 
     def test_claim_bulk_sender(self):
-        url = reverse("channels.types.external.claim") + "?role=S&channel=%s" % self.channel.pk
+        url = reverse("channels.types.external.claim") + f"?role=S&channel={self.channel.pk}"
 
         self.login(self.admin)
 
         response = self.client.get(url)
         self.assertEqual(
             set(response.context["form"].fields.keys()),
-            set(
-                [
+            {
                     "url",
                     "method",
                     "encoding",
@@ -156,8 +155,7 @@ class ExternalTypeTest(TembaTest):
                     "body",
                     "mt_response_check",
                     "loc",
-                ]
-            ),
+            },
         )
 
         post_data = response.context["form"].initial

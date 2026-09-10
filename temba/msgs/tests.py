@@ -1084,7 +1084,7 @@ class MsgTest(TembaTest):
 
         # try export with user label
         self.assertExcelSheet(
-            request_export("?l=%s" % label.uuid, {"export_all": 0}),
+            request_export(f"?l={label.uuid}", {"export_all": 0}),
             [
                 [
                     "Date",
@@ -1120,7 +1120,7 @@ class MsgTest(TembaTest):
 
         # try export with user label folder
         self.assertExcelSheet(
-            request_export("?l=%s" % folder.uuid, {"export_all": 0}),
+            request_export(f"?l={folder.uuid}", {"export_all": 0}),
             [
                 [
                     "Date",

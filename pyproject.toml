@@ -1,75 +1,90 @@
-[tool.poetry]
+[project]
 name = "temba"
 version = "7.4.2"
 description = "Hosted service for visually building interactive messaging applications"
-authors = ["Nyaruka <code@nyaruka.com>"]
-license = "AGPL-3"
+authors = [{ name = "Nyaruka", email = "code@nyaruka.com" }]
+requires-python = ">=3.12,<4"
+license = "AGPL-3.0-or-later"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+]
+dependencies = [
+    "Django>=4.2.0,<5",
+    "django-compressor>=4.4,<5",
+    "django-countries>=7.6.1,<8",
+    "django-hamlpy>=1.4.4,<2",
+    "django-mptt>=0.16.0,<0.17",
+    "django-redis>=5.4.0,<6",
+    "django-storages>=1.14.2,<2",
+    "django-timezone-field>=6.1.0,<7",
+    "djangorestframework~=3.15.2",
+    "dj-database-url>=0.5.0,<0.6",
+    "smartmin>=4.2.3,<5",
+    "celery>=5.4.0,<6",
+    "redis>=5.0.8,<6",
+    "elasticsearch>=7.11.0,<8",
+    "elasticsearch-dsl>=7.3.0,<8",
+    "analytics-python>=1.4.0,<2",
+    "boto3>=1.35.0,<2",
+    "cryptography>=43.0.0,<44",
+    "vonage==2.5.2",
+    "pyfcm>=1.5.1,<2",
+    "pyotp==2.4.1",
+    "python-telegram-bot>=13.14,<14",
+    "sentry-sdk>=2.0.0,<3",
+    "stripe>=5.0.0,<6",
+    "twilio==6.24.0",
+    "twython==3.5.0",
+    "geojson>=3.1.0,<4",
+    "Markdown>=3.7,<4",
+    "polib>=1.2.0,<2",
+    "pyexcel>=0.7.0,<0.8",
+    "pyexcel-xls>=0.7.0,<0.8",
+    "pyexcel-xlsx>=0.6.0,<0.7",
+    "python-magic>=0.4.27,<0.5",
+    "xlsxlite>=0.2.0,<0.3",
+    "colorama>=0.4.6,<0.5",
+    "gunicorn>=23.0.0,<24",
+    "iptools>=0.7.0,<0.8",
+    "iso-639>=0.4.5,<0.5",
+    "iso8601>=0.1.14,<0.2",
+    "phonenumbers>=8.13.0,<9",
+    "pycountry>=24.6.1,<25",
+    "python-dateutil>=2.9.0,<3",
+    "psycopg2-binary>=2.9.9,<3",
+    "python-intercom>=3.1.0,<4",
+    "packaging>=24.0,<25",
+    "requests-toolbelt>=1.0.0,<2",
+    "chardet>=5.2.0,<6",
+    "openpyxl>=3.1.2,<4",
+    "setuptools<81",
+    "urllib3<2",
+]
 
-[tool.poetry.urls]
+[project.urls]
 repository = "http://github.com/rapidpro/rapidpro"
 
-[tool.poetry.dependencies]
-python = "^3.12"
-Django = "^4.2.0"
-django-compressor = "^4.4"
-django-countries = "^7.6.1"
-django-hamlpy = "^1.4.4"
-django-mptt = "^0.16.0"
-django-redis = "^5.4.0"
-django-storages = "^1.14.2"
-django-timezone-field = "^6.1.0"
-djangorestframework = "~3.15.2"
-dj-database-url = "^0.5.0"
-smartmin = "^4.2.3"
-celery = "^5.4.0"
-redis = "^5.0.8"
-elasticsearch = "^7.11.0"
-elasticsearch-dsl = "^7.3.0"
-analytics-python = "^1.4.0"
-boto3 = "^1.35.0"
-cryptography = "^43.0.0"
-vonage = "2.5.2"
-pyfcm = "^1.5.1"
-pyotp = "2.4.1"
-python-telegram-bot = "^13.14"
-sentry-sdk = "^2.0.0"
-stripe = "^5.0.0"
-twilio = "6.24.0"
-twython = "3.5.0"
-geojson = "^3.1.0"
-Markdown = "^3.7"
-polib = "^1.2.0"
-pyexcel = "^0.7.0"
-pyexcel-xls = "^0.7.0"
-pyexcel-xlsx = "^0.6.0"
-python-magic = "^0.4.27"
-xlsxlite = "^0.2.0"
-colorama = "^0.4.6"
-gunicorn = "^23.0.0"
-iptools = "^0.7.0"
-iso-639 = "^0.4.5"
-iso8601 = "^0.1.14"
-phonenumbers = "^8.13.0"
-pycountry = "^24.6.1"
-python-dateutil = "^2.9.0"
-psycopg2-binary = "^2.9.9"
-python-intercom = "^3.1.0"
-packaging = "^24.0"
-requests-toolbelt = "^1.0.0"
-chardet = "^5.2.0"
-openpyxl = "^3.1.2"
-setuptools = "<81"
-urllib3 = "<2"
+[dependency-groups]
+dev = [
+    "pre-commit>=3.7.0",
+    "black>=24.4.2,<25",
+    "coverage>=7.6.0,<8",
+    "flake8>=7.1.0,<8",
+    "isort>=5.13.2,<6",
+    "codecov>=2.1.13,<3",
+    "responses>=0.25.3,<0.26",
+    "beautifulsoup4>=4.12.3,<5",
+]
 
-[tool.poetry.dev-dependencies]
-black = "^24.4.2"
-coverage = "^7.6.0"
-flake8 = "^7.1.0"
-isort = "^5.13.2"
-codecov = "^2.1.13"
-responses = "^0.25.3"
-beautifulsoup4 = "^4.12.3"
+[tool.uv.build-backend]
+module-root = ""
 
 [build-system]
-requires = ["poetry-core>=1.0.0"]
-build-backend = "poetry.core.masonry.api"
+requires = ["uv_build>=0.12.5,<0.13.0"]
+build-backend = "uv_build"
+
+[tool.uv]
+package = false

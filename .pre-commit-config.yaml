@@ -1,6 +1,15 @@
 repos:
   - repo: https://github.com/adamchainz/django-upgrade
-    rev: 1.22.1
+    rev: 1.32.0
     hooks:
       - id: django-upgrade
         args: [--target-version, "4.2"]
+  - repo: https://github.com/ikamensh/flynt/
+    rev: 1.0.6
+    hooks:
+    - id: flynt
+  - repo: https://github.com/asottile/pyupgrade
+    rev: v3.21.2
+    hooks:
+    - id: pyupgrade
+      args: [--py312-plus]

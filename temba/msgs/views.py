@@ -130,7 +130,7 @@ class InboxView(SpaMixin, OrgPermsMixin, BulkActionMixin, SmartListView):
         redirect = quote_plus(self.request.get_full_path())
         label = self.derive_label()
         label_id = label.uuid if isinstance(label, Label) else label
-        return "%s?l=%s&redirect=%s" % (reverse("msgs.msg_export"), label_id, redirect)
+        return f"{reverse('msgs.msg_export')}?l={label_id}&redirect={redirect}"
 
     def pre_process(self, request, *args, **kwargs):
         if self.system_label:
@@ -872,7 +872,7 @@ class MsgCRUDL(SmartCRUDL):
 
         @classmethod
         def derive_url_pattern(cls, path, action):
-            return r"^%s/%s/(?P<label>[^/]+)/$" % (path, action)
+            return rf"^{path}/{action}/(?P<label>[^/]+)/$"
 
         def derive_label(self):
             return self.request.user.get_org().msgs_labels.get(uuid=self.kwargs["label"])

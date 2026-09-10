@@ -9,10 +9,10 @@ service_urls = []
 for ticketer_type in Ticketer.get_types():
     urls = ticketer_type.get_urls()
     for u in urls:
-        u.name = "tickets.types.%s.%s" % (ticketer_type.slug, u.name)
+        u.name = f"tickets.types.{ticketer_type.slug}.{u.name}"
 
     if urls:
-        service_urls.append(re_path("^%s/" % ticketer_type.slug, include(urls)))
+        service_urls.append(re_path(f"^{ticketer_type.slug}/", include(urls)))
 
 urlpatterns = [
     path("", include(TicketCRUDL().as_urlpatterns())),

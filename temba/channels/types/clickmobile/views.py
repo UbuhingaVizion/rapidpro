@@ -62,7 +62,7 @@ class ClaimView(ClaimViewMixin, SmartFormView):
             user=self.request.user,
             country=data["country"],
             channel_type=self.channel_type,
-            name="Click Mobile: %s" % data["number"],
+            name=f"Click Mobile: {data['number']}",
             address=data["number"],
             config=config,
             schemes=[URN.TEL_SCHEME],

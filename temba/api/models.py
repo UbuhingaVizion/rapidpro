@@ -194,9 +194,9 @@ class APIToken(models.Model):
             role_group = role.group if role else None
 
         if not role_group:
-            raise ValueError("User '%s' has no suitable role for API usage" % str(user))
+            raise ValueError(f"User '{user!s}' has no suitable role for API usage")
         elif role_group.name not in cls.GROUP_GRANTED_TO:
-            raise ValueError("Role %s is not valid for API usage" % role_group.name)
+            raise ValueError(f"Role {role_group.name} is not valid for API usage")
 
         tokens = cls.objects.filter(is_active=True, user=user, org=org, role=role_group)
 

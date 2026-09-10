@@ -26,7 +26,7 @@ class BaseObjLogsView(OrgObjPermsMixin, SmartListView):
 
     @classmethod
     def derive_url_pattern(cls, path, action):
-        return r"^%s/%s/(?P<uuid>[^/]+)/$" % (path, action)
+        return rf"^{path}/{action}/(?P<uuid>[^/]+)/$"
 
     def get_object_org(self):
         return self.source.org

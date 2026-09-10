@@ -2108,7 +2108,7 @@ class ContactTest(TembaTest):
         ]
         self.assertEqual(
             [
-                dict(id="c-%s" % self.joe.uuid, text="Joe Blow", extra="blow80"),
+                dict(id=f"c-{self.joe.uuid}", text="Joe Blow", extra="blow80"),
                 dict(id="u-%d" % joe_tel.pk, text="0781 111 111", extra="Joe Blow", scheme="tel"),
                 dict(id="u-%d" % joe_twitter.pk, text="blow80", extra="Joe Blow", scheme="twitter"),
             ],
@@ -2117,7 +2117,7 @@ class ContactTest(TembaTest):
 
         # lookup by group id
         self.assertEqual(
-            [dict(id="g-%s" % joe_and_frank.uuid, text="Joe and Frank", extra=2)],
+            [dict(id=f"g-{joe_and_frank.uuid}", text="Joe and Frank", extra=2)],
             omnibox_request(f"g={joe_and_frank.uuid}"),
         )
 
@@ -2171,7 +2171,7 @@ class ContactTest(TembaTest):
         self.frank.stop(self.admin)
 
         # lookup by contact uuids
-        self.assertEqual(omnibox_request("c=%s,%s" % (self.joe.uuid, self.frank.uuid)), [])
+        self.assertEqual(omnibox_request(f"c={self.joe.uuid},{self.frank.uuid}"), [])
 
         # but still lookup by URN ids
         urn_query = "u=%d,%d" % (self.joe.get_urn(URN.TWITTER_SCHEME).pk, self.frank.get_urn(URN.TEL_SCHEME).pk)
@@ -2417,7 +2417,7 @@ class ContactTest(TembaTest):
         assertHistoryEvent(history, 1, "call_started", status="E", status_display="Errored (No Answer)")
 
         recent_start = datetime_to_timestamp(timezone.now() - timedelta(days=1))
-        response = self.fetch_protected(url + "?limit=100&after=%s" % recent_start, self.admin)
+        response = self.fetch_protected(url + f"?limit=100&after={recent_start}", self.admin)
 
         # with our recent flag on, should not see the older messages
         events = response.context["events"]
@@ -2970,7 +2970,7 @@ class ContactTest(TembaTest):
         self.assertEqual(self.joe, response.context["object_list"][0])
 
         # should have the export link
-        export_url = "%s?g=%s" % (reverse("contacts.contact_export"), group.uuid)
+        export_url = f"{reverse('contacts.contact_export')}?g={group.uuid}"
         self.assertContains(response, export_url)
 
         # should have an edit button
@@ -3107,13 +3107,13 @@ class ContactTest(TembaTest):
 
         contact_field = ContactField.user_fields.filter(key="state").first()
         response = self.client.get(
-            "%s?field=%s" % (reverse("contacts.contact_update_fields", args=[self.joe.id]), contact_field.id)
+            f"{reverse('contacts.contact_update_fields', args=[self.joe.id])}?field={contact_field.id}"
         )
         self.assertEqual("Home state", response.context["contact_field"].name)
 
         # grab our input field which is loaded async
         response = self.client.get(
-            "%s?field=%s" % (reverse("contacts.contact_update_fields_input", args=[self.joe.id]), contact_field.id)
+            f"{reverse('contacts.contact_update_fields_input', args=[self.joe.id])}?field={contact_field.id}"
         )
         self.assertContains(response, "Kigali City")
 
@@ -4190,7 +4190,7 @@ class ContactFieldTest(TembaTest):
         # export a specified group of contacts (only Ben and Adam are in the group)
         with self.assertNumQueries(41):
             self.assertExcelSheet(
-                request_export("?g=%s" % group.uuid)[0],
+                request_export(f"?g={group.uuid}")[0],
                 [
                     [
                         "Contact UUID",
@@ -4244,7 +4244,7 @@ class ContactFieldTest(TembaTest):
                 tz=self.org.timezone,
             )
 
-        assertImportExportedFile("?g=%s" % group.uuid)
+        assertImportExportedFile(f"?g={group.uuid}")
 
         # export a search
         mock_es_data = [
@@ -4326,7 +4326,7 @@ class ContactFieldTest(TembaTest):
         with ESMockWithScroll(data=mock_es_data):
             with self.assertNumQueries(42):
                 self.assertExcelSheet(
-                    request_export("?g=%s&s=Hagg" % group.uuid)[0],
+                    request_export(f"?g={group.uuid}&s=Hagg")[0],
                     [
                         [
                             "Contact UUID",
@@ -4364,7 +4364,7 @@ class ContactFieldTest(TembaTest):
                     tz=self.org.timezone,
                 )
 
-            assertImportExportedFile("?g=%s&s=Hagg" % group.uuid)
+            assertImportExportedFile(f"?g={group.uuid}&s=Hagg")
 
         # now try with an anonymous org
         with AnonymousOrg(self.org):
@@ -4475,7 +4475,7 @@ class ContactFieldTest(TembaTest):
         )
 
         self.assertEqual(
-            ContactListView.prepare_sort_field_struct(sort_on="{}".format(str(self.contactfield_1.uuid))),
+            ContactListView.prepare_sort_field_struct(sort_on=f"{str(self.contactfield_1.uuid)}"),
             (
                 str(self.contactfield_1.uuid),
                 "asc",
@@ -4489,7 +4489,7 @@ class ContactFieldTest(TembaTest):
         )
 
         self.assertEqual(
-            ContactListView.prepare_sort_field_struct(sort_on="-{}".format(str(self.contactfield_1.uuid))),
+            ContactListView.prepare_sort_field_struct(sort_on=f"-{str(self.contactfield_1.uuid)}"),
             (
                 str(self.contactfield_1.uuid),
                 "desc",
@@ -4503,7 +4503,7 @@ class ContactFieldTest(TembaTest):
         )
 
         self.assertEqual(
-            ContactListView.prepare_sort_field_struct(sort_on="-{}".format(str(self.contactfield_1.uuid))),
+            ContactListView.prepare_sort_field_struct(sort_on=f"-{str(self.contactfield_1.uuid)}"),
             (
                 str(self.contactfield_1.uuid),
                 "desc",
@@ -4517,7 +4517,7 @@ class ContactFieldTest(TembaTest):
         )
 
         self.assertEqual(
-            ContactListView.prepare_sort_field_struct(sort_on="-{}".format(str(ward.uuid))),
+            ContactListView.prepare_sort_field_struct(sort_on=f"-{str(ward.uuid)}"),
             (
                 str(ward.uuid),
                 "desc",
@@ -4531,7 +4531,7 @@ class ContactFieldTest(TembaTest):
         )
 
         self.assertEqual(
-            ContactListView.prepare_sort_field_struct(sort_on="-{}".format(str(district.uuid))),
+            ContactListView.prepare_sort_field_struct(sort_on=f"-{str(district.uuid)}"),
             (
                 str(district.uuid),
                 "desc",
@@ -4545,7 +4545,7 @@ class ContactFieldTest(TembaTest):
         )
 
         self.assertEqual(
-            ContactListView.prepare_sort_field_struct(sort_on="{}".format(str(state.uuid))),
+            ContactListView.prepare_sort_field_struct(sort_on=f"{str(state.uuid)}"),
             (
                 str(state.uuid),
                 "asc",
@@ -4580,25 +4580,25 @@ class ContactFieldTest(TembaTest):
         mr_mocks.contact_search("", contacts=[self.joe])
         mr_mocks.contact_search("Joe", contacts=[self.joe])
 
-        response = self.client.get("%s?sort_on=%s" % (url, str(self.contactfield_1.key)))
+        response = self.client.get(f"{url}?sort_on={self.contactfield_1.key!s}")
 
         self.assertEqual(response.context["sort_field"], str(self.contactfield_1.key))
         self.assertEqual(response.context["sort_direction"], "asc")
         self.assertNotIn("search", response.context)
 
-        response = self.client.get("%s?sort_on=-%s" % (url, str(self.contactfield_1.key)))
+        response = self.client.get(f"{url}?sort_on=-{self.contactfield_1.key!s}")
 
         self.assertEqual(response.context["sort_field"], str(self.contactfield_1.key))
         self.assertEqual(response.context["sort_direction"], "desc")
         self.assertNotIn("search", response.context)
 
-        response = self.client.get("%s?sort_on=%s" % (url, "created_on"))
+        response = self.client.get(f"{url}?sort_on=created_on")
 
         self.assertEqual(response.context["sort_field"], "created_on")
         self.assertEqual(response.context["sort_direction"], "asc")
         self.assertNotIn("search", response.context)
 
-        response = self.client.get("%s?sort_on=-%s&search=Joe" % (url, "created_on"))
+        response = self.client.get(f"{url}?sort_on=-created_on&search=Joe")
 
         self.assertEqual(response.context["sort_field"], "created_on")
         self.assertEqual(response.context["sort_direction"], "desc")
@@ -5222,7 +5222,7 @@ class ESIntegrationTest(TembaNonAtomicTest):
         for i in range(90):
             name = names[i % len(names)]
 
-            number = "0188382%s" % str(i).zfill(3)
+            number = f"0188382{str(i).zfill(3)}"
             twitter = ("tweep_%d" % (i + 1)) if (i % 3 == 0) else None  # 1 in 3 have twitter URN
             join_date = datetime_to_str(date(2014, 1, 1) + timezone.timedelta(days=i), date_format, tz=pytz.utc)
 
@@ -5262,10 +5262,9 @@ class ESIntegrationTest(TembaNonAtomicTest):
 
         result = subprocess.run(
             ["./rp-indexer", "-elastic-url", settings.ELASTICSEARCH_URL, "-db", database_url, "-rebuild"],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            capture_output=True,
         )
-        self.assertEqual(result.returncode, 0, "Command failed: %s\n\n%s" % (result.stdout, result.stderr))
+        self.assertEqual(result.returncode, 0, f"Command failed: {result.stdout}\n\n{result.stderr}")
 
         def q(query):
             results = search_contacts(self.org, query, group=self.org.active_contacts_group)
@@ -5355,10 +5354,9 @@ class ESIntegrationTest(TembaNonAtomicTest):
         # a new contact was created, execute the rp-indexer again
         result = subprocess.run(
             ["./rp-indexer", "-elastic-url", settings.ELASTICSEARCH_URL, "-db", database_url, "-rebuild"],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            capture_output=True,
         )
-        self.assertEqual(result.returncode, 0, "Command failed: %s\n\n%s" % (result.stdout, result.stderr))
+        self.assertEqual(result.returncode, 0, f"Command failed: {result.stdout}\n\n{result.stderr}")
 
         # give ES some time to publish the results
         time.sleep(5)
@@ -5410,15 +5408,15 @@ class ESIntegrationTest(TembaNonAtomicTest):
         url = reverse("contacts.contact_list")
         self.login(self.admin)
 
-        response = self.client.get("%s?sort_on=%s" % (url, "created_on"))
+        response = self.client.get(f"{url}?sort_on=created_on")
         self.assertEqual(response.context["object_list"][0].name, "Trey")  # first contact in the set
         self.assertEqual(response.context["object_list"][0].fields[str(age.uuid)], {"text": "10", "number": 10})
 
-        response = self.client.get("%s?sort_on=-%s" % (url, "created_on"))
+        response = self.client.get(f"{url}?sort_on=-created_on")
         self.assertEqual(response.context["object_list"][0].name, "Id Contact")  # last contact in the set
         self.assertEqual(response.context["object_list"][0].fields, None)
 
-        response = self.client.get("%s?sort_on=-%s" % (url, str(ward.key)))
+        response = self.client.get(f"{url}?sort_on=-{ward.key!s}")
         self.assertEqual(
             response.context["object_list"][0].fields[str(ward.uuid)],
             {
@@ -5429,7 +5427,7 @@ class ESIntegrationTest(TembaNonAtomicTest):
             },
         )
 
-        response = self.client.get("%s?sort_on=%s" % (url, str(ward.key)))
+        response = self.client.get(f"{url}?sort_on={ward.key!s}")
         self.assertEqual(
             response.context["object_list"][0].fields[str(ward.uuid)],
             {
@@ -5449,18 +5447,17 @@ class ESIntegrationTest(TembaNonAtomicTest):
         # new contacts were created, execute the rp-indexer again
         result = subprocess.run(
             ["./rp-indexer", "-elastic-url", settings.ELASTICSEARCH_URL, "-db", database_url, "-rebuild"],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            capture_output=True,
         )
-        self.assertEqual(result.returncode, 0, "Command failed: %s\n\n%s" % (result.stdout, result.stderr))
+        self.assertEqual(result.returncode, 0, f"Command failed: {result.stdout}\n\n{result.stderr}")
 
         # give ES some time to publish the results
         time.sleep(5)
 
-        response = self.client.get("%s?sort_on=%s" % (url, "last_seen_on"))
+        response = self.client.get(f"{url}?sort_on=last_seen_on")
         self.assertEqual(response.context["object_list"][0].name, "Chris")  # oldest contact last seen
 
-        response = self.client.get("%s?sort_on=-%s" % (url, "last_seen_on"))
+        response = self.client.get(f"{url}?sort_on=-last_seen_on")
         self.assertEqual(response.context["object_list"][0].name, "James")  # recent contact last seen
 
         # create a dynamic group on age
@@ -5504,7 +5501,7 @@ class ESIntegrationTest(TembaNonAtomicTest):
 class ContactImportTest(TembaTest):
     def test_parse_errors(self):
         # try to open an import that is completely empty
-        with self.assertRaisesRegexp(ValidationError, "Import file appears to be empty."):
+        with self.assertRaisesRegex(ValidationError, "Import file appears to be empty."):
             ContactImport.try_to_parse(self.org, io.BytesIO(b""), "foo.csv")
 
         def try_to_parse(name):
@@ -5514,7 +5511,7 @@ class ContactImportTest(TembaTest):
 
         # try to open an import that exceeds the record limit
         with patch("temba.contacts.models.ContactImport.MAX_RECORDS", 2):
-            with self.assertRaisesRegexp(ValidationError, r"Import files can contain a maximum of 2 records\."):
+            with self.assertRaisesRegex(ValidationError, r"Import files can contain a maximum of 2 records\."):
                 try_to_parse("simple.xlsx")
 
         bad_files = [
@@ -6112,7 +6109,7 @@ class ContactImportCRUDLTest(TembaTest, CRUDLTestMixin):
         imp = ContactImport.objects.get()
         self.assertEqual(self.org, imp.org)
         self.assertEqual(3, imp.num_records)
-        self.assertRegexpMatches(imp.file.name, rf"^contact_imports/{self.org.id}/[\w-]{{36}}.xlsx$")
+        self.assertRegex(imp.file.name, rf"^contact_imports/{self.org.id}/[\w-]{{36}}.xlsx$")
         self.assertEqual("simple.xlsx", imp.original_filename)
         self.assertIsNone(imp.started_on)
         self.assertIsNone(imp.group)

@@ -25,7 +25,7 @@ def handle_asset_request(user, asset_store, pk):
         else:
             asset_file = open("." + location, "rb")
             response = HttpResponse(asset_file, content_type=mime_type)
-            response["Content-Disposition"] = "attachment; filename=%s" % filename
+            response["Content-Disposition"] = f"attachment; filename={filename}"
 
         return response
     except AssetEntityNotFound:

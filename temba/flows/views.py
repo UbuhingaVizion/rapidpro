@@ -152,7 +152,7 @@ class PartialTemplate(SmartTemplateView):  # pragma: no cover
         return
 
     def get_template_names(self):
-        return "partials/%s.html" % self.template
+        return f"partials/{self.template}.html"
 
 
 class FlowSessionCRUDL(SmartCRUDL):
@@ -227,7 +227,7 @@ class FlowCRUDL(SmartCRUDL):
     class Menu(MenuMixin, SmartTemplateView):
         @classmethod
         def derive_url_pattern(cls, path, action):
-            return r"^%s/%s/((?P<submenu>[A-z]+)/)?$" % (path, action)
+            return rf"^{path}/{action}/((?P<submenu>[A-z]+)/)?$"
 
         def derive_menu(self):
 
@@ -294,7 +294,7 @@ class FlowCRUDL(SmartCRUDL):
 
         @classmethod
         def derive_url_pattern(cls, path, action):
-            return r"^%s/%s/(?P<uuid>[0-9a-f-]+)/((?P<revision_id>\d+)/)?$" % (path, action)
+            return rf"^{path}/{action}/(?P<uuid>[0-9a-f-]+)/((?P<revision_id>\d+)/)?$"
 
         def get(self, request, *args, **kwargs):
             flow = self.get_object()
@@ -877,7 +877,7 @@ class FlowCRUDL(SmartCRUDL):
 
         @classmethod
         def derive_url_pattern(cls, path, action):
-            return r"^%s/%s/(?P<campaign_id>\d+)/$" % (path, action)
+            return rf"^{path}/{action}/(?P<campaign_id>\d+)/$"
 
         def derive_title(self, *args, **kwargs):
             return self.get_campaign().name
@@ -952,7 +952,7 @@ class FlowCRUDL(SmartCRUDL):
 
         @classmethod
         def derive_url_pattern(cls, path, action):
-            return r"^%s/%s/(?P<uuid>[0-9a-f-]+)/$" % (path, action)
+            return rf"^{path}/{action}/(?P<uuid>[0-9a-f-]+)/$"
 
         def derive_title(self, *args, **kwargs):
             return self.derive_label().name
@@ -1738,7 +1738,7 @@ class FlowCRUDL(SmartCRUDL):
             try:
                 json_dict = json.loads(request.body)
             except Exception as e:  # pragma: needs cover
-                return JsonResponse(dict(status="error", description="Error parsing JSON: %s" % str(e)), status=400)
+                return JsonResponse(dict(status="error", description=f"Error parsing JSON: {e!s}"), status=400)
 
             if not settings.MAILROOM_URL:  # pragma: no cover
                 return JsonResponse(

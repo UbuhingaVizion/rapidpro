@@ -182,7 +182,7 @@ class ChannelType(metaclass=ABCMeta):
         try:
             return (
                 Engine.get_default()
-                .get_template("channels/types/%s/config.html" % self.slug)
+                .get_template(f"channels/types/{self.slug}/config.html")
                 .render(context=Context(self.get_configuration_context_dict(channel)))
             )
         except TemplateDoesNotExist:
@@ -434,7 +434,7 @@ class Channel(LegacyUUIDMixin, TembaModel, DependencyMixin):
 
         if schemes:
             if channel_type.schemes and not set(channel_type.schemes).intersection(schemes):
-                raise ValueError("Channel type '%s' cannot support schemes %s" % (channel_type, schemes))
+                raise ValueError(f"Channel type '{channel_type}' cannot support schemes {schemes}")
         else:
             schemes = channel_type.schemes
 
@@ -493,7 +493,7 @@ class Channel(LegacyUUIDMixin, TembaModel, DependencyMixin):
         try:
             return TYPES[code]
         except KeyError:  # pragma: no cover
-            raise ValueError("Unrecognized channel type code: %s" % code)
+            raise ValueError(f"Unrecognized channel type code: {code}")
 
     @classmethod
     def get_types(cls):
@@ -758,7 +758,7 @@ class Channel(LegacyUUIDMixin, TembaModel, DependencyMixin):
         if self.is_android():
             return _("Android Phone")
         else:
-            return _("%s Channel" % self.get_channel_type_display())
+            return _(f"{self.get_channel_type_display()} Channel")
 
     def get_address_display(self, e164=False):
         from temba.contacts.models import URN
@@ -780,13 +780,13 @@ class Channel(LegacyUUIDMixin, TembaModel, DependencyMixin):
                 pass
 
         elif URN.TWITTER_SCHEME in self.schemes:
-            return "@%s" % self.address
+            return f"@{self.address}"
 
         elif URN.FACEBOOK_SCHEME in self.schemes:
-            return "%s (%s)" % (self.config.get(Channel.CONFIG_PAGE_NAME, self.name), self.address)
+            return f"{self.config.get(Channel.CONFIG_PAGE_NAME, self.name)} ({self.address})"
 
         elif self.channel_type == "WAC":
-            return "%s (%s)" % (self.config.get("wa_number", ""), self.config.get("wa_verified_name", self.name))
+            return f"{self.config.get('wa_number', '')} ({self.config.get('wa_verified_name', self.name)})"
 
         return self.address
 
@@ -1593,7 +1593,7 @@ class Alert(SmartModel):
                 template = "channels/email/disconnected_alert"
 
         elif self.alert_type == self.TYPE_SMS:
-            subject = "Your %s is having trouble sending messages" % self.channel.get_channel_type_name()
+            subject = f"Your {self.channel.get_channel_type_name()} is having trouble sending messages"
             template = "channels/email/sms_alert"
         else:  # pragma: no cover
             raise Exception(_("Unknown alert type: %(alert)s") % {"alert": self.alert_type})

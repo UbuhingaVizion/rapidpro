@@ -65,7 +65,7 @@ class FacebookAppType(ChannelType):
             )
 
             if response.status_code != 200:  # pragma: no cover
-                raise Exception("Unable to update call to action: %s" % response.text)
+                raise Exception(f"Unable to update call to action: {response.text}")
 
     def deactivate_trigger(self, trigger):
         # for any new conversation triggers, clear out the call to action payload
@@ -80,4 +80,4 @@ class FacebookAppType(ChannelType):
             )
 
             if response.status_code != 200:  # pragma: no cover
-                raise Exception("Unable to update call to action: %s" % response.text)
+                raise Exception(f"Unable to update call to action: {response.text}")

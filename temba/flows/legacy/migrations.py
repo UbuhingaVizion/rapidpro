@@ -53,7 +53,7 @@ def migrate_to_version_11_12(json_flow, flow=None):
                     continue
                 else:
                     action["channel"] = channel.uuid
-                    action["name"] = "%s: %s" % (channel.get_channel_type_display(), channel.get_address_display())
+                    action["name"] = f"{channel.get_channel_type_display()}: {channel.get_address_display()}"
 
             # the action is valid append it
             valid_actions.append(action)
@@ -704,8 +704,8 @@ def migrate_export_to_version_11_0(json_export, org, same_site=True):
         format_function = "format_date" if cf.value_type == "D" else "format_location"
         replacements.append(
             [
-                r"@contact\.%s([^0-9a-zA-Z\.]|\.[^0-9a-zA-Z\.]|$|\.$)" % cf.key,
-                r"@(%s(contact.%s))\1" % (format_function, cf.key),
+                rf"@contact\.{cf.key}([^0-9a-zA-Z\.]|\.[^0-9a-zA-Z\.]|$|\.$)",
+                rf"@({format_function}(contact.{cf.key}))\1",
             ]
         )
 
@@ -731,7 +731,7 @@ def migrate_export_to_version_11_0(json_export, org, same_site=True):
             key = label_to_slug(rs["label"])
 
             # any reference to this result value's time property needs wrapped in format_date
-            replacements.append([r"@flow\.%s\.time" % key, r"@(format_date(flow.%s.time))" % key])
+            replacements.append([rf"@flow\.{key}\.time", rf"@(format_date(flow.{key}.time))"])
 
             # how we wrap the actual result value depends on its type
             if rs_type in ["date", "date_before", "date_after", "date_equal"]:
@@ -743,8 +743,8 @@ def migrate_export_to_version_11_0(json_export, org, same_site=True):
 
             replacements.append(
                 [
-                    r"@flow\.%s([^0-9a-zA-Z\.]|\.[^0-9a-zA-Z\.]|$|\.$)" % key,
-                    r"@(%s(flow.%s))\1" % (format_function, key),
+                    rf"@flow\.{key}([^0-9a-zA-Z\.]|\.[^0-9a-zA-Z\.]|$|\.$)",
+                    rf"@({format_function}(flow.{key}))\1",
                 ]
             )
 
@@ -1151,7 +1151,7 @@ def migrate_to_version_6(json_flow, flow=None):
 
     def convert_to_dict(d, key):
         if key not in d:  # pragma: no cover
-            raise ValueError("Missing '%s' in dict: %s" % (key, d))
+            raise ValueError(f"Missing '{key}' in dict: {d}")
 
         if not isinstance(d[key], dict):
             d[key] = {base_language: d[key]}
@@ -1165,7 +1165,7 @@ def migrate_to_version_6(json_flow, flow=None):
                 # betweens haven't always required a category name, create one
                 rule_test = rule["test"]
                 if rule_test["type"] == "between" and "category" not in rule:
-                    rule["category"] = "%s-%s" % (rule_test["min"], rule_test["max"])
+                    rule["category"] = f"{rule_test['min']}-{rule_test['max']}"
 
                 # convert the category name
                 convert_to_dict(rule, "category")
@@ -1308,7 +1308,7 @@ def cleanse_group_names(action):
                 if "name" not in group:
                     group["name"] = "Unknown"
                 if not is_valid_name(group["name"]):
-                    group["name"] = "%s %s" % ("Contacts", group["name"])
+                    group["name"] = f"Contacts {group['name']}"
     return action
 
 

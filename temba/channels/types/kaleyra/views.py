@@ -46,7 +46,7 @@ class ClaimView(ClaimViewMixin, SmartFormView):
             user,
             data["country"],
             "KWA",
-            name="Kaleyra WhatsApp: %s" % data["number"],
+            name=f"Kaleyra WhatsApp: {data['number']}",
             address=data["number"],
             config=config,
             tps=45,

@@ -15,7 +15,7 @@ class MatcherMixin:
         return not self.__eq__(other)
 
     def __repr__(self):
-        return "<Any:%s>" % self.__class__.__name__
+        return f"<Any:{self.__class__.__name__}>"
 
 
 class String(MatcherMixin, str):

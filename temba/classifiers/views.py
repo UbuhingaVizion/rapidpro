@@ -21,7 +21,7 @@ class BaseConnectView(ComponentFormMixin, OrgPermsMixin, SmartFormView):
 
     def get_template_names(self):
         return (
-            "classifiers/types/%s/connect.html" % self.classifier_type.slug,
+            f"classifiers/types/{self.classifier_type.slug}/connect.html",
             "classifiers/classifier_connect_form.html",
         )
 

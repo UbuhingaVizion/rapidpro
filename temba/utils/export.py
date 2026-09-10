@@ -99,7 +99,7 @@ class BaseExportTask(LegacyUUIDMixin, SmartModel):
             self.update_status(self.STATUS_COMPLETE)
             elapsed = time.time() - start
             print(f"Completed {self.analytics_key} with ID {self.id} in {elapsed:.1f} seconds")
-            analytics.track(self.created_by, "temba.%s_latency" % self.analytics_key, properties=dict(value=elapsed))
+            analytics.track(self.created_by, f"temba.{self.analytics_key}_latency", properties=dict(value=elapsed))
 
             Notification.export_finished(self)
         finally:

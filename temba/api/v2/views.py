@@ -1654,7 +1654,7 @@ class DefinitionsEndpoint(BaseAPIView):
         include = params.get("dependencies", "all")
         if include not in DefinitionsEndpoint.Depends.__members__:
             raise InvalidQueryError(
-                "dependencies must be one of %s" % ", ".join(DefinitionsEndpoint.Depends.__members__)
+                f"dependencies must be one of {', '.join(DefinitionsEndpoint.Depends.__members__)}"
             )
 
         include = DefinitionsEndpoint.Depends[include]

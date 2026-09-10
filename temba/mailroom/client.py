@@ -298,9 +298,9 @@ class MailroomClient:
 
     def _request(self, endpoint, payload=None, files=None, post=True, encode_json=False, returns_json=True):
         if logger.isEnabledFor(logging.DEBUG):  # pragma: no cover
-            logger.debug("=============== %s request ===============" % endpoint)
+            logger.debug(f"=============== {endpoint} request ===============")
             logger.debug(json.dumps(payload, indent=2))
-            logger.debug("=============== /%s request ===============" % endpoint)
+            logger.debug(f"=============== /{endpoint} request ===============")
 
         headers = self.headers.copy()
         if files:
@@ -314,14 +314,14 @@ class MailroomClient:
             kwargs = dict(json=payload)
 
         req_fn = requests.post if post else requests.get
-        response = req_fn("%s/mr/%s" % (self.base_url, endpoint), headers=headers, **kwargs)
+        response = req_fn(f"{self.base_url}/mr/{endpoint}", headers=headers, **kwargs)
 
         return_val = response.json() if returns_json else response.content
 
         if logger.isEnabledFor(logging.DEBUG):  # pragma: no cover
-            logger.debug("=============== %s response ===============" % endpoint)
+            logger.debug(f"=============== {endpoint} response ===============")
             logger.debug(return_val)
-            logger.debug("=============== /%s response ===============" % endpoint)
+            logger.debug(f"=============== /{endpoint} response ===============")
 
         if response.status_code == 422:
             raise FlowValidationException(endpoint, payload, return_val)

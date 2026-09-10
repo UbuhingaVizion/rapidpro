@@ -66,7 +66,7 @@ class ArchiveCRUDL(SmartCRUDL):
     class Run(BaseList):
         @classmethod
         def derive_url_pattern(cls, path, action):
-            return r"^%s/%s/$" % (path, Archive.TYPE_FLOWRUN)
+            return rf"^{path}/{Archive.TYPE_FLOWRUN}/$"
 
         def derive_title(self):
             return _("Run Archives")
@@ -77,7 +77,7 @@ class ArchiveCRUDL(SmartCRUDL):
     class Message(BaseList):
         @classmethod
         def derive_url_pattern(cls, path, action):
-            return r"^%s/%s/$" % (path, Archive.TYPE_MSG)
+            return rf"^{path}/{Archive.TYPE_MSG}/$"
 
         def derive_title(self):
             return _("Message Archives")

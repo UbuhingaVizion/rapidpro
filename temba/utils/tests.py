@@ -577,11 +577,11 @@ class EmailTest(TembaTest):
             "test@domain.with.idn.tld.उदाहरण.परीक्षा",
             "email@localhost",
             '"test@test"@example.com',
-            "example@atm.%s" % ("a" * 63),
-            "example@%s.atm" % ("a" * 63),
-            "example@%s.%s.atm" % ("a" * 63, "b" * 10),
+            f"example@atm.{'a' * 63}",
+            f"example@{'a' * 63}.atm",
+            f"example@{'a' * 63}.{'b' * 10}.atm",
             '"\\\011"@here.com',
-            "a@%s.us" % ("a" * 63),
+            f"a@{'a' * 63}.us",
         ]
 
         invalid_emails = [
@@ -604,7 +604,7 @@ class EmailTest(TembaTest):
             "john.doe@example..com"
             # Cases from Django tests
             "example@atm.%s" % ("a" * 64),
-            "example@%s.atm.%s" % ("b" * 64, "a" * 63),
+            f"example@{'b' * 64}.atm.{'a' * 63}",
             None,
             "",
             "abc",
@@ -628,7 +628,7 @@ class EmailTest(TembaTest):
             '"\\\012"@here.com',
             "trailingdot@shouldfail.com.",
             # Max length of domain name labels is 63 characters per RFC 1034.
-            "a@%s.us" % ("a" * 64),
+            f"a@{'a' * 64}.us",
             # Trailing newlines in username or domain not allowed
             "a@b.com\n",
             "a\n@b.com",
@@ -637,10 +637,10 @@ class EmailTest(TembaTest):
         ]
 
         for email in valid_emails:
-            self.assertTrue(is_valid_address(email), "FAILED: %s should be a valid email" % email)
+            self.assertTrue(is_valid_address(email), f"FAILED: {email} should be a valid email")
 
         for email in invalid_emails:
-            self.assertFalse(is_valid_address(email), "FAILED: %s should be an invalid email" % email)
+            self.assertFalse(is_valid_address(email), f"FAILED: {email} should be an invalid email")
 
 
 class JsonTest(TembaTest):

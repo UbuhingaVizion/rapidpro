@@ -39,16 +39,16 @@ class Command(BaseCommand):
         oauth_token = options["oauth_token"]
 
         if oauth_token:  # pragma: needs cover
-            headers = {"Authorization": "token %s" % (oauth_token,)}
+            headers = {"Authorization": f"token {oauth_token}"}
         else:
             headers = {}
 
-        data = requests.get("https://api.github.com/repos/%s/git/trees/master" % (repo,), headers=headers).json()
+        data = requests.get(f"https://api.github.com/repos/{repo}/git/trees/master", headers=headers).json()
         [geojson] = filter(lambda obj: obj["path"] == "geojson", data["tree"])
         geojson_sha = geojson["sha"]
 
         files = requests.get(
-            "https://api.github.com/repos/%s/git/trees/%s" % (repo, geojson_sha), headers=headers
+            f"https://api.github.com/repos/{repo}/git/trees/{geojson_sha}", headers=headers
         ).json()
 
         if not os.path.exists(destination_dir):
@@ -56,13 +56,13 @@ class Command(BaseCommand):
 
         for relation_id in relation_ids:
             relation_files = filter(
-                lambda obj: regex.match(r"R%s.*_simplified.json" % (relation_id,), obj["path"]), files["tree"]
+                lambda obj: regex.match(rf"R{relation_id}.*_simplified.json", obj["path"]), files["tree"]
             )
             for relation_file in relation_files:
                 destination = os.path.join(destination_dir, relation_file["path"])
                 with open(destination, "wb") as fp:
                     response = requests.get(
-                        "https://raw.githubusercontent.com/%s/master/geojson/%s" % (repo, relation_file["path"]),
+                        f"https://raw.githubusercontent.com/{repo}/master/geojson/{relation_file['path']}",
                         headers=headers,
                     )
                     fp.write(response.content)

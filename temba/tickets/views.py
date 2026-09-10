@@ -58,7 +58,7 @@ class BaseConnectView(ComponentFormMixin, OrgPermsMixin, SmartFormView):
         return kwargs
 
     def get_template_names(self):
-        return ("tickets/types/%s/connect.html" % self.ticketer_type.slug, "tickets/ticketer_connect_form.html")
+        return (f"tickets/types/{self.ticketer_type.slug}/connect.html", "tickets/ticketer_connect_form.html")
 
     def derive_title(self):
         return _("Connect %(ticketer)s") % {"ticketer": self.ticketer_type.name}

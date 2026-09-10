@@ -725,5 +725,5 @@ class DownloadGeoJsonTest(TembaTest):
         call_command("download_geojson", "12345", "--dir", destination_dir)
         self.assertFalse(os.path.exists(bad_path))
         self.assertTrue(os.path.exists(good_path))
-        with open(good_path, "r") as fp:
+        with open(good_path) as fp:
             self.assertEqual(fp.read(), "the-relation-json")

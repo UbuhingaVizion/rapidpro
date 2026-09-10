@@ -62,7 +62,7 @@ class ConnectView(BaseConnectView):
         if request.GET.get("error"):
             messages.error(request, request.GET.get("error_description"))
 
-        return super(ConnectView, self).get(request, *args, **kwargs)
+        return super().get(request, *args, **kwargs)
 
     def get_absolute_url(self):
         brand = self.org.get_branding()
@@ -97,7 +97,7 @@ class ConnectView(BaseConnectView):
             )
         except ClientError:
             messages.error(request, _("Unable to request OAuth token."))
-            return super(ConnectView, self).get(request, *args, **kwargs)
+            return super().get(request, *args, **kwargs)
 
         config = {
             ZendeskType.CONFIG_SUBDOMAIN: subdomain,

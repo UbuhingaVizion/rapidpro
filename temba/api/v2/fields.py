@@ -24,11 +24,11 @@ def validate_translations(value, base_language, max_length):
     if len(value) == 0:
         raise serializers.ValidationError("Must include at least one translation.")
     if base_language not in value:
-        raise serializers.ValidationError("Must include translation for base language '%s'" % base_language)
+        raise serializers.ValidationError(f"Must include translation for base language '{base_language}'")
 
     for lang, trans in value.items():
         if not isinstance(lang, str) or (lang != "base" and len(lang) > 3):
-            raise serializers.ValidationError("Language code %s is not valid." % str(lang))
+            raise serializers.ValidationError(f"Language code {lang!s} is not valid.")
         if not isinstance(trans, str):
             raise serializers.ValidationError("Translations must be strings.")
         if len(trans) > max_length:
@@ -42,7 +42,7 @@ def validate_urn(value, strict=True, country_code=None):
         if strict and not URN.validate(normalized, country_code=country_code):
             raise ValueError()
     except ValueError:
-        raise serializers.ValidationError("Invalid URN: %s. Ensure phone numbers contain country codes." % value)
+        raise serializers.ValidationError(f"Invalid URN: {value}. Ensure phone numbers contain country codes.")
     return normalized
 
 
@@ -157,7 +157,7 @@ class TembaModelField(serializers.RelatedField):
         query = Q()
         for lookup_field in self.lookup_fields:
             ignore_case = lookup_field in self.ignore_case_for_fields
-            lookup = "%s__%s" % (lookup_field, "iexact" if ignore_case else "exact")
+            lookup = f"{lookup_field}__{'iexact' if ignore_case else 'exact'}"
             query |= Q(**{lookup: value})
 
         return self.get_queryset().filter(query).first()
@@ -172,7 +172,7 @@ class TembaModelField(serializers.RelatedField):
         obj = self.get_object(data)
 
         if self.require_exists and not obj:
-            raise serializers.ValidationError("No such object: %s" % data)
+            raise serializers.ValidationError(f"No such object: {data}")
 
         return obj
 
@@ -247,7 +247,7 @@ class ContactGroupField(TembaModelField):
         obj = super().to_internal_value(data)
 
         if not self.allow_dynamic and obj.is_smart:
-            raise serializers.ValidationError("Contact group must not be query based: %s" % data)
+            raise serializers.ValidationError(f"Contact group must not be query based: {data}")
 
         return obj
 

@@ -60,7 +60,7 @@ class WhatsAppType(ChannelType):
         TemplateTranslation.trim(channel, [])
 
     def get_api_headers(self, channel):
-        return {"Authorization": "Bearer %s" % channel.config[Channel.CONFIG_AUTH_TOKEN]}
+        return {"Authorization": f"Bearer {channel.config[Channel.CONFIG_AUTH_TOKEN]}"}
 
     def activate(self, channel):
         domain = channel.org.get_brand_domain()

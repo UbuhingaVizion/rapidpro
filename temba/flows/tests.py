@@ -1635,12 +1635,12 @@ class FlowTest(TembaTest):
 
             # make sure our field exists after import
             field = ContactField.user_fields.filter(key=key, name=name).first()
-            self.assertIsNotNone(field, "Couldn't find field %s (%s)" % (key, name))
+            self.assertIsNotNone(field, f"Couldn't find field {key} ({name})")
 
             # and our flow is dependent on us
             self.assertIsNotNone(
                 flow.field_dependencies.filter(key__in=[key]).first(),
-                "Flow is missing dependency on %s (%s)" % (key, name),
+                f"Flow is missing dependency on {key} ({name})",
             )
 
         # we can delete our child flow and the parent ('Dependencies') will be marked as having issues
@@ -2812,7 +2812,7 @@ class FlowCRUDLTest(TembaTest, CRUDLTestMixin):
             content_type="application/json",
         )
 
-        self.assertEquals(
+        self.assertEqual(
             response.json()["warnings"],
             ["The message template affirmation does not exist on your account and cannot be sent."],
         )
@@ -2830,7 +2830,7 @@ class FlowCRUDLTest(TembaTest, CRUDLTestMixin):
             content_type="application/json",
         )
 
-        self.assertEquals(
+        self.assertEqual(
             response.json()["warnings"], ["Your message template affirmation is not approved and cannot be sent."]
         )
 
@@ -2857,7 +2857,7 @@ class FlowCRUDLTest(TembaTest, CRUDLTestMixin):
             content_type="application/json",
         )
 
-        self.assertEquals(
+        self.assertEqual(
             response.json()["warnings"], ["Your message template affirmation is not approved and cannot be sent."]
         )
 
@@ -2874,7 +2874,7 @@ class FlowCRUDLTest(TembaTest, CRUDLTestMixin):
             content_type="application/json",
         )
 
-        self.assertEquals(response.json()["warnings"], [])
+        self.assertEqual(response.json()["warnings"], [])
 
     @mock_mailroom
     def test_broadcast(self, mr_mocks):
@@ -3025,7 +3025,7 @@ class FlowCRUDLTest(TembaTest, CRUDLTestMixin):
 
         response = self.client.post(reverse("flows.flow_copy", args=[flow.id]))
 
-        flow_copy = Flow.objects.get(org=self.org, name="Copy of %s" % flow.name)
+        flow_copy = Flow.objects.get(org=self.org, name=f"Copy of {flow.name}")
 
         self.assertRedirect(response, reverse("flows.flow_editor", args=[flow_copy.uuid]))
 
@@ -3269,11 +3269,11 @@ class FlowCRUDLTest(TembaTest, CRUDLTestMixin):
             FlowRun.objects.create(org=self.org, flow=flow, contact=pete, responded=False)
 
             # fetch our intercooler rows for the run table
-            response = self.client.get("%s?responded=bla" % reverse("flows.flow_run_table", args=[flow.id]))
+            response = self.client.get(f"{reverse('flows.flow_run_table', args=[flow.id])}?responded=bla")
             self.assertEqual(len(response.context["runs"]), 1)
             self.assertEqual(200, response.status_code)
 
-            response = self.client.get("%s?responded=true" % reverse("flows.flow_run_table", args=[flow.id]))
+            response = self.client.get(f"{reverse('flows.flow_run_table', args=[flow.id])}?responded=true")
             self.assertEqual(len(response.context["runs"]), 1)
 
     def test_activity(self):
@@ -3602,8 +3602,7 @@ class FlowRunTest(TembaTest):
 
         self.assertEqual(
             set(run_json.keys()),
-            set(
-                [
+            {
                     "id",
                     "uuid",
                     "flow",
@@ -3616,8 +3615,7 @@ class FlowRunTest(TembaTest):
                     "exited_on",
                     "exit_type",
                     "submitted_by",
-                ]
-            ),
+            },
         )
 
         self.assertEqual(run.id, run_json["id"])

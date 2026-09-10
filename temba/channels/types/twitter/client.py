@@ -9,7 +9,7 @@ class TwitterClient(Twython):
         Returns the webhooks currently active for this app. (Twitter claims there can only be one)
         Docs: https://developer.twitter.com/en/docs/accounts-and-users/subscribe-account-activity/api-reference/aaa-standard-all
         """
-        return self.get("https://api.twitter.com/1.1/account_activity/all/%s/webhooks.json" % env_name)
+        return self.get(f"https://api.twitter.com/1.1/account_activity/all/{env_name}/webhooks.json")
 
     def delete_webhook(self, env_name, webhook_id):
         """
@@ -17,7 +17,7 @@ class TwitterClient(Twython):
         Docs: https://developer.twitter.com/en/docs/accounts-and-users/subscribe-account-activity/api-reference/aaa-standard-all
         """
         self.request(
-            "https://api.twitter.com/1.1/account_activity/all/%s/webhooks/%s.json" % (env_name, webhook_id),
+            f"https://api.twitter.com/1.1/account_activity/all/{env_name}/webhooks/{webhook_id}.json",
             method="DELETE",
         )
 
@@ -26,7 +26,7 @@ class TwitterClient(Twython):
         Registers a new webhook URL for the given application context.
         Docs: https://developer.twitter.com/en/docs/accounts-and-users/subscribe-account-activity/api-reference/aaa-standard-all
         """
-        set_webhook_url = "https://api.twitter.com/1.1/account_activity/all/%s/webhooks.json?url=%s" % (
+        set_webhook_url = "https://api.twitter.com/1.1/account_activity/all/{}/webhooks.json?url={}".format(
             env_name,
             quote_plus(url),
         )
@@ -37,4 +37,4 @@ class TwitterClient(Twython):
         Subscribes all user's events for this apps webhook
         Docs: https://developer.twitter.com/en/docs/accounts-and-users/subscribe-account-activity/api-reference/aaa-standard-all
         """
-        return self.post("https://api.twitter.com/1.1/account_activity/all/%s/subscriptions.json" % env_name)
+        return self.post(f"https://api.twitter.com/1.1/account_activity/all/{env_name}/subscriptions.json")

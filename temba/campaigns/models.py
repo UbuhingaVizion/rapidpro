@@ -369,7 +369,7 @@ class CampaignEvent(TembaUUIDMixin, SmartModel):
                 period = "p.m."
                 if i > 12:
                     hour -= 12
-            hours.append((i, "at %s:00 %s" % (hour, period)))
+            hours.append((i, f"at {hour}:00 {period}"))
         return hours
 
     @property

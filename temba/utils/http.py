@@ -23,4 +23,4 @@ class HttpEvent:
         return self.__str__()
 
     def __str__(self):  # pragma: no cover
-        return "%s %s %s %s %s" % (self.method, self.url, self.status_code, self.response_body, self.request_body)
+        return f"{self.method} {self.url} {self.status_code} {self.response_body} {self.request_body}"

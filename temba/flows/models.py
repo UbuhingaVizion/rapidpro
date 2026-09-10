@@ -249,7 +249,7 @@ class Flow(LegacyUUIDMixin, TembaModel, DependencyMixin):
         """
         Creates a special 'single message' flow
         """
-        name = "Single Message (%s)" % str(uuid4())
+        name = f"Single Message ({uuid4()!s})"
         flow = Flow.create(org, user, name, flow_type=Flow.TYPE_BACKGROUND, is_system=True)
         flow.update_single_message_flow(user, message, base_language)
         return flow
@@ -265,7 +265,7 @@ class Flow(LegacyUUIDMixin, TembaModel, DependencyMixin):
         """
         base_language = org.flow_languages[0] if org.flow_languages else "base"
 
-        name = Flow.get_unique_name(org, "Join %s" % group.name)
+        name = Flow.get_unique_name(org, f"Join {group.name}")
         flow = Flow.create(org, user, name, base_language=base_language)
         flow.version_number = "13.0.0"
         flow.save(update_fields=("version_number",))
@@ -1517,7 +1517,7 @@ class FlowCategoryCount(SquashableModel):
         return sql, params
 
     def __str__(self):
-        return "%s: %s" % (self.category_name, self.count)
+        return f"{self.category_name}: {self.count}"
 
 
 class FlowPathCount(SquashableModel):
@@ -1560,7 +1560,7 @@ class FlowPathCount(SquashableModel):
     def get_totals(cls, flow):
         counts = cls.objects.filter(flow=flow)
         totals = list(counts.values_list("from_uuid", "to_uuid").annotate(replies=Sum("count")))
-        return {"%s:%s" % (t[0], t[1]): t[2] for t in totals}
+        return {f"{t[0]}:{t[1]}": t[2] for t in totals}
 
     class Meta:
         indexes = [models.Index(fields=["flow", "from_uuid", "to_uuid", "period"])]
@@ -1710,10 +1710,10 @@ class ExportFlowResultsTask(BaseExportTask):
         columns.append("Name")
 
         for gr in groups:
-            columns.append("Group:%s" % gr.name)
+            columns.append(f"Group:{gr.name}")
 
         for cf in contact_fields:
-            columns.append("Field:%s" % cf.name)
+            columns.append(f"Field:{cf.name}")
 
         columns.append("Started")
         columns.append("Modified")
@@ -1846,7 +1846,7 @@ class ExportFlowResultsTask(BaseExportTask):
         runs = FlowRun.objects.filter(flow__in=flows).order_by("modified_on").using("readonly")
         if responded_only:
             runs = runs.filter(responded=True)
-        run_ids = array(str("l"), runs.values_list("id", flat=True))
+        run_ids = array("l", runs.values_list("id", flat=True))
 
         logger.info(
             f"Results export #{self.id} for org #{self.org.id}: found {len(run_ids)} runs in database to export"
@@ -2216,7 +2216,7 @@ class FlowLabel(LegacyUUIDMixin, TembaModel):
 
     def __str__(self):
         if self.parent:
-            return "%s > %s" % (self.parent, self.name)
+            return f"{self.parent} > {self.name}"
         return self.name
 
     class Meta:
@@ -2237,7 +2237,7 @@ def get_flow_user(org):
         __flow_users = {}
 
     branding = org.get_branding()
-    username = "%s_flow" % branding["slug"]
+    username = f"{branding['slug']}_flow"
     flow_user = __flow_users.get(username)
 
     # not cached, let's look it up

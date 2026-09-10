@@ -13,14 +13,14 @@ type_urls = []
 for ch_type in Channel.get_types():
     channel_urls = ch_type.get_urls()
     for u in channel_urls:
-        u.name = "channels.types.%s.%s" % (ch_type.slug, u.name)
+        u.name = f"channels.types.{ch_type.slug}.{u.name}"
 
     if channel_urls:
-        type_urls.append(re_path("^%s/" % ch_type.slug, include(channel_urls)))
+        type_urls.append(re_path(f"^{ch_type.slug}/", include(channel_urls)))
 
     # register a Courier placeholder URL which will error if ever accessed directly
     courier_urls.append(
-        re_path(ch_type.courier_url, CourierURLHandler.as_view(), name="courier.%s" % ch_type.code.lower())
+        re_path(ch_type.courier_url, CourierURLHandler.as_view(), name=f"courier.{ch_type.code.lower()}")
     )
 
 

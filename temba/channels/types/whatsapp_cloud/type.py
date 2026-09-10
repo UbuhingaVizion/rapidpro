@@ -88,7 +88,7 @@ class WhatsAppCloudType(ChannelType):
         resp = requests.post(url, headers=headers)
 
         if resp.status_code != 200:  # pragma: no cover
-            raise ValidationError(_("Unable to subscribe to app to WABA with ID %s" % waba_id))
+            raise ValidationError(_(f"Unable to subscribe to app to WABA with ID {waba_id}"))
 
         # register numbers
         url = f"https://graph.facebook.com/v13.0/{channel.address}/register"
@@ -98,7 +98,7 @@ class WhatsAppCloudType(ChannelType):
 
         if resp.status_code != 200:  # pragma: no cover
             raise ValidationError(
-                _("Unable to register phone with ID %s from WABA with ID %s" % (channel.address, waba_id))
+                _(f"Unable to register phone with ID {channel.address} from WABA with ID {waba_id}")
             )
 
     def get_api_templates(self, channel):

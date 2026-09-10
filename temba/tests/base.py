@@ -149,7 +149,7 @@ class TembaTestMixin:
         """
         If a test has written files to storage, it should remove them by calling this
         """
-        shutil.rmtree("%s/%s" % (settings.MEDIA_ROOT, settings.STORAGE_ROOT_DIR), ignore_errors=True)
+        shutil.rmtree(f"{settings.MEDIA_ROOT}/{settings.STORAGE_ROOT_DIR}", ignore_errors=True)
 
     def login(self, user, update_last_auth_on: bool = True):
         self.assertTrue(
@@ -164,13 +164,13 @@ class TembaTestMixin:
         self.org.import_app(data, self.admin, site=site)
 
     def get_import_json(self, filename, substitutions=None):
-        handle = open("%s/test_flows/%s.json" % (settings.MEDIA_ROOT, filename), "r+")
+        handle = open(f"{settings.MEDIA_ROOT}/test_flows/{filename}.json", "r+")
         data = handle.read()
         handle.close()
 
         if substitutions:
             for k, v in substitutions.items():
-                print('Replacing "%s" with "%s"' % (k, v))
+                print(f'Replacing "{k}" with "{v}"')
                 data = data.replace(k, str(v))
 
         return json.loads(data)
@@ -824,7 +824,7 @@ class MigrationTest(TembaTest):
     def setUp(self):
         assert (
             self.migrate_from and self.migrate_to
-        ), "TestCase '{}' must define migrate_from and migrate_to properties".format(type(self).__name__)
+        ), f"TestCase '{type(self).__name__}' must define migrate_from and migrate_to properties"
 
         # set up our temba test
         super().setUp()

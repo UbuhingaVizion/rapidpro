@@ -70,7 +70,7 @@ class ClaimView(NonAtomicMixin, ClaimViewMixin, SmartFormView):
                 self.request.user,
                 None,
                 self.channel_type,
-                name="@%s" % screen_name,
+                name=f"@{screen_name}",
                 address=screen_name,
                 config=config,
             )

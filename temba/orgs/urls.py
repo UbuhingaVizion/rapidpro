@@ -28,7 +28,7 @@ for integration in IntegrationType.get_all():
         u.name = f"integrations.{integration.slug}.{u.name}"
 
     if integration_urls:
-        integration_type_urls.append(re_path("^%s/" % integration.slug, include(integration_urls)))
+        integration_type_urls.append(re_path(f"^{integration.slug}/", include(integration_urls)))
 
 
 spa = SpaView.as_view()

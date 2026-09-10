@@ -27,7 +27,7 @@ class ClaimView(ClaimViewMixin, SmartFormView):
             user,
             "BR",
             self.channel_type,
-            name="Zenvia: %s" % data["shortcode"],
+            name=f"Zenvia: {data['shortcode']}",
             address=data["shortcode"],
             config=config,
         )

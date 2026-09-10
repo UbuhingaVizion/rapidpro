@@ -682,7 +682,7 @@ class ConfirmAccessView(SpaMixin, Login):
 class InferOrgMixin:
     @classmethod
     def derive_url_pattern(cls, path, action):
-        return r"^%s/%s/$" % (path, action)
+        return rf"^{path}/{action}/$"
 
     def get_object(self, *args, **kwargs):
         return self.request.user.get_org()
@@ -894,7 +894,7 @@ class UserCRUDL(SmartCRUDL):
 
         @classmethod
         def derive_url_pattern(cls, path, action):
-            return r"^%s/%s/$" % (path, action)
+            return rf"^{path}/{action}/$"
 
         def get_object(self, *args, **kwargs):
             return self.request.user
@@ -1218,7 +1218,7 @@ class OrgCRUDL(SmartCRUDL):
     class Menu(MenuMixin, InferOrgMixin, SmartTemplateView):
         @classmethod
         def derive_url_pattern(cls, path, action):
-            return r"^%s/%s/((?P<submenu>[A-z]+)/)?$" % (path, action)
+            return rf"^{path}/{action}/((?P<submenu>[A-z]+)/)?$"
 
         def derive_menu(self):
 
@@ -1416,7 +1416,7 @@ class OrgCRUDL(SmartCRUDL):
             except Exception as e:
                 # this is an unexpected error, report it to sentry
                 logger = logging.getLogger(__name__)
-                logger.error("Exception on app import: %s" % str(e), exc_info=True)
+                logger.error(f"Exception on app import: {e!s}", exc_info=True)
                 form._errors["import_file"] = form.error_class([_("Sorry, your import file is invalid.")])
                 return self.form_invalid(form)
 
@@ -1441,7 +1441,7 @@ class OrgCRUDL(SmartCRUDL):
 
             export = org.export_definitions(request.branding["link"], components)
             response = JsonResponse(export, json_dumps_params=dict(indent=2))
-            response["Content-Disposition"] = "attachment; filename=%s.json" % slugify(org.name)
+            response["Content-Disposition"] = f"attachment; filename={slugify(org.name)}.json"
             return response
 
         def get_context_data(self, **kwargs):
@@ -1756,7 +1756,7 @@ class OrgCRUDL(SmartCRUDL):
                 headers = http_headers(extra={"Content-Type": "application/json"})
 
                 response = requests.get(
-                    "https://api.plivo.com/v1/Account/%s/" % auth_id, headers=headers, auth=(auth_id, auth_token)
+                    f"https://api.plivo.com/v1/Account/{auth_id}/", headers=headers, auth=(auth_id, auth_token)
                 )
 
                 if response.status_code != 200:
@@ -2046,7 +2046,7 @@ class OrgCRUDL(SmartCRUDL):
             return super().lookup_field_link(context, field, obj)
 
         def get_created_by(self, obj):  # pragma: needs cover
-            return "%s %s - %s" % (obj.created_by.first_name, obj.created_by.last_name, obj.created_by.email)
+            return f"{obj.created_by.first_name} {obj.created_by.last_name} - {obj.created_by.email}"
 
     class Update(ComponentFormMixin, SmartUpdateView):
         class Form(forms.ModelForm):
@@ -2138,7 +2138,7 @@ class OrgCRUDL(SmartCRUDL):
                             title=_("Unflag"),
                             style="button-secondary",
                             posterize=True,
-                            href="%s?action=unflag" % reverse("orgs.org_update", args=[org.pk]),
+                            href=f"{reverse('orgs.org_update', args=[org.pk])}?action=unflag",
                         )
                     )
                 else:  # pragma: needs cover
@@ -2147,7 +2147,7 @@ class OrgCRUDL(SmartCRUDL):
                             title=_("Flag"),
                             style="button-secondary",
                             posterize=True,
-                            href="%s?action=flag" % reverse("orgs.org_update", args=[org.pk]),
+                            href=f"{reverse('orgs.org_update', args=[org.pk])}?action=flag",
                         )
                     )
 
@@ -2157,7 +2157,7 @@ class OrgCRUDL(SmartCRUDL):
                             title=_("Verify"),
                             style="button-secondary",
                             posterize=True,
-                            href="%s?action=verify" % reverse("orgs.org_update", args=[org.pk]),
+                            href=f"{reverse('orgs.org_update', args=[org.pk])}?action=verify",
                         )
                     )
 
@@ -2492,7 +2492,7 @@ class OrgCRUDL(SmartCRUDL):
 
         def get_success_url(self):  # pragma: needs cover
             org_id = self.request.GET.get("org")
-            return "%s?org=%s" % (reverse("orgs.org_manage_accounts_sub_org"), org_id)
+            return f"{reverse('orgs.org_manage_accounts_sub_org')}?org={org_id}"
 
     class Service(SmartFormView):
         class ServiceForm(forms.Form):
@@ -2603,7 +2603,7 @@ class OrgCRUDL(SmartCRUDL):
             return context
 
         def get_created_by(self, obj):  # pragma: needs cover
-            return "%s %s - %s" % (obj.created_by.first_name, obj.created_by.last_name, obj.created_by.email)
+            return f"{obj.created_by.first_name} {obj.created_by.last_name} - {obj.created_by.email}"
 
     class CreateSubOrg(NonAtomicMixin, MultiOrgMixin, ModalMixin, InferOrgMixin, SmartCreateView):
         class CreateOrgForm(forms.ModelForm):
@@ -2773,7 +2773,7 @@ class OrgCRUDL(SmartCRUDL):
 
         @classmethod
         def derive_url_pattern(cls, path, action):
-            return r"^%s/%s/(?P<secret>\w+)/$" % (path, action)
+            return rf"^{path}/{action}/(?P<secret>\w+)/$"
 
         def get_invitation(self, **kwargs):
             secret = self.kwargs.get("secret")
@@ -2837,7 +2837,7 @@ class OrgCRUDL(SmartCRUDL):
 
         @classmethod
         def derive_url_pattern(cls, path, action):
-            return r"^%s/%s/(?P<secret>\w+)/$" % (path, action)
+            return rf"^{path}/{action}/(?P<secret>\w+)/$"
 
     class JoinAccept(SmartUpdateView):
         class JoinAcceptForm(forms.ModelForm):
@@ -2900,7 +2900,7 @@ class OrgCRUDL(SmartCRUDL):
 
         @classmethod
         def derive_url_pattern(cls, path, action):
-            return r"^%s/%s/(?P<secret>\w+)/$" % (path, action)
+            return rf"^{path}/{action}/(?P<secret>\w+)/$"
 
         def get_invitation(self, **kwargs):  # pragma: needs cover
             secret = self.kwargs.get("secret")
@@ -3120,7 +3120,7 @@ class OrgCRUDL(SmartCRUDL):
         submit_button_name = _("Save")
 
         def get_success_url(self):
-            return "%s?start" % reverse("public.public_welcome")
+            return f"{reverse('public.public_welcome')}?start"
 
         def pre_process(self, request, *args, **kwargs):
             # if our brand doesn't allow signups, then redirect to the homepage
@@ -3529,7 +3529,7 @@ class OrgCRUDL(SmartCRUDL):
             if client:
                 account_sid = client.auth[0]
                 sid_length = len(account_sid)
-                context["account_sid"] = "%s%s" % ("\u066D" * (sid_length - 16), account_sid[-16:])
+                context["account_sid"] = f"{'\u066D' * (sid_length - 16)}{account_sid[-16:]}"
             return context
 
         def derive_initial(self):
@@ -3601,7 +3601,7 @@ class OrgCRUDL(SmartCRUDL):
         class TransferForm(forms.Form):
             class OrgChoiceField(forms.ModelChoiceField):
                 def label_from_instance(self, org):
-                    return "%s (%s)" % (org.name, "{:,}".format(org.get_credits_remaining()))
+                    return f"{org.name} ({org.get_credits_remaining():,})"
 
             from_org = OrgChoiceField(
                 None,
@@ -3925,7 +3925,7 @@ class TopUpCRUDL(SmartCRUDL):
 
         def get_price(self, obj):
             if obj.price:
-                return "$%.2f" % (obj.price / 100.0)
+                return f"${obj.price / 100.0:.2f}"
             else:
                 return "-"
 
@@ -3978,7 +3978,7 @@ class StripeHandler(View):  # pragma: no cover
             charge = event.data.object
             charge_date = datetime.fromtimestamp(charge.created)
             description = charge.description
-            amount = "$%s" % (Decimal(charge.amount) / Decimal(100)).quantize(Decimal(".01"))
+            amount = f"${(Decimal(charge.amount) / Decimal(100)).quantize(Decimal('.01'))}"
 
             # look up our customer
             customer = stripe.Customer.retrieve(charge.customer)
@@ -4021,7 +4021,7 @@ class StripeHandler(View):  # pragma: no cover
                 admin = org.get_admins().first()
 
                 analytics.track(admin, track, context)
-                return HttpResponse("Event '%s': %s" % (track, context))
+                return HttpResponse(f"Event '{track}': {context}")
 
         # empty response, 200 lets Stripe know we handled it
         return HttpResponse("Ignored, uninteresting event")

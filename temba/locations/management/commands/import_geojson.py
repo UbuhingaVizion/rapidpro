@@ -95,7 +95,7 @@ class Command(BaseCommand):
                 for polygon in feature["geometry"]["coordinates"]:
                     polygons.append(Polygon(*polygon))
             else:
-                raise Exception("Error importing %s, unknown geometry type '%s'" % (name, feature["geometry"]["type"]))
+                raise Exception(f"Error importing {name}, unknown geometry type '{feature['geometry']['type']}'")
 
             geometry = MultiPolygon(polygons)
 
@@ -159,7 +159,7 @@ class Command(BaseCommand):
         # are we filtering by a prefix?
         prefix = ""
         if options["country"]:
-            prefix = "%sadmin" % options["country"]
+            prefix = f"{options['country']}admin"
 
         # sort our filepaths, this will make sure we import 0 levels before 1 and before 2
         filepaths.sort()
@@ -219,5 +219,5 @@ WHERE NOT (abs.osm_id = ANY(%s)))
                 self.stdout.write(self.style.SUCCESS(f"Other unseen boundaries removed: {cursor.rowcount}"))
 
         if country:
-            self.stdout.write(self.style.SUCCESS((f" ** updating paths for all of {country.name}")))
+            self.stdout.write(self.style.SUCCESS(f" ** updating paths for all of {country.name}"))
             country.update_path()

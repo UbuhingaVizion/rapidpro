@@ -72,7 +72,7 @@ class Dialog360Type(ChannelType):
         start = timezone.now()
         try:
 
-            templates_url = "%s/v1/configs/templates" % channel.config.get(Channel.CONFIG_BASE_URL, "")
+            templates_url = f"{channel.config.get(Channel.CONFIG_BASE_URL, '')}/v1/configs/templates"
 
             response = requests.get(templates_url, headers=self.get_headers(channel))
             elapsed = (timezone.now() - start).total_seconds() * 1000

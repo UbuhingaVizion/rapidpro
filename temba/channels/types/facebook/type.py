@@ -57,7 +57,7 @@ class FacebookType(ChannelType):
     @staticmethod
     def _set_call_to_action(channel, payload):
         # register for get_started events
-        url = "https://graph.facebook.com/v3.3/%s/thread_settings" % channel.address
+        url = f"https://graph.facebook.com/v3.3/{channel.address}/thread_settings"
         body = {"setting_type": "call_to_actions", "thread_state": "new_thread", "call_to_actions": []}
 
         # if we have a payload, set it, otherwise, clear it
@@ -71,4 +71,4 @@ class FacebookType(ChannelType):
         )
 
         if payload and response.status_code != 200:  # pragma: no cover
-            raise Exception("Unable to update call to action: %s" % response.text)
+            raise Exception(f"Unable to update call to action: {response.text}")

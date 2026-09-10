@@ -101,19 +101,19 @@ class PublicTest(TembaTest):
         self.assertEqual(response.request["PATH_INFO"], status_url)
         self.assertContains(response, "Invalid")
 
-        response = self.client.get("%s?text=somethinginvalid" % status_url)
+        response = self.client.get(f"{status_url}?text=somethinginvalid")
         self.assertEqual(response.request["PATH_INFO"], status_url)
         self.assertContains(response, "Invalid")
 
-        response = self.client.get("%s?text=cu001" % status_url)
+        response = self.client.get(f"{status_url}?text=cu001")
         self.assertEqual(response.request["PATH_INFO"], status_url)
         self.assertContains(response, "Shipped")
 
-        response = self.client.get("%s?text=cu002" % status_url)
+        response = self.client.get(f"{status_url}?text=cu002")
         self.assertEqual(response.request["PATH_INFO"], status_url)
         self.assertContains(response, "Pending")
 
-        response = self.client.get("%s?text=cu003" % status_url)
+        response = self.client.get(f"{status_url}?text=cu003")
         self.assertEqual(response.request["PATH_INFO"], status_url)
         self.assertContains(response, "Cancelled")
 

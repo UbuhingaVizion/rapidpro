@@ -904,7 +904,7 @@ class Org(SmartModel):
         """
         Gets all URN schemes which this org has org has channels configured for
         """
-        cache_attr = "__schemes__%s" % role
+        cache_attr = f"__schemes__{role}"
         if hasattr(self, cache_attr):
             return getattr(self, cache_attr)
 
@@ -1194,7 +1194,7 @@ class Org(SmartModel):
         filename = os.path.join(settings.STATICFILES_DIRS[0], "examples", "sample_flows.json")
 
         # for each of our samples
-        with open(filename, "r") as example_file:
+        with open(filename) as example_file:
             samples = example_file.read()
 
         user = self.get_admins().first()
@@ -1682,7 +1682,7 @@ class Org(SmartModel):
         for flow in all_flows:
             dependencies[flow] = flow.get_export_dependencies()
         for campaign in all_campaigns:
-            dependencies[campaign] = set([e.flow for e in campaign.flow_events])
+            dependencies[campaign] = {e.flow for e in campaign.flow_events}
 
         # replace any dependency on a group with that group's associated campaigns - we're not actually interested
         # in flow-group-flow relationships - only relationships that go through a campaign
@@ -1792,7 +1792,7 @@ class Org(SmartModel):
 
         else:
             raise Exception(
-                "Received non-200 response (%s) for request: %s" % (response.status_code, response.content)
+                f"Received non-200 response ({response.status_code}) for request: {response.content}"
             )
 
         return self.save_media(File(temp), extension)
@@ -1813,9 +1813,9 @@ class Org(SmartModel):
         random_file = str(uuid4())
         random_dir = random_file[0:4]
 
-        filename = "%s/%s" % (random_dir, random_file)
+        filename = f"{random_dir}/{random_file}"
         if extension:
-            filename = "%s.%s" % (filename, extension)
+            filename = f"{filename}.{extension}"
 
         path = "%s/%d/media/%s" % (settings.STORAGE_ROOT_DIR, self.pk, filename)
         location = public_file_storage.save(path, file)
@@ -2175,7 +2175,7 @@ class TopUp(SmartModel):
             transfer = self.allocations.all().first()
 
             if transfer:
-                comment = _("Transfer from %s" % transfer.topup.org.name)
+                comment = _(f"Transfer from {transfer.topup.org.name}")
             else:
                 price = -1 if self.price is None else self.price
 
@@ -2226,7 +2226,7 @@ class TopUp(SmartModel):
         elif self.price == 0:
             return _("Free")
 
-        return "$%.2f" % self.dollars()
+        return f"${self.dollars():.2f}"
 
     def dollars(self):
         if self.price == 0:  # pragma: needs cover

@@ -37,16 +37,16 @@ def iso6391_to_iso6393(iso_code, country_code=None):
     if iso_code == "":
         raise ValueError("iso_code must not be empty")
 
-    cache_key = "{}:{}".format("XX" if country_code is None else country_code, iso_code)
+    cache_key = f"{'XX' if country_code is None else country_code}:{iso_code}"
 
     if cache_key not in migration_lang_cache:
 
         # build our key
-        override_key = "%s:%s" % (country_code, iso_code) if country_code else "XX:%s" % iso_code
+        override_key = f"{country_code}:{iso_code}" if country_code else f"XX:{iso_code}"
         override = MIGRATION_OVERRIDES.get(override_key)
 
         if not override and country_code:
-            override_key = "XX:%s" % iso_code
+            override_key = f"XX:{iso_code}"
             override = MIGRATION_OVERRIDES.get(override_key)
 
         if override:
@@ -78,4 +78,4 @@ def iso6391_to_iso6393(iso_code, country_code=None):
     else:
         return migration_lang_cache[cache_key]
 
-    raise ValueError("unable to determine iso639-3 code: %s (%s)" % (iso_code, country_code))
+    raise ValueError(f"unable to determine iso639-3 code: {iso_code} ({country_code})")

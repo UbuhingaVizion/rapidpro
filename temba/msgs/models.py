@@ -802,7 +802,7 @@ class SystemLabel:
         elif label_type == cls.TYPE_CALLS:
             qs = ChannelEvent.objects.filter(event_type__in=ChannelEvent.CALL_TYPES)
         else:  # pragma: needs cover
-            raise ValueError("Invalid label type: %s" % label_type)
+            raise ValueError(f"Invalid label type: {label_type}")
 
         return qs.filter(org=org)
 
@@ -1001,7 +1001,7 @@ class Label(LegacyUUIDMixin, TembaModel, DependencyMixin):
 
     def __str__(self):
         if self.folder:
-            return "%s > %s" % (str(self.folder), self.name)
+            return f"{self.folder!s} > {self.name}"
         return self.name
 
     class Meta:
@@ -1244,7 +1244,7 @@ class ExportMessagesTask(BaseExportTask):
         if last_created_on:
             messages = messages.filter(created_on__gt=last_created_on)
 
-        all_message_ids = array(str("l"), messages.values_list("id", flat=True))
+        all_message_ids = array("l", messages.values_list("id", flat=True))
 
         logger.info(
             f"Msgs export #{self.id} for org #{self.org.id}: found {len(all_message_ids)} msgs in database to export"

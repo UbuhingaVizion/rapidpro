@@ -1789,9 +1789,9 @@ class OrgTest(TembaTest):
         email_args = mock_send_temba_email.call_args[0]  # all positional args
 
         self.assertEqual(email_args[0], "RapidPro Invitation")
-        self.assertIn("https://app.rapidpro.io/org/join/%s/" % editor_invitation.secret, email_args[1])
+        self.assertIn(f"https://app.rapidpro.io/org/join/{editor_invitation.secret}/", email_args[1])
         self.assertNotIn("{{", email_args[1])
-        self.assertIn("https://app.rapidpro.io/org/join/%s/" % editor_invitation.secret, email_args[2])
+        self.assertIn(f"https://app.rapidpro.io/org/join/{editor_invitation.secret}/", email_args[2])
         self.assertNotIn("{{", email_args[2])
 
         editor_join_url = reverse("orgs.org_join", args=[editor_invitation.secret])
@@ -1983,7 +1983,7 @@ class OrgTest(TembaTest):
 
     def test_surveyor(self):
         self.client.logout()
-        url = "%s?mobile=true" % reverse("orgs.org_surveyor")
+        url = f"{reverse('orgs.org_surveyor')}?mobile=true"
 
         # try creating a surveyor account with a bogus password
         post_data = dict(surveyor_password="badpassword")
@@ -3780,7 +3780,7 @@ class OrgCRUDLTest(TembaTest, CRUDLTestMixin):
     def test_org_signup(self):
         signup_url = reverse("orgs.org_signup")
 
-        response = self.client.get(signup_url + "?%s" % urlencode({"email": "address@example.com"}))
+        response = self.client.get(signup_url + f"?{urlencode({'email': 'address@example.com'})}")
         self.assertEqual(response.status_code, 200)
         self.assertIn("email", response.context["form"].fields)
         self.assertEqual(response.context["view"].derive_initial()["email"], "address@example.com")
@@ -4452,7 +4452,7 @@ class OrgCRUDLTest(TembaTest, CRUDLTestMixin):
         self.assertContains(response, "<b>Hausa</b>")
 
         # searching languages should only return languages with 2-letter codes
-        response = self.client.get("%s?search=Fr" % langs_url, headers={"x-requested-with": "XMLHttpRequest"})
+        response = self.client.get(f"{langs_url}?search=Fr", headers={"x-requested-with": "XMLHttpRequest"})
         self.assertEqual(
             [
                 {"value": "afr", "name": "Afrikaans"},
@@ -4465,7 +4465,7 @@ class OrgCRUDLTest(TembaTest, CRUDLTestMixin):
         # unless they're explicitly included in settings
         with override_settings(NON_ISO6391_LANGUAGES={"frc"}):
             languages.reload()
-            response = self.client.get("%s?search=Fr" % langs_url, headers={"x-requested-with": "XMLHttpRequest"})
+            response = self.client.get(f"{langs_url}?search=Fr", headers={"x-requested-with": "XMLHttpRequest"})
             self.assertEqual(
                 [
                     {"value": "afr", "name": "Afrikaans"},
@@ -4629,7 +4629,7 @@ class BulkExportTest(TembaTest):
 
         self.login(self.admin)
 
-        post_data = dict(import_file=open("%s/test_flows/too_old.json" % settings.MEDIA_ROOT, "rb"))
+        post_data = dict(import_file=open(f"{settings.MEDIA_ROOT}/test_flows/too_old.json", "rb"))
         response = self.client.post(reverse("orgs.org_import"), post_data)
         self.assertFormError(
             response.context["form"], "import_file", "This file is no longer valid. Please export a new version and try again."
@@ -4638,7 +4638,7 @@ class BulkExportTest(TembaTest):
         # try a file which can be migrated forwards
         response = self.client.post(
             reverse("orgs.org_import"),
-            {"import_file": open("%s/test_flows/favorites_v4.json" % settings.MEDIA_ROOT, "rb")},
+            {"import_file": open(f"{settings.MEDIA_ROOT}/test_flows/favorites_v4.json", "rb")},
         )
         self.assertEqual(302, response.status_code)
 
@@ -4648,7 +4648,7 @@ class BulkExportTest(TembaTest):
         # simulate an unexpected exception during import
         with patch("temba.triggers.models.Trigger.import_triggers") as validate:
             validate.side_effect = Exception("Unexpected Error")
-            post_data = dict(import_file=open("%s/test_flows/new_mother.json" % settings.MEDIA_ROOT, "rb"))
+            post_data = dict(import_file=open(f"{settings.MEDIA_ROOT}/test_flows/new_mother.json", "rb"))
             response = self.client.post(reverse("orgs.org_import"), post_data)
             self.assertFormError(response.context["form"], "import_file", "Sorry, your import file is invalid.")
 
@@ -5168,7 +5168,7 @@ class BulkExportTest(TembaTest):
         self.assertNotContains(response, "Register Patient")
 
         # with the archived flag one, it should be there
-        response = self.client.get("%s?archived=1" % reverse("orgs.org_export"))
+        response = self.client.get(f"{reverse('orgs.org_export')}?archived=1")
         self.assertContains(response, "Register Patient")
 
         # delete our flow, and reimport
@@ -5192,7 +5192,7 @@ class BulkExportTest(TembaTest):
         self.assertNotContains(response, "Register Patient")
 
         # even with the archived flag one deleted flows should not show up
-        response = self.client.get("%s?archived=1" % reverse("orgs.org_export"))
+        response = self.client.get(f"{reverse('orgs.org_export')}?archived=1")
         self.assertNotContains(response, "Register Patient")
 
 

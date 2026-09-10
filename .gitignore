@@ -5,6 +5,7 @@
 *.pyc
 *~
 .envrc
+.env
 .direnv
 .commit
 

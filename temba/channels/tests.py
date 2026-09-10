@@ -79,7 +79,7 @@ class ChannelTest(TembaTest):
         org = org or self.org
         user = user or self.user
 
-        group = ContactGroup.get_or_create(org, user, "Numbers: %s" % ",".join(numbers))
+        group = ContactGroup.get_or_create(org, user, f"Numbers: {','.join(numbers)}")
 
         contacts = []
         for number in numbers:
@@ -108,7 +108,7 @@ class ChannelTest(TembaTest):
             if cmd["cmd"] == cmd_name:
                 return
 
-        raise Exception("Did not find '%s' cmd in response: '%s'" % (cmd_name, response.content))
+        raise Exception(f"Did not find '{cmd_name}' cmd in response: '{response.content}'")
 
     def test_channel_read_with_customer_support(self):
         self.login(self.customer_support)
@@ -185,7 +185,7 @@ class ChannelTest(TembaTest):
         self.assertContains(response, "Disable Voice Calling")
 
         # try adding a caller for an invalid channel
-        response = self.client.post("%s?channel=20000" % reverse("channels.channel_create_caller"))
+        response = self.client.post(f"{reverse('channels.channel_create_caller')}?channel=20000")
         self.assertEqual(200, response.status_code)
         self.assertFormError(response.context["form"], "channel", "A caller cannot be added for that number")
 
@@ -711,13 +711,13 @@ class ChannelTest(TembaTest):
 
         # Must be POST
         response = self.client.get(
-            "%s?signature=sig&ts=123" % (reverse("sync", args=[100])), content_type="application/json"
+            f"{reverse('sync', args=[100])}?signature=sig&ts=123", content_type="application/json"
         )
         self.assertEqual(500, response.status_code)
 
         # Unknown channel
         response = self.client.post(
-            "%s?signature=sig&ts=123" % (reverse("sync", args=[999])), content_type="application/json"
+            f"{reverse('sync', args=[999])}?signature=sig&ts=123", content_type="application/json"
         )
         self.assertEqual(200, response.status_code)
         self.assertEqual("rel", response.json()["cmds"][0]["cmd"])

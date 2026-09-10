@@ -76,7 +76,7 @@ class ClaimView(ClaimViewMixin, SmartFormView):
         return context
 
     def get_success_url(self):
-        return "%s?success" % reverse("public.public_welcome")
+        return f"{reverse('public.public_welcome')}?success"
 
     def form_valid(self, form):
         org = self.request.user.get_org()

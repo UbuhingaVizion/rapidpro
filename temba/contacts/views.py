@@ -208,7 +208,7 @@ class ContactListView(SpaMixin, OrgPermsMixin, BulkActionMixin, SmartListView):
     def derive_export_url(self):
         search = quote_plus(self.request.GET.get("search", ""))
         redirect = quote_plus(self.request.get_full_path())
-        return "%s?g=%s&s=%s&redirect=%s" % (
+        return "{}?g={}&s={}&redirect={}".format(
             reverse("contacts.contact_export"),
             self.group.uuid,
             search,
@@ -272,7 +272,7 @@ class ContactListView(SpaMixin, OrgPermsMixin, BulkActionMixin, SmartListView):
                 {
                     "field_type": "field",
                     "sort_direction": sort_direction,
-                    "field_path": "fields.{}".format(field_leaf),
+                    "field_path": f"fields.{field_leaf}",
                     "field_uuid": str(contact_sort_field["uuid"]),
                 },
             )
@@ -1268,7 +1268,7 @@ class ContactCRUDL(SmartCRUDL):
 
         @classmethod
         def derive_url_pattern(cls, path, action):
-            return r"^%s/%s/(?P<group>[^/]+)/$" % (path, action)
+            return rf"^{path}/{action}/(?P<group>[^/]+)/$"
 
         def get_object_org(self):
             return self.group.org
@@ -1906,7 +1906,7 @@ class ContactFieldCRUDL(SmartCRUDL):
 
         @classmethod
         def derive_url_pattern(cls, path, action):
-            return r"^%s/%s/(?P<value_type>[^/]+)/$" % (path, action)
+            return rf"^{path}/{action}/(?P<value_type>[^/]+)/$"
 
     class Usages(DependencyUsagesModal):
         permission = "contacts.contactfield_read"

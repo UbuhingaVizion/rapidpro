@@ -97,12 +97,12 @@ def format_seconds(seconds):
         return None
 
     if seconds < 60:
-        return "%s sec" % seconds
+        return f"{seconds} sec"
     minutes = seconds // 60
     seconds %= 60
     if seconds >= 30:
         minutes += 1
-    return "%s min" % minutes
+    return f"{minutes} min"
 
 
 @register.simple_tag()
@@ -122,7 +122,7 @@ def ssl_brand_url(context, url_name, args=None):
 
     path = reverse(url_name, args)
     if getattr(settings, "SESSION_COOKIE_SECURE", False):  # pragma: needs cover
-        return "https://%s%s" % (hostname, path)
+        return f"https://{hostname}{path}"
     else:
         return path
 
@@ -135,7 +135,7 @@ def non_ssl_brand_url(context, url_name, args=None):
 
     path = reverse(url_name, args)
     if settings.HOSTNAME != "localhost":  # pragma: needs cover
-        return "http://%s%s" % (hostname, path)
+        return f"http://{hostname}{path}"
     return path
 
 
@@ -170,7 +170,7 @@ def delta_filter(delta):
 def lessblock(parser, token):
     args = token.split_contents()
     if len(args) != 1:  # pragma: no cover
-        raise TemplateSyntaxError("lessblock tag takes no arguments, got: [%s]" % ",".join(args))
+        raise TemplateSyntaxError(f"lessblock tag takes no arguments, got: [{','.join(args)}]")
 
     nodelist = parser.parse(("endlessblock",))
     parser.delete_first_token()
@@ -184,9 +184,9 @@ class LessBlockNode(template.Node):
     def render(self, context):
         output = self.nodelist.render(context)
         includes = '@import (reference) "variables.less";\n'
-        includes += '@import (reference, optional) "../brands/%s/less/variables.less";\n' % context["brand"]["slug"]
+        includes += f"@import (reference, optional) \"../brands/{context['brand']['slug']}/less/variables.less\";\n"
         includes += '@import (reference) "mixins.less";\n'
-        style_output = '<style type="text/less" media="all">\n%s\n%s</style>' % (includes, output)
+        style_output = f'<style type="text/less" media="all">\n{includes}\n{output}</style>'
         return style_output
 
 

@@ -59,7 +59,7 @@ class ClaimView(ClaimViewMixin, SmartFormView):
             user,
             data["country"],
             self.channel_type,
-            name="Africa's Talking: %s" % data["shortcode"],
+            name=f"Africa's Talking: {data['shortcode']}",
             address=data["shortcode"],
             config=config,
         )

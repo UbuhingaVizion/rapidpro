@@ -152,15 +152,15 @@ def omnibox_results_to_dict(org, results, version: str = "1"):
     for obj in results:
         if isinstance(obj, ContactGroup):
             if version == "1":
-                result = {"id": "g-%s" % obj.uuid, "text": obj.name, "extra": group_counts[obj]}
+                result = {"id": f"g-{obj.uuid}", "text": obj.name, "extra": group_counts[obj]}
             else:
                 result = {"id": obj.uuid, "name": obj.name, "type": "group", "count": group_counts[obj]}
         elif isinstance(obj, Contact):
             if version == "1":
                 if org.is_anon:
-                    result = {"id": "c-%s" % obj.uuid, "text": obj.get_display(org)}
+                    result = {"id": f"c-{obj.uuid}", "text": obj.get_display(org)}
                 else:
-                    result = {"id": "c-%s" % obj.uuid, "text": obj.get_display(org), "extra": obj.get_urn_display()}
+                    result = {"id": f"c-{obj.uuid}", "text": obj.get_display(org), "extra": obj.get_urn_display()}
             else:
                 if org.is_anon:
                     result = {"id": obj.uuid, "name": obj.get_display(org), "type": "contact"}

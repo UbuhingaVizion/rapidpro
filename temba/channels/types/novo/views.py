@@ -43,9 +43,9 @@ class ClaimView(ClaimViewMixin, SmartFormView):
             user,
             "TT",
             self.channel_type,
-            name="Novo: %s" % data["shortcode"],
+            name=f"Novo: {data['shortcode']}",
             address=data["shortcode"],
             config=config,
         )
 
-        return super(ClaimView, self).form_valid(form)
+        return super().form_valid(form)

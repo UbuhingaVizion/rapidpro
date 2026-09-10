@@ -53,7 +53,7 @@ def as_icon(contact_event):
     elif status == ChannelEvent.TYPE_CALL_OUT_MISSED:
         icon = "icon-call-outgoing red"
 
-    return mark_safe('<span class="glyph %s"></span>' % icon)
+    return mark_safe(f'<span class="glyph {icon}"></span>')
 
 
 @register.tag(name="render")
@@ -121,10 +121,10 @@ def attachment_button(attachment: str) -> dict:
         preview = url
 
         (lat, lng) = url.split(",")
-        url = "http://www.openstreetmap.org/?mlat=%(lat)s&mlon=%(lng)s#map=18/%(lat)s/%(lng)s" % {
-            "lat": lat,
-            "lng": lng,
-        }
+        url = "http://www.openstreetmap.org/?mlat={lat}&mlon={lng}#map=18/{lat}/{lng}".format(
+            lat=lat,
+            lng=lng,
+        )
     else:
         preview = (sub_type or category).upper()  # preview the sub type if it exists or category
 

@@ -23,8 +23,8 @@ class JioChatClient:
     @classmethod
     def from_channel(cls, channel):
         config = channel.config
-        app_id = config.get("%s_app_id" % cls.api_slug, None)
-        app_secret = config.get("%s_app_secret" % cls.api_slug, None)
+        app_id = config.get(f"{cls.api_slug}_app_id", None)
+        app_secret = config.get(f"{cls.api_slug}_app_secret", None)
         return cls(channel.uuid, app_id, app_secret)
 
     def get_access_token(self):

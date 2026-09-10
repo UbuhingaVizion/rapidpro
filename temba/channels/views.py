@@ -166,7 +166,7 @@ def sync(request, channel_id):
 
     if request_signature != signature:
         return JsonResponse(
-            {"error_id": 1, "error": "Invalid signature: '%(request)s'" % {"request": request_signature}, "cmds": []},
+            {"error_id": 1, "error": f"Invalid signature: '{request_signature}'", "cmds": []},
             status=401,
         )
 
@@ -368,7 +368,7 @@ class ClaimViewMixin(SpaMixin, OrgPermsMixin, ComponentFormMixin):
         return (
             [self.template_name]
             if self.template_name
-            else ["channels/types/%s/claim.html" % self.channel_type.slug, "channels/channel_claim_form.html"]
+            else [f"channels/types/{self.channel_type.slug}/claim.html", "channels/channel_claim_form.html"]
         )
 
     def derive_title(self):
@@ -629,7 +629,7 @@ class BaseClaimNumberMixin(ClaimViewMixin):
         ).first()
         if existing:  # pragma: needs cover
             form._errors["phone_number"] = form.error_class(
-                [_("That number is already connected (%s)" % data["phone_number"])]
+                [_(f"That number is already connected ({data['phone_number']})")]
             )
             return self.form_invalid(form)
 
@@ -657,7 +657,7 @@ class BaseClaimNumberMixin(ClaimViewMixin):
             self.claim_number(self.request.user, data["phone_number"], data["country"], role)
             self.remove_api_credentials_from_session()
 
-            return HttpResponseRedirect("%s?success" % reverse("public.public_welcome"))
+            return HttpResponseRedirect(f"{reverse('public.public_welcome')}?success")
 
         except (
             nexmo.AuthenticationError,
@@ -1521,7 +1521,7 @@ class ChannelLogCRUDL(SmartCRUDL):
 
         @classmethod
         def derive_url_pattern(cls, path, action):
-            return r"^%s/(?P<channel_uuid>[^/]+)/$" % path
+            return rf"^{path}/(?P<channel_uuid>[^/]+)/$"
 
         def get_template_names(self):
             if self.folder == self.FOLDER_CALLS:
@@ -1584,7 +1584,7 @@ class ChannelLogCRUDL(SmartCRUDL):
 
         @classmethod
         def derive_url_pattern(cls, path, action):
-            return r"^%s/%s/(?P<channel_uuid>[0-9a-f-]+)/(?P<pk>\d+)/$" % (path, action)
+            return rf"^{path}/{action}/(?P<channel_uuid>[0-9a-f-]+)/(?P<pk>\d+)/$"
 
         def get_gear_links(self):
             return [

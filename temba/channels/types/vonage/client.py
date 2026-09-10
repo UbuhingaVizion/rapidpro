@@ -77,7 +77,7 @@ class VonageClient:
         self._with_retry(self.base.update_number, params=params)
 
     def create_application(self, domain, channel_uuid):
-        name = "%s/%s" % (domain, channel_uuid)
+        name = f"{domain}/{channel_uuid}"
         answer_url = reverse("mailroom.ivr_handler", args=[channel_uuid, "incoming"])
         event_url = reverse("mailroom.ivr_handler", args=[channel_uuid, "status"])
 

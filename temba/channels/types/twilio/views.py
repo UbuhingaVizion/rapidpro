@@ -168,7 +168,7 @@ class ClaimView(BaseClaimNumberMixin, SmartFormView):
         voice_url = base_url + reverse("mailroom.ivr_handler", args=[channel_uuid, "incoming"])
 
         new_app = client.api.applications.create(
-            friendly_name="%s/%s" % (callback_domain.lower(), channel_uuid),
+            friendly_name=f"{callback_domain.lower()}/{channel_uuid}",
             sms_method="POST",
             sms_url=receive_url,
             voice_method="POST",
@@ -190,7 +190,7 @@ class ClaimView(BaseClaimNumberMixin, SmartFormView):
 
             if short_code:
                 number_sid = short_code.sid
-                app_url = "https://" + callback_domain + "%s" % reverse("courier.t", args=[channel_uuid, "receive"])
+                app_url = "https://" + callback_domain + f"{reverse('courier.t', args=[channel_uuid, 'receive'])}"
                 client.api.short_codes.get(number_sid).update(sms_url=app_url, sms_method="POST")
 
                 role = Channel.ROLE_SEND + Channel.ROLE_RECEIVE

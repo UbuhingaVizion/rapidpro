@@ -51,7 +51,7 @@ class ClaimView(ClaimViewMixin, SmartFormView):
             user,
             data["country"],
             self.channel_type,
-            name="DMark Mobile: %s" % data["shortcode"],
+            name=f"DMark Mobile: {data['shortcode']}",
             address=data["shortcode"],
             config=config,
         )

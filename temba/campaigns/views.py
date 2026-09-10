@@ -536,7 +536,7 @@ class CampaignEventCRUDL(SmartCRUDL):
     class Read(SpaMixin, OrgObjPermsMixin, SmartReadView):
         @classmethod
         def derive_url_pattern(cls, path, action):
-            return r"^%s/%s/(?P<campaign_uuid>[0-9a-f-]+)/(?P<pk>\d+)/$" % (path, action)
+            return rf"^{path}/{action}/(?P<campaign_uuid>[0-9a-f-]+)/(?P<pk>\d+)/$"
 
         def derive_title(self):
             return _("Event History")
