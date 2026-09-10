@@ -551,7 +551,7 @@ GROUP_PERMISSIONS = {
         "flows.flow_revisions",
         "flows.flowrun_delete",
         "flows.flowsession_json",
-        "notifications.log_list",
+        "notifications.notification_list",
         "orgs.org_dashboard",
         "orgs.org_delete",
         "orgs.org_grant",

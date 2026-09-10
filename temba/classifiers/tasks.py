@@ -18,4 +18,4 @@ def sync_classifier_intents(id=None):
         try:
             classifier.sync()
         except Exception as e:
-            logger.error("error getting intents for classifier", e)
+            logger.error("error getting intents for classifier: %s", e)

@@ -179,7 +179,7 @@ class LuisTypeTest(TembaTest):
                 "slot": "staging",
             },
         )
-        self.assertFormError(response.context["form"], "__all__", "Check authoring credentials: Not authorized")
+        self.assertFormError(response.context["form"], None, "Check authoring credentials: Not authorized")
 
         # simulate selected slot isn't published
         mock_get_app.side_effect = None
@@ -197,7 +197,7 @@ class LuisTypeTest(TembaTest):
                 "slot": "staging",
             },
         )
-        self.assertFormError(response.context["form"], "__all__", "App has not yet been published to staging slot.")
+        self.assertFormError(response.context["form"], None, "App has not yet been published to staging slot.")
 
         # simulate wrong prediction credentials
         mock_predict.side_effect = RequestException(
@@ -216,7 +216,7 @@ class LuisTypeTest(TembaTest):
                 "slot": "production",
             },
         )
-        self.assertFormError(response.context["form"], "__all__", "Check prediction credentials: Not authorized")
+        self.assertFormError(response.context["form"], None, "Check prediction credentials: Not authorized")
 
         mock_get_version_intents.return_value = json.loads(GET_VERSION_INTENTS_RESPONSE)
         mock_predict.side_effect = None

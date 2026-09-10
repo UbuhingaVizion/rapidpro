@@ -1611,20 +1611,19 @@ wheels = [
 
 [[package]]
 name = "smartmin"
-version = "4.2.5"
+version = "5.0.10"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "celery" },
     { name = "django" },
-    { name = "pytz" },
     { name = "redis" },
     { name = "sqlparse" },
     { name = "xlrd" },
     { name = "xlwt" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/5e/5b/b82e5d1e04400296ef46e0ae647efb79ee9928320b4ee6033ceb6ccf392a/smartmin-4.2.5.tar.gz", hash = "sha256:fe680f2f3e75e871bd822a0669956b7c0a0040032fb83889d8212b58a1e7fd8b", size = 321305, upload-time = "2023-11-03T15:22:33.611Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/78/fc/58c9d949ca0e35b45ee7527361078ad69e40bf67f35ed0cf138f3d6a9a19/smartmin-5.0.10.tar.gz", hash = "sha256:34b9eca61860154c6388c8ab0e46a8b7dde4bc349b594ac582c87c208fd5ad1b", size = 321336, upload-time = "2024-07-18T16:31:22.553Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/30/bf/1d0fd37c20381ca7ccf95bc13bc4c7a3c48e899e87dc8db5366c509ec92f/smartmin-4.2.5-py3-none-any.whl", hash = "sha256:b7d13ef3b40b53a61d3aeb3ada297f7493a2d2e962c7431d31a3fcf770ed9ef7", size = 357756, upload-time = "2023-11-03T15:22:31.334Z" },
+    { url = "https://files.pythonhosted.org/packages/58/f7/e327d092fcb4d0586b1376e613c899f3827c9867598b0cf5292fff7aa9d0/smartmin-5.0.10-py3-none-any.whl", hash = "sha256:4ad27e5d00036e64cf49d01c5891e2ace757e3a31fa2de793ea02700be553d85", size = 358178, upload-time = "2024-07-18T16:31:20.579Z" },
 ]
 
 [[package]]
@@ -1769,7 +1768,7 @@ requires-dist = [
     { name = "requests-toolbelt", specifier = ">=1.0.0,<2" },
     { name = "sentry-sdk", specifier = ">=2.0.0,<3" },
     { name = "setuptools", specifier = "<81" },
-    { name = "smartmin", specifier = ">=4.2.3,<5" },
+    { name = "smartmin", specifier = ">=5.0.2,<5.1" },
     { name = "stripe", specifier = ">=5.0.0,<6" },
     { name = "twilio", specifier = "==6.24.0" },
     { name = "twython", specifier = "==3.5.0" },

@@ -238,7 +238,7 @@ class UserTest(TembaTest):
         self.assertEqual(200, response.status_code)
         self.assertFormError(
             response.context["form"],
-            "__all__",
+            None,
             "Please enter a correct username and password. Note that both fields may be case-sensitive.",
         )
 
@@ -322,7 +322,7 @@ class UserTest(TembaTest):
         response = self.client.post(login_url, {"username": "admin@nyaruka.com", "password": "pass123"})
         self.assertFormError(
             response.context["form"],
-            "__all__",
+            None,
             "Please enter a correct username and password. Note that both fields may be case-sensitive.",
         )
 
@@ -1646,7 +1646,7 @@ class OrgTest(TembaTest):
                 "invite_role": "V",
             },
         )
-        self.assertFormError(response.context["form"], "__all__", "A workspace must have at least one administrator.")
+        self.assertFormError(response.context["form"], None, "A workspace must have at least one administrator.")
 
         # try to downgrade ourselves to an editor
         response = self.client.post(
@@ -1660,7 +1660,7 @@ class OrgTest(TembaTest):
                 "invite_role": "V",
             },
         )
-        self.assertFormError(response.context["form"], "__all__", "A workspace must have at least one administrator.")
+        self.assertFormError(response.context["form"], None, "A workspace must have at least one administrator.")
 
         # finally upgrade agent to admin, downgrade editor to surveyor, remove ourselves entirely and remove last invite
         last_invite = Invitation.objects.last()
@@ -2432,7 +2432,7 @@ class OrgTest(TembaTest):
                 response = self.client.post(connect_url, post_data)
                 self.assertFormError(
                     response.context["form"],
-                    "__all__",
+                    None,
                     "The Twilio account SID and Token seem invalid. Please check them again and retry.",
                 )
 
@@ -2942,7 +2942,7 @@ class OrgTest(TembaTest):
 
         # post without API token, should get validation error
         response = self.client.post(account_url, {"disconnect": "false"})
-        self.assertFormError(response.context["form"], "__all__", "You must enter your account API Key")
+        self.assertFormError(response.context["form"], None, "You must enter your account API Key")
 
         # vonage config should remain the same
         self.org.refresh_from_db()
