@@ -489,9 +489,9 @@ class WhatsAppTypeTest(TembaTest):
         foo.save()
 
         response = self.client.get(reverse("channels.types.whatsapp.templates", args=[channel.uuid]))
-        # should have our template translations
+        # should only have our active template translation
         self.assertContains(response, "Hello")
-        self.assertNotContains(response, "Hi")
+        self.assertEqual([t.template.name for t in response.context["translations"]], ["hello"])
 
         # Check if message templates link are in sync_logs view
         response = self.client.get(reverse("channels.types.whatsapp.sync_logs", args=[channel.uuid]))
