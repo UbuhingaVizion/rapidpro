@@ -1,14 +1,6 @@
 import itertools
 from enum import Enum
 
-from rest_framework import generics, status, views
-from rest_framework.pagination import CursorPagination
-from rest_framework.parsers import FormParser, MultiPartParser
-from rest_framework.permissions import IsAuthenticated
-from rest_framework.response import Response
-from rest_framework.reverse import reverse
-from smartmin.views import SmartFormView, SmartTemplateView
-
 from django import forms
 from django.contrib.auth import authenticate, login
 from django.contrib.auth.models import User
@@ -16,6 +8,13 @@ from django.db.models import Prefetch, Q
 from django.http import HttpResponse, JsonResponse
 from django.utils.translation import gettext_lazy as _
 from django.views.decorators.csrf import csrf_exempt
+from rest_framework import generics, status, views
+from rest_framework.pagination import CursorPagination
+from rest_framework.parsers import FormParser, MultiPartParser
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework.reverse import reverse
+from smartmin.views import SmartFormView, SmartTemplateView
 
 from temba.api.models import APIToken, Resthook, ResthookSubscriber, WebHookEvent
 from temba.api.v2.views_base import (
@@ -1654,7 +1653,7 @@ class DefinitionsEndpoint(BaseAPIView):
         include = params.get("dependencies", "all")
         if include not in DefinitionsEndpoint.Depends.__members__:
             raise InvalidQueryError(
-                "dependencies must be one of %s" % ", ".join(DefinitionsEndpoint.Depends.__members__)
+                f"dependencies must be one of {', '.join(DefinitionsEndpoint.Depends.__members__)}"
             )
 
         include = DefinitionsEndpoint.Depends[include]
@@ -3266,7 +3265,7 @@ class FlowStartsEndpoint(ListAPIMixin, WriteAPIMixin, BaseAPIView):
 
     def get_serializer_context(self):
         context = super().get_serializer_context()
-        context["is_zapier"] = "Zapier" in self.request.META.get("HTTP_USER_AGENT", "")
+        context["is_zapier"] = "Zapier" in self.request.headers.get("user-agent", "")
         return context
 
     def post_save(self, instance):

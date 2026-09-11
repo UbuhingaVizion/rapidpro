@@ -1,9 +1,8 @@
 import requests
-from smartmin.views import SmartFormView
-
 from django import forms
 from django.core.exceptions import ValidationError
 from django.utils.translation import gettext_lazy as _
+from smartmin.views import SmartFormView
 
 from ...models import Channel
 from ...views import ClaimViewMixin, UpdateChannelForm
@@ -19,7 +18,7 @@ class ClaimView(ClaimViewMixin, SmartFormView):
             auth_token = self.data["auth_token"]
             response = requests.post("https://chatapi.viber.com/pa/get_account_info", json={"auth_token": auth_token})
             if response.status_code != 200 or response.json()["status"] != 0:
-                raise ValidationError("Error validating authentication token: %s" % response.json()["status_message"])
+                raise ValidationError(f"Error validating authentication token: {response.json()['status_message']}")
             return auth_token
 
     form_class = Form

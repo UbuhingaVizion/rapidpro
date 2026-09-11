@@ -1,5 +1,4 @@
-from django.conf.urls import include
-from django.urls import re_path
+from django.urls import include, path, re_path
 
 from .models import Classifier
 from .views import ClassifierCRUDL
@@ -9,12 +8,12 @@ type_urls = []
 for cl_type in Classifier.get_types():
     cl_urls = cl_type.get_urls()
     for u in cl_urls:
-        u.name = "classifiers.types.%s.%s" % (cl_type.slug, u.name)
+        u.name = f"classifiers.types.{cl_type.slug}.{u.name}"
 
     if cl_urls:
-        type_urls.append(re_path("^%s/" % cl_type.slug, include(cl_urls)))
+        type_urls.append(re_path(f"^{cl_type.slug}/", include(cl_urls)))
 
 urlpatterns = [
-    re_path(r"^", include(ClassifierCRUDL().as_urlpatterns())),
-    re_path(r"^classifiers/types/", include(type_urls)),
+    path("", include(ClassifierCRUDL().as_urlpatterns())),
+    path("classifiers/types/", include(type_urls)),
 ]

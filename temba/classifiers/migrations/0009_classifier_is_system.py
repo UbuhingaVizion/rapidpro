@@ -4,7 +4,6 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("classifiers", "0008_alter_classifier_name_alter_classifier_uuid"),
     ]

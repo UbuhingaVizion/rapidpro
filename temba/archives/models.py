@@ -8,7 +8,6 @@ from gettext import gettext as _
 from urllib.parse import urlparse
 
 from dateutil.relativedelta import relativedelta
-
 from django.conf import settings
 from django.db import models
 from django.db.models import Q
@@ -173,8 +172,7 @@ class Archive(models.Model):
 
         def generator():
             for archive in archives:
-                for record in archive.iter_records(where=where):
-                    yield record
+                yield from archive.iter_records(where=where)
 
         return generator()
 
@@ -197,8 +195,7 @@ class Archive(models.Model):
             )
 
             def generator():
-                for record in EventStreamReader(response["Payload"]):
-                    yield record
+                yield from EventStreamReader(response["Payload"])
 
             return generator()
 

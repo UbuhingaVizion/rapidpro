@@ -47,9 +47,9 @@ def format_number(val):
 def sizeof_fmt(num, suffix="b"):
     for unit in ["", "K", "M", "G", "T", "P", "E", "Z"]:
         if abs(num) < 1024.0:
-            return "%3.1f %s%s" % (num, unit, suffix)
+            return f"{num:3.1f} {unit}{suffix}"
         num /= 1024.0
-    return "%.1f %s%s" % (num, "Y", suffix)
+    return f"{num:.1f} Y{suffix}"
 
 
 def prepped_request_to_str(prepped):
@@ -58,7 +58,7 @@ def prepped_request_to_str(prepped):
     """
     return "{}\n{}\n\n{}".format(
         prepped.method + " " + prepped.url,
-        "\n".join("{}: {}".format(k, v) for k, v in prepped.headers.items()),
+        "\n".join(f"{k}: {v}" for k, v in prepped.headers.items()),
         prepped.body,
     )
 

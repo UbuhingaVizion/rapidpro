@@ -1,9 +1,8 @@
 from datetime import timedelta
 
-from requests import RequestException
-
 from django.urls import reverse
 from django.utils import timezone
+from requests import RequestException
 
 from temba.classifiers.models import Classifier
 from temba.classifiers.types.wit import WitType

@@ -1,7 +1,6 @@
-from smartmin.views import SmartFormView
-
 from django import forms
 from django.utils.translation import gettext_lazy as _
+from smartmin.views import SmartFormView
 
 from ...models import Channel
 from ...views import ClaimViewMixin
@@ -16,7 +15,7 @@ class ClaimView(ClaimViewMixin, SmartFormView):
         send_notification = forms.CharField(
             label=_("Send notification"),
             required=False,
-            help_text=_("Check if you want this channel to send notifications " "to contacts."),
+            help_text=_("Check if you want this channel to send notifications to contacts."),
             widget=forms.CheckboxInput(),
         )
 

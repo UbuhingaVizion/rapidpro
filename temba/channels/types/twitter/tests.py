@@ -1,9 +1,8 @@
 from unittest.mock import patch
 
-from twython import TwythonError
-
 from django.contrib.auth.models import Group
 from django.urls import reverse
+from twython import TwythonError
 
 from temba.contacts.models import URN, Contact
 from temba.tests import TembaTest, mock_mailroom
@@ -68,10 +67,10 @@ class TwitterTypeTest(TembaTest):
         # try submitting empty form
         response = self.client.post(url, {})
         self.assertEqual(response.status_code, 200)
-        self.assertFormError(response, "form", "api_key", "This field is required.")
-        self.assertFormError(response, "form", "api_secret", "This field is required.")
-        self.assertFormError(response, "form", "access_token", "This field is required.")
-        self.assertFormError(response, "form", "access_token_secret", "This field is required.")
+        self.assertFormError(response.context["form"], "api_key", "This field is required.")
+        self.assertFormError(response.context["form"], "api_secret", "This field is required.")
+        self.assertFormError(response.context["form"], "access_token", "This field is required.")
+        self.assertFormError(response.context["form"], "access_token_secret", "This field is required.")
 
         # try submitting with invalid credentials
         mock_verify_credentials.side_effect = TwythonError("Invalid credentials")
@@ -80,7 +79,9 @@ class TwitterTypeTest(TembaTest):
             url, {"api_key": "ak", "api_secret": "as", "access_token": "at", "access_token_secret": "ats"}
         )
         self.assertEqual(response.status_code, 200)
-        self.assertFormError(response, "form", None, "The provided Twitter credentials do not appear to be valid.")
+        self.assertFormError(
+            response.context["form"], None, "The provided Twitter credentials do not appear to be valid."
+        )
 
         # error registering webhook
         mock_verify_credentials.return_value = {"id": "87654", "screen_name": "jimmy"}
@@ -98,7 +99,7 @@ class TwitterTypeTest(TembaTest):
             },
         )
         self.assertEqual(response.status_code, 200)
-        self.assertFormError(response, "form", None, "Exceeded number of webhooks")
+        self.assertFormError(response.context["form"], None, "Exceeded number of webhooks")
 
         # try a valid submission
         mock_register_webhook.side_effect = None
@@ -133,7 +134,7 @@ class TwitterTypeTest(TembaTest):
         self.assertTrue(channel.type.has_attachment_support(channel))
 
         mock_register_webhook.assert_called_with(
-            "beta", "https://%s/c/twt/%s/receive" % (channel.callback_domain, channel.uuid)
+            "beta", f"https://{channel.callback_domain}/c/twt/{channel.uuid}/receive"
         )
         mock_subscribe_to_webhook.assert_called_with("beta")
 

@@ -4,17 +4,6 @@ from datetime import timedelta
 from urllib.parse import quote_plus
 
 import iso8601
-from smartmin.views import (
-    SmartCreateView,
-    SmartCRUDL,
-    SmartFormView,
-    SmartListView,
-    SmartReadView,
-    SmartTemplateView,
-    SmartUpdateView,
-    SmartView,
-)
-
 from django import forms
 from django.conf import settings
 from django.contrib import messages
@@ -31,6 +20,16 @@ from django.utils.functional import cached_property
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils.translation import gettext_lazy as _
 from django.views import View
+from smartmin.views import (
+    SmartCreateView,
+    SmartCRUDL,
+    SmartFormView,
+    SmartListView,
+    SmartReadView,
+    SmartTemplateView,
+    SmartUpdateView,
+    SmartView,
+)
 
 from temba.archives.models import Archive
 from temba.channels.models import Channel
@@ -208,7 +207,7 @@ class ContactListView(SpaMixin, OrgPermsMixin, BulkActionMixin, SmartListView):
     def derive_export_url(self):
         search = quote_plus(self.request.GET.get("search", ""))
         redirect = quote_plus(self.request.get_full_path())
-        return "%s?g=%s&s=%s&redirect=%s" % (
+        return "{}?g={}&s={}&redirect={}".format(
             reverse("contacts.contact_export"),
             self.group.uuid,
             search,
@@ -235,14 +234,12 @@ class ContactListView(SpaMixin, OrgPermsMixin, BulkActionMixin, SmartListView):
             sort_field = sort_on
 
         if sort_field == "created_on":
-
             return (
                 sort_field,
                 sort_direction,
                 {"field_type": "attribute", "sort_direction": sort_direction, "field_name": "created_on"},
             )
         if sort_field == "last_seen_on":
-
             return (
                 sort_field,
                 sort_direction,
@@ -272,7 +269,7 @@ class ContactListView(SpaMixin, OrgPermsMixin, BulkActionMixin, SmartListView):
                 {
                     "field_type": "field",
                     "sort_direction": sort_direction,
-                    "field_path": "fields.{}".format(field_leaf),
+                    "field_path": f"fields.{field_leaf}",
                     "field_uuid": str(contact_sort_field["uuid"]),
                 },
             )
@@ -399,7 +396,10 @@ class ContactForm(forms.ModelForm):
         # add all URN scheme fields if org is not anon
         extra_fields = []
         if not self.org.is_anon:
-            urns = self.instance.get_urns()
+            if not self.instance.id:
+                urns = []
+            else:
+                urns = self.instance.get_urns()
 
             idx = 0
 
@@ -541,7 +541,7 @@ class ExportForm(Form):
         ).order_by(Upper("name"))
 
         self.fields["group_memberships"].help_text = _(
-            "Include group membership only for these groups. " "(Leave blank to ignore group memberships)."
+            "Include group membership only for these groups. (Leave blank to ignore group memberships)."
         )
 
 
@@ -666,7 +666,6 @@ class ContactCRUDL(SmartCRUDL):
             return JsonResponse({"results": menu})
 
     class Export(ModalMixin, OrgPermsMixin, SmartFormView):
-
         form_class = ExportForm
         submit_button_name = "Export"
         success_url = "@contacts.contact_list"
@@ -740,7 +739,7 @@ class ContactCRUDL(SmartCRUDL):
                         self.request,
                         _("Export complete, you can find it here: %s (production users will get an email)") % dl_url,
                     )
-            if "HTTP_X_PJAX" not in self.request.META:
+            if "x-pjax" not in self.request.headers:
                 return HttpResponseRedirect(redirect or reverse("contacts.contact_list"))
             else:  # pragma: no cover
                 response = self.render_to_response(
@@ -864,7 +863,6 @@ class ContactCRUDL(SmartCRUDL):
             links = []
 
             if self.object.status == Contact.STATUS_ACTIVE:
-
                 if not self.is_spa() and self.has_org_perm("msgs.broadcast_send"):
                     links.append(
                         dict(
@@ -944,7 +942,7 @@ class ContactCRUDL(SmartCRUDL):
                     dict(
                         title=_("Service"),
                         posterize=True,
-                        href=f'{reverse("orgs.org_service")}?organization={self.object.org_id}&redirect_url={reverse("contacts.contact_read", args=[self.get_object().uuid])}',
+                        href=f"{reverse('orgs.org_service')}?organization={self.object.org_id}&redirect_url={reverse('contacts.contact_read', args=[self.get_object().uuid])}",
                     )
                 )
 
@@ -1064,7 +1062,6 @@ class ContactCRUDL(SmartCRUDL):
             # serialize our contact sample
             json_contacts = []
             for contact in summary["sample"]:
-
                 primary_urn = contact.get_urn()
                 if primary_urn:
                     primary_urn = primary_urn.get_display(org=org, international=True)
@@ -1100,7 +1097,7 @@ class ContactCRUDL(SmartCRUDL):
         def get_gear_links(self):
             links = []
 
-            is_spa = "HTTP_TEMBA_SPA" in self.request.META
+            is_spa = "temba-spa" in self.request.headers
             search = self.request.GET.get("search")
 
             # define save search conditions
@@ -1210,7 +1207,7 @@ class ContactCRUDL(SmartCRUDL):
         def get_gear_links(self):
             links = []
 
-            is_spa = "HTTP_TEMBA_SPA" in self.request.META
+            is_spa = "temba-spa" in self.request.headers
 
             if self.has_org_perm("contacts.contactfield_list") and not is_spa:
                 links.append(dict(title=_("Manage Fields"), href=reverse("contacts.contactfield_list")))
@@ -1268,7 +1265,7 @@ class ContactCRUDL(SmartCRUDL):
 
         @classmethod
         def derive_url_pattern(cls, path, action):
-            return r"^%s/%s/(?P<group>[^/]+)/$" % (path, action)
+            return rf"^{path}/{action}/(?P<group>[^/]+)/$"
 
         def get_object_org(self):
             return self.group.org
@@ -1320,7 +1317,7 @@ class ContactCRUDL(SmartCRUDL):
         submit_button_name = _("Save Changes")
 
         def get_success_url(self):
-            if "HTTP_TEMBA_SPA" in self.request.META:
+            if "temba-spa" in self.request.headers:
                 return "hide"
             return super().get_success_url()
 
@@ -1414,7 +1411,7 @@ class ContactCRUDL(SmartCRUDL):
         submit_button_name = _("Save Changes")
 
         def get_success_url(self):
-            if "HTTP_TEMBA_SPA" in self.request.META:
+            if "temba-spa" in self.request.headers:
                 return "hide"
             return super().get_success_url()
 
@@ -1685,7 +1682,7 @@ class ContactFieldForm(forms.ModelForm):
     def clean_value_type(self):
         value_type = self.cleaned_data["value_type"]
 
-        if self.instance and self.instance.campaign_events.filter(is_active=True).exists():
+        if self.instance and self.instance.id and self.instance.campaign_events.filter(is_active=True).exists():
             if value_type != ContactField.TYPE_DATETIME:
                 raise forms.ValidationError(_("Can't change type of date field being used by campaign events."))
 
@@ -1906,7 +1903,7 @@ class ContactFieldCRUDL(SmartCRUDL):
 
         @classmethod
         def derive_url_pattern(cls, path, action):
-            return r"^%s/%s/(?P<value_type>[^/]+)/$" % (path, action)
+            return rf"^{path}/{action}/(?P<value_type>[^/]+)/$"
 
     class Usages(DependencyUsagesModal):
         permission = "contacts.contactfield_read"

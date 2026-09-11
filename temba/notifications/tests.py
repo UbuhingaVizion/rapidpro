@@ -1,7 +1,6 @@
 from datetime import datetime
 
 import pytz
-
 from django.core import mail
 from django.test import override_settings
 from django.urls import reverse
@@ -51,7 +50,7 @@ class IncidentTest(TembaTest):
 
         incident = Incident.objects.get()
         self.assertEqual("org:flagged", incident.incident_type)
-        self.assertEqual({self.admin}, set(n.user for n in incident.notifications.all()))
+        self.assertEqual({self.admin}, {n.user for n in incident.notifications.all()})
 
         self.assertEqual(
             {"type": "org:flagged", "started_on": matchers.ISODate(), "ended_on": None}, incident.as_json()

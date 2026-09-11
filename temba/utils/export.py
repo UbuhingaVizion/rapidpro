@@ -4,15 +4,14 @@ import os
 import time
 from datetime import datetime, timedelta
 
-from smartmin.models import SmartModel
-from xlsxlite.writer import XLSXBook
-
 from django.core.files import File
 from django.core.files.temp import NamedTemporaryFile
 from django.db import models
 from django.http import HttpResponse
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
+from smartmin.models import SmartModel
+from xlsxlite.writer import XLSXBook
 
 from temba.assets.models import BaseAssetStore, get_asset_store
 
@@ -99,7 +98,7 @@ class BaseExportTask(LegacyUUIDMixin, SmartModel):
             self.update_status(self.STATUS_COMPLETE)
             elapsed = time.time() - start
             print(f"Completed {self.analytics_key} with ID {self.id} in {elapsed:.1f} seconds")
-            analytics.track(self.created_by, "temba.%s_latency" % self.analytics_key, properties=dict(value=elapsed))
+            analytics.track(self.created_by, f"temba.{self.analytics_key}_latency", properties=dict(value=elapsed))
 
             Notification.export_finished(self)
         finally:

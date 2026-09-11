@@ -1,10 +1,9 @@
 from collections import namedtuple
 from unittest.mock import patch
 
+from django.utils.encoding import force_bytes, force_str
 from requests import HTTPError
 from requests.structures import CaseInsensitiveDict
-
-from django.utils.encoding import force_bytes, force_str
 
 from temba.utils import json
 

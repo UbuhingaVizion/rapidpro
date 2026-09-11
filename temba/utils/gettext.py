@@ -3,7 +3,6 @@ from dataclasses import dataclass
 
 import polib
 import pycountry
-
 from django.conf import settings
 from django.core.files.storage import default_storage
 

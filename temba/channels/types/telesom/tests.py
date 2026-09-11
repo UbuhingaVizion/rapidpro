@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 from django.urls import reverse
 
 from temba.tests import TembaTest
@@ -6,7 +8,10 @@ from ...models import Channel
 
 
 class TelesomTypeTest(TembaTest):
-    def test_claim(self):
+    @patch("socket.gethostbyname")
+    def test_claim(self, mock_socket_hostname):
+        mock_socket_hostname.return_value = "123.123.123.123"
+
         Channel.objects.all().delete()
 
         self.login(self.admin)

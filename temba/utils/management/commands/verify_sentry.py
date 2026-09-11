@@ -1,6 +1,5 @@
-from django.core.management import BaseCommand
-
 from celery import shared_task
+from django.core.management import BaseCommand
 
 
 @shared_task

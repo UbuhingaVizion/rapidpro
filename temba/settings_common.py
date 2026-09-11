@@ -5,13 +5,11 @@ from datetime import timedelta
 
 import iptools
 import sentry_sdk
+from celery.schedules import crontab
+from django.utils.translation import gettext_lazy as _
 from sentry_sdk.integrations.celery import CeleryIntegration
 from sentry_sdk.integrations.django import DjangoIntegration
 from sentry_sdk.integrations.logging import LoggingIntegration, ignore_logger
-
-from django.utils.translation import gettext_lazy as _
-
-from celery.schedules import crontab
 
 SENTRY_DSN = os.environ.get("SENTRY_DSN", "")
 
@@ -126,7 +124,6 @@ USE_I18N = True
 
 # If you set this to False, Django will not format dates, numbers and
 # calendars according to the current locale
-USE_L10N = True
 
 # URL prefix for admin static files -- CSS, JavaScript and images.
 # Make sure to use a trailing slash.
@@ -554,7 +551,7 @@ GROUP_PERMISSIONS = {
         "flows.flow_revisions",
         "flows.flowrun_delete",
         "flows.flowsession_json",
-        "notifications.log_list",
+        "notifications.notification_list",
         "orgs.org_dashboard",
         "orgs.org_delete",
         "orgs.org_grant",
@@ -993,7 +990,7 @@ REDIS_DB = 10 if TESTING else 15  # we use a redis db of 10 for testing so that 
 CACHES = {
     "default": {
         "BACKEND": "django_redis.cache.RedisCache",
-        "LOCATION": "redis://%s:%s/%s" % (REDIS_HOST, REDIS_PORT, REDIS_DB),
+        "LOCATION": f"redis://{REDIS_HOST}:{REDIS_PORT}/{REDIS_DB}",
         "OPTIONS": {"CLIENT_CLASS": "django_redis.client.DefaultClient"},
     }
 }

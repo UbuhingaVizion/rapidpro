@@ -32,7 +32,6 @@ def reverse(apps, schema_editor):  # pragma: no cover
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("contacts", "0156_alter_contactgroup_group_type_and_more"),
     ]

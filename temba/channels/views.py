@@ -11,17 +11,6 @@ import phonenumbers
 import pytz
 import requests
 import twilio.base.exceptions
-from smartmin.views import (
-    SmartCRUDL,
-    SmartFormView,
-    SmartListView,
-    SmartModelActionView,
-    SmartReadView,
-    SmartTemplateView,
-    SmartUpdateView,
-)
-from twilio.base.exceptions import TwilioRestException
-
 from django import forms
 from django.conf import settings
 from django.contrib import messages
@@ -35,6 +24,16 @@ from django.utils.encoding import force_bytes, force_str
 from django.utils.functional import cached_property
 from django.utils.translation import gettext_lazy as _
 from django.views.decorators.csrf import csrf_exempt
+from smartmin.views import (
+    SmartCRUDL,
+    SmartFormView,
+    SmartListView,
+    SmartModelActionView,
+    SmartReadView,
+    SmartTemplateView,
+    SmartUpdateView,
+)
+from twilio.base.exceptions import TwilioRestException
 
 from temba.contacts.models import URN
 from temba.msgs.models import Msg, SystemLabel
@@ -90,7 +89,6 @@ def channel_status_processor(request):
 
         channels = org.channels.filter(is_active=True)
         for channel in channels:
-
             if channel.created_on > cutoff:
                 continue
 
@@ -166,7 +164,7 @@ def sync(request, channel_id):
 
     if request_signature != signature:
         return JsonResponse(
-            {"error_id": 1, "error": "Invalid signature: '%(request)s'" % {"request": request_signature}, "cmds": []},
+            {"error_id": 1, "error": f"Invalid signature: '{request_signature}'", "cmds": []},
             status=401,
         )
 
@@ -208,7 +206,6 @@ def sync(request, channel_id):
 
             # catchall for commands that deal with a single message
             if "msg_id" in cmd:
-
                 # make sure the negative ids are converted to long
                 msg_id = cmd["msg_id"]
                 if msg_id < 0:
@@ -368,7 +365,7 @@ class ClaimViewMixin(SpaMixin, OrgPermsMixin, ComponentFormMixin):
         return (
             [self.template_name]
             if self.template_name
-            else ["channels/types/%s/claim.html" % self.channel_type.slug, "channels/channel_claim_form.html"]
+            else [f"channels/types/{self.channel_type.slug}/claim.html", "channels/channel_claim_form.html"]
         )
 
     def derive_title(self):
@@ -629,7 +626,7 @@ class BaseClaimNumberMixin(ClaimViewMixin):
         ).first()
         if existing:  # pragma: needs cover
             form._errors["phone_number"] = form.error_class(
-                [_("That number is already connected (%s)" % data["phone_number"])]
+                [_(f"That number is already connected ({data['phone_number']})")]
             )
             return self.form_invalid(form)
 
@@ -657,7 +654,7 @@ class BaseClaimNumberMixin(ClaimViewMixin):
             self.claim_number(self.request.user, data["phone_number"], data["country"], role)
             self.remove_api_credentials_from_session()
 
-            return HttpResponseRedirect("%s?success" % reverse("public.public_welcome"))
+            return HttpResponseRedirect(f"{reverse('public.public_welcome')}?success")
 
         except (
             nexmo.AuthenticationError,
@@ -842,7 +839,6 @@ class ChannelCRUDL(SmartCRUDL):
                 )
 
                 if self.object.is_android() or (self.object.parent and self.object.parent.is_android()):
-
                     sender = self.object.get_sender()
                     if sender and sender.is_delegate_sender():
                         links.append(
@@ -908,7 +904,7 @@ class ChannelCRUDL(SmartCRUDL):
                     dict(
                         title=_("Service"),
                         posterize=True,
-                        href=f'{reverse("orgs.org_service")}?organization={self.object.org_id}&redirect_url={reverse("channels.channel_read", args=[self.object.uuid])}',
+                        href=f"{reverse('orgs.org_service')}?organization={self.object.org_id}&redirect_url={reverse('channels.channel_read', args=[self.object.uuid])}",
                     )
                 )
 
@@ -921,7 +917,7 @@ class ChannelCRUDL(SmartCRUDL):
             sync_events = SyncEvent.objects.filter(channel=channel.id).order_by("-created_on")
             context["last_sync"] = sync_events.first()
 
-            if "HTTP_X_FORMAX" in self.request.META:  # no additional data needed if request is only for formax
+            if "x-formax" in self.request.headers:  # no additional data needed if request is only for formax
                 return context
 
             if not channel.is_active:  # pragma: needs cover
@@ -1521,7 +1517,7 @@ class ChannelLogCRUDL(SmartCRUDL):
 
         @classmethod
         def derive_url_pattern(cls, path, action):
-            return r"^%s/(?P<channel_uuid>[^/]+)/$" % path
+            return rf"^{path}/(?P<channel_uuid>[^/]+)/$"
 
         def get_template_names(self):
             if self.folder == self.FOLDER_CALLS:
@@ -1584,7 +1580,7 @@ class ChannelLogCRUDL(SmartCRUDL):
 
         @classmethod
         def derive_url_pattern(cls, path, action):
-            return r"^%s/%s/(?P<channel_uuid>[0-9a-f-]+)/(?P<pk>\d+)/$" % (path, action)
+            return rf"^{path}/{action}/(?P<channel_uuid>[0-9a-f-]+)/(?P<pk>\d+)/$"
 
         def get_gear_links(self):
             return [

@@ -1,8 +1,7 @@
 from functools import wraps
 
-from django_redis import get_redis_connection
-
 from celery import shared_task
+from django_redis import get_redis_connection
 
 # for tasks using a redis lock to prevent overlapping this is the default timeout for the lock
 DEFAULT_TASK_LOCK_TIMEOUT = 900
@@ -29,7 +28,7 @@ def nonoverlapping_task(*task_args, **task_kwargs):
                 lock_timeout = task_kwargs.get("time_limit", DEFAULT_TASK_LOCK_TIMEOUT)
 
             if r.get(lock_key):
-                print("Skipping task %s to prevent overlapping" % task_name)
+                print(f"Skipping task {task_name} to prevent overlapping")
             else:
                 with r.lock(lock_key, timeout=lock_timeout):
                     task_func(*exec_args, **exec_kwargs)

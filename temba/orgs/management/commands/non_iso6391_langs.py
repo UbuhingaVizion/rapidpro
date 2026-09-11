@@ -1,5 +1,4 @@
 import pycountry
-
 from django.core.management.base import BaseCommand
 
 from temba.orgs.models import Org

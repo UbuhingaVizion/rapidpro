@@ -3,10 +3,9 @@ import uuid
 from secrets import token_urlsafe
 from unittest.mock import patch
 
-from requests.exceptions import Timeout
-
 from django.contrib.auth.models import Group
 from django.urls import reverse
+from requests.exceptions import Timeout
 
 from temba.tests import MockResponse, TembaTest
 from temba.tickets.models import Ticketer
@@ -178,31 +177,31 @@ class RocketChatViewTest(RocketChatMixin):
 
         choices = (c for c in self.secret)
         response = self.client.post(self.connect_url, {**base, "base_url": self.secure_url})
-        self.assertFormError(response, "form", None, "Invalid secret code.")  # Hidden field
+        self.assertFormError(response.context["form"], None, "Invalid secret code.")  # Hidden field
 
         choices = (c for c in self.secret)
         response = self.client.post(self.connect_url, {**base, "secret": "", "base_url": self.secure_url})
-        self.assertFormError(response, "form", None, "Invalid secret code.")  # Hidden field
+        self.assertFormError(response.context["form"], None, "Invalid secret code.")  # Hidden field
 
         choices = (c for c in self.secret)
         response = self.client.post(self.connect_url, {**base, "secret": self.secret2, "base_url": self.secure_url})
-        self.assertFormError(response, "form", None, "Secret code change detected.")  # Hidden field
+        self.assertFormError(response.context["form"], None, "Secret code change detected.")  # Hidden field
 
         choices = (c for c in self.secret)
         response = self.client.post(self.connect_url, {**base, "secret": self.secret})
-        self.assertFormError(response, "form", "base_url", "This field is required.")
+        self.assertFormError(response.context["form"], "base_url", "This field is required.")
 
         choices = (c for c in self.secret)
         response = self.client.post(self.connect_url, {**base, "secret": self.secret, "base_url": ""})
-        self.assertFormError(response, "form", "base_url", "This field is required.")
+        self.assertFormError(response.context["form"], "base_url", "This field is required.")
 
         choices = (c for c in self.secret)
         response = self.client.post(self.connect_url, data={**base, "secret": self.secret, "base_url": "domain"})
-        self.assertFormError(response, "form", "base_url", "Enter a valid URL.")
+        self.assertFormError(response.context["form"], "base_url", "Enter a valid URL.")
 
         choices = (c for c in self.secret)
         response = self.client.post(self.connect_url, data={**base, "secret": self.secret, "base_url": "domain.com"})
-        self.assertFormError(response, "form", "base_url", "Invalid URL: http://domain.com")
+        self.assertFormError(response.context["form"], "base_url", "Invalid URL: http://domain.com")
 
         for path in ["", "/", "/path", f"/path{self.app_id}/"]:
             for scheme in ["", "http", "https"]:
@@ -217,14 +216,14 @@ class RocketChatViewTest(RocketChatMixin):
                 url = data["base_url"]
                 if not url.startswith("http"):
                     url = f"http://{url}"
-                self.assertFormError(response, "form", "base_url", f"Invalid URL: {url}")
+                self.assertFormError(response.context["form"], "base_url", f"Invalid URL: {url}")
 
         choices = (c for c in self.secret)
         data = {**base, "secret": self.secret, "base_url": self.new_url("domain.com", path=f"/{self.app_id}")}
         self.new_ticketer({RocketChatType.CONFIG_BASE_URL: data["base_url"]})
         response = self.client.post(self.connect_url, data=data)
         self.assertFormError(
-            response, "form", "base_url", "There is already a ticketing service configured for this URL."
+            response.context["form"], "base_url", "There is already a ticketing service configured for this URL."
         )
 
     @patch("socket.gethostbyname")

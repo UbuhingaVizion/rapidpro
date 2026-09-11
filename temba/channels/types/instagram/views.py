@@ -1,10 +1,9 @@
 import requests
-from smartmin.views import SmartFormView, SmartModelActionView
-
 from django import forms
 from django.conf import settings
 from django.urls import reverse
 from django.utils.translation import gettext_lazy as _
+from smartmin.views import SmartFormView, SmartModelActionView
 
 from temba.orgs.views import ModalMixin, OrgObjPermsMixin
 
@@ -14,7 +13,6 @@ from ...views import ClaimViewMixin
 
 class ClaimView(ClaimViewMixin, SmartFormView):
     class Form(ClaimViewMixin.Form):
-
         user_access_token = forms.CharField(min_length=32, required=True, help_text=_("The User Access Token"))
         page_name = forms.CharField(required=True, help_text=_("The name of the Facebook page"))
         page_id = forms.IntegerField(required=True, help_text="The Facebook Page ID")

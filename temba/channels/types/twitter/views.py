@@ -1,10 +1,9 @@
-from smartmin.views import SmartFormView
-from twython import TwythonError
-
 from django import forms
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.utils.translation import gettext_lazy as _
+from smartmin.views import SmartFormView
+from twython import TwythonError
 
 from temba.utils.views import NonAtomicMixin
 
@@ -70,7 +69,7 @@ class ClaimView(NonAtomicMixin, ClaimViewMixin, SmartFormView):
                 self.request.user,
                 None,
                 self.channel_type,
-                name="@%s" % screen_name,
+                name=f"@{screen_name}",
                 address=screen_name,
                 config=config,
             )

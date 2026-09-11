@@ -6,7 +6,6 @@ from datetime import date, datetime
 from unittest.mock import call, patch
 
 import pytz
-
 from django.urls import reverse
 from django.utils import timezone
 

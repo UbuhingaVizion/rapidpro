@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 from django.urls import reverse
 
 from temba.tests import TembaTest
@@ -7,7 +9,10 @@ from .type import ExternalType
 
 
 class ExternalTypeTest(TembaTest):
-    def test_claim(self):
+    @patch("socket.gethostbyname")
+    def test_claim(self, mock_socket_hostname):
+        mock_socket_hostname.return_value = "127.0.0.1"
+
         url = reverse("channels.types.external.claim")
 
         self.login(self.admin)
@@ -34,17 +39,18 @@ class ExternalTypeTest(TembaTest):
 
         # fail due to missing number and invalid URL
         response = self.client.post(url, post_data)
-        self.assertFormError(response, "form", "url", "Cannot be a local or private host.")
-        self.assertFormError(response, "form", "number", "This field is required.")
+        self.assertFormError(response.context["form"], "url", "Cannot be a local or private host.")
+        self.assertFormError(response.context["form"], "number", "This field is required.")
 
         # change scheme to Ext and add valid URL
+        mock_socket_hostname.return_value = "123.123.123.123"
         ext_url = "http://test.com/send.php?from={{from}}&text={{text}}&to={{to}}"
         post_data["url"] = ext_url
         post_data["scheme"] = "ext"
 
         # fail due to missing address
         response = self.client.post(url, post_data)
-        self.assertFormError(response, "form", "address", "This field is required.")
+        self.assertFormError(response.context["form"], "address", "This field is required.")
 
         # update to valid number
         post_data["scheme"] = "tel"
@@ -137,27 +143,28 @@ class ExternalTypeTest(TembaTest):
         self.assertEqual("123456789", channel.address)
         self.assertIsNone(channel.country.code)
 
-    def test_claim_bulk_sender(self):
-        url = reverse("channels.types.external.claim") + "?role=S&channel=%s" % self.channel.pk
+    @patch("socket.gethostbyname")
+    def test_claim_bulk_sender(self, mock_socket_hostname):
+        mock_socket_hostname.return_value = "123.123.123.123"
+
+        url = reverse("channels.types.external.claim") + f"?role=S&channel={self.channel.pk}"
 
         self.login(self.admin)
 
         response = self.client.get(url)
         self.assertEqual(
             set(response.context["form"].fields.keys()),
-            set(
-                [
-                    "url",
-                    "method",
-                    "encoding",
-                    "content_type",
-                    "max_length",
-                    "send_authorization",
-                    "body",
-                    "mt_response_check",
-                    "loc",
-                ]
-            ),
+            {
+                "url",
+                "method",
+                "encoding",
+                "content_type",
+                "max_length",
+                "send_authorization",
+                "body",
+                "mt_response_check",
+                "loc",
+            },
         )
 
         post_data = response.context["form"].initial

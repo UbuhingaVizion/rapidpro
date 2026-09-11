@@ -1,9 +1,6 @@
-from typing import Optional
-
 import phonenumbers
-from django_countries.data import COUNTRIES
-
 from django.utils.translation import gettext_lazy as _
+from django_countries.data import COUNTRIES
 
 NAMES = COUNTRIES.copy()
 NAMES["GB"] = _("United Kingdom")
@@ -288,7 +285,7 @@ def calling_codes(codes) -> set:
     return cc
 
 
-def from_tel(phone: str) -> Optional[str]:
+def from_tel(phone: str) -> str | None:
     """
     Given a phone number in E164 returns the two letter country code for it.  ex: +250788383383 -> RW
     """

@@ -1,7 +1,6 @@
-from smartmin.views import SmartFormView
-
 from django import forms
 from django.utils.translation import gettext_lazy as _
+from smartmin.views import SmartFormView
 
 from ...models import Channel
 from ...views import ClaimViewMixin
@@ -27,7 +26,7 @@ class ClaimView(ClaimViewMixin, SmartFormView):
             user,
             "BR",
             self.channel_type,
-            name="Zenvia: %s" % data["shortcode"],
+            name=f"Zenvia: {data['shortcode']}",
             address=data["shortcode"],
             config=config,
         )

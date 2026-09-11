@@ -1,11 +1,9 @@
 import logging
 
 import requests
-from django_redis import get_redis_connection
-
-from django.utils import timezone
-
 from celery import shared_task
+from django.utils import timezone
+from django_redis import get_redis_connection
 
 from temba.channels.models import Channel
 from temba.request_logs.models import HTTPLog

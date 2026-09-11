@@ -2,14 +2,13 @@ import hmac
 import logging
 from hashlib import sha1
 
-from rest_framework.permissions import BasePermission
-from smartmin.models import SmartModel
-
 from django.conf import settings
 from django.contrib.auth.models import Group
 from django.db import models
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
+from rest_framework.permissions import BasePermission
+from smartmin.models import SmartModel
 
 from temba.orgs.models import Org, OrgRole, User
 from temba.utils.models import JSONAsTextField
@@ -194,9 +193,9 @@ class APIToken(models.Model):
             role_group = role.group if role else None
 
         if not role_group:
-            raise ValueError("User '%s' has no suitable role for API usage" % str(user))
+            raise ValueError(f"User '{user!s}' has no suitable role for API usage")
         elif role_group.name not in cls.GROUP_GRANTED_TO:
-            raise ValueError("Role %s is not valid for API usage" % role_group.name)
+            raise ValueError(f"Role {role_group.name} is not valid for API usage")
 
         tokens = cls.objects.filter(is_active=True, user=user, org=org, role=role_group)
 

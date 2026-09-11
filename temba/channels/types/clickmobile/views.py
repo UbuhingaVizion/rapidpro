@@ -1,8 +1,7 @@
 import phonenumbers
-from smartmin.views import SmartFormView
-
 from django import forms
 from django.utils.translation import gettext_lazy as _
+from smartmin.views import SmartFormView
 
 from temba.contacts.models import URN
 
@@ -62,7 +61,7 @@ class ClaimView(ClaimViewMixin, SmartFormView):
             user=self.request.user,
             country=data["country"],
             channel_type=self.channel_type,
-            name="Click Mobile: %s" % data["number"],
+            name=f"Click Mobile: {data['number']}",
             address=data["number"],
             config=config,
             schemes=[URN.TEL_SCHEME],

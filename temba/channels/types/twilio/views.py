@@ -1,13 +1,12 @@
 import phonenumbers
-from phonenumbers.phonenumberutil import region_code_for_number
-from smartmin.views import SmartFormView
-from twilio.base.exceptions import TwilioException, TwilioRestException
-
 from django import forms
 from django.conf import settings
 from django.http import HttpResponseRedirect, JsonResponse
 from django.urls import reverse
 from django.utils.translation import gettext_lazy as _
+from phonenumbers.phonenumberutil import region_code_for_number
+from smartmin.views import SmartFormView
+from twilio.base.exceptions import TwilioException, TwilioRestException
 
 from temba.orgs.models import Org
 from temba.orgs.views import OrgPermsMixin
@@ -102,11 +101,11 @@ class ClaimView(BaseClaimNumberMixin, SmartFormView):
             self.client = org.get_twilio_client()
             if not self.client:
                 return HttpResponseRedirect(
-                    f'{reverse("orgs.org_twilio_connect")}?claim_type={self.channel_type.slug}'
+                    f"{reverse('orgs.org_twilio_connect')}?claim_type={self.channel_type.slug}"
                 )
             self.account = self.client.api.account.fetch()
         except TwilioRestException:
-            return HttpResponseRedirect(f'{reverse("orgs.org_twilio_connect")}?claim_type={self.channel_type.slug}')
+            return HttpResponseRedirect(f"{reverse('orgs.org_twilio_connect')}?claim_type={self.channel_type.slug}")
 
     def get_search_countries_tuple(self):
         return SEARCH_COUNTRY_CHOICES
@@ -168,7 +167,7 @@ class ClaimView(BaseClaimNumberMixin, SmartFormView):
         voice_url = base_url + reverse("mailroom.ivr_handler", args=[channel_uuid, "incoming"])
 
         new_app = client.api.applications.create(
-            friendly_name="%s/%s" % (callback_domain.lower(), channel_uuid),
+            friendly_name=f"{callback_domain.lower()}/{channel_uuid}",
             sms_method="POST",
             sms_url=receive_url,
             voice_method="POST",
@@ -190,7 +189,7 @@ class ClaimView(BaseClaimNumberMixin, SmartFormView):
 
             if short_code:
                 number_sid = short_code.sid
-                app_url = "https://" + callback_domain + "%s" % reverse("courier.t", args=[channel_uuid, "receive"])
+                app_url = "https://" + callback_domain + f"{reverse('courier.t', args=[channel_uuid, 'receive'])}"
                 client.api.short_codes.get(number_sid).update(sms_url=app_url, sms_method="POST")
 
                 role = Channel.ROLE_SEND + Channel.ROLE_RECEIVE
@@ -199,15 +198,11 @@ class ClaimView(BaseClaimNumberMixin, SmartFormView):
 
             else:  # pragma: no cover
                 raise Exception(
-                    _(
-                        "Short code not found on your Twilio Account. "
-                        "Please check you own the short code and Try again"
-                    )
+                    _("Short code not found on your Twilio Account. Please check you own the short code and Try again")
                 )
         else:
             twilio_phone = next(twilio_phones, None)
             if twilio_phone:
-
                 client.api.incoming_phone_numbers.get(twilio_phone.sid).update(
                     voice_application_sid=new_app.sid, sms_application_sid=new_app.sid
                 )

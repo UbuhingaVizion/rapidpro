@@ -5,18 +5,6 @@ from urllib.parse import urlencode
 import iso8601
 import regex
 import requests
-from packaging.version import Version
-from smartmin.views import (
-    SmartCreateView,
-    SmartCRUDL,
-    SmartDeleteView,
-    SmartFormView,
-    SmartListView,
-    SmartReadView,
-    SmartTemplateView,
-    SmartUpdateView,
-)
-
 from django import forms
 from django.conf import settings
 from django.contrib import messages
@@ -30,6 +18,17 @@ from django.utils.functional import cached_property
 from django.utils.translation import gettext_lazy as _
 from django.views.decorators.csrf import csrf_exempt
 from django.views.generic import FormView
+from packaging.version import Version
+from smartmin.views import (
+    SmartCreateView,
+    SmartCRUDL,
+    SmartDeleteView,
+    SmartFormView,
+    SmartListView,
+    SmartReadView,
+    SmartTemplateView,
+    SmartUpdateView,
+)
 
 from temba import mailroom
 from temba.archives.models import Archive
@@ -152,7 +151,7 @@ class PartialTemplate(SmartTemplateView):  # pragma: no cover
         return
 
     def get_template_names(self):
-        return "partials/%s.html" % self.template
+        return f"partials/{self.template}.html"
 
 
 class FlowSessionCRUDL(SmartCRUDL):
@@ -227,7 +226,7 @@ class FlowCRUDL(SmartCRUDL):
     class Menu(MenuMixin, SmartTemplateView):
         @classmethod
         def derive_url_pattern(cls, path, action):
-            return r"^%s/%s/((?P<submenu>[A-z]+)/)?$" % (path, action)
+            return rf"^{path}/{action}/((?P<submenu>[A-z]+)/)?$"
 
         def derive_menu(self):
 
@@ -294,7 +293,7 @@ class FlowCRUDL(SmartCRUDL):
 
         @classmethod
         def derive_url_pattern(cls, path, action):
-            return r"^%s/%s/(?P<uuid>[0-9a-f-]+)/((?P<revision_id>\d+)/)?$" % (path, action)
+            return rf"^{path}/{action}/(?P<uuid>[0-9a-f-]+)/((?P<revision_id>\d+)/)?$"
 
         def get(self, request, *args, **kwargs):
             flow = self.get_object()
@@ -877,7 +876,7 @@ class FlowCRUDL(SmartCRUDL):
 
         @classmethod
         def derive_url_pattern(cls, path, action):
-            return r"^%s/%s/(?P<campaign_id>\d+)/$" % (path, action)
+            return rf"^{path}/{action}/(?P<campaign_id>\d+)/$"
 
         def derive_title(self, *args, **kwargs):
             return self.get_campaign().name
@@ -952,7 +951,7 @@ class FlowCRUDL(SmartCRUDL):
 
         @classmethod
         def derive_url_pattern(cls, path, action):
-            return r"^%s/%s/(?P<uuid>[0-9a-f-]+)/$" % (path, action)
+            return rf"^{path}/{action}/(?P<uuid>[0-9a-f-]+)/$"
 
         def derive_title(self, *args, **kwargs):
             return self.derive_label().name
@@ -1002,7 +1001,6 @@ class FlowCRUDL(SmartCRUDL):
                     data = json.load(json_file)
 
             for key, filename in data.get("files").items():
-
                 # tack on our prefix for dev mode
                 filename = prefix + filename
 
@@ -1113,7 +1111,7 @@ class FlowCRUDL(SmartCRUDL):
                     )
                 )
 
-            links.append(dict(divider=True)),
+            (links.append(dict(divider=True)),)
 
             if self.has_org_perm("orgs.org_export"):
                 links.append(dict(title=_("Export Definition"), href=f"{reverse('orgs.org_export')}?flow={flow.id}"))
@@ -1144,7 +1142,7 @@ class FlowCRUDL(SmartCRUDL):
                     dict(
                         title=_("Service"),
                         posterize=True,
-                        href=f'{reverse("orgs.org_service")}?organization={flow.org_id}&redirect_url={reverse("flows.flow_editor", args=[flow.uuid])}',
+                        href=f"{reverse('orgs.org_service')}?organization={flow.org_id}&redirect_url={reverse('flows.flow_editor', args=[flow.uuid])}",
                     )
                 )
 
@@ -1215,7 +1213,7 @@ class FlowCRUDL(SmartCRUDL):
             download_url = reverse("flows.flow_download_translation") + "?" + urlencode(params, doseq=True)
 
             # if this is an XHR request, we need to return a structured response that it can parse
-            if "HTTP_X_PJAX" in self.request.META:
+            if "x-pjax" in self.request.headers:
                 response = self.render_modal_response(form)
                 response["Temba-Success"] = download_url
                 return response
@@ -1501,7 +1499,7 @@ class FlowCRUDL(SmartCRUDL):
                         _("Export complete, you can find it here: %s (production users will get an email)") % dl_url,
                     )
 
-            if "HTTP_X_PJAX" not in self.request.META:
+            if "x-pjax" not in self.request.headers:
                 return HttpResponseRedirect(self.get_success_url())
             else:  # pragma: no cover
                 response = self.render_modal_response(form)
@@ -1738,7 +1736,7 @@ class FlowCRUDL(SmartCRUDL):
             try:
                 json_dict = json.loads(request.body)
             except Exception as e:  # pragma: needs cover
-                return JsonResponse(dict(status="error", description="Error parsing JSON: %s" % str(e)), status=400)
+                return JsonResponse(dict(status="error", description=f"Error parsing JSON: {e!s}"), status=400)
 
             if not settings.MAILROOM_URL:  # pragma: no cover
                 return JsonResponse(
@@ -1943,7 +1941,6 @@ class FlowCRUDL(SmartCRUDL):
 
     class Broadcast(OrgPermsMixin, ModalMixin):
         class Form(forms.ModelForm):
-
             flow = TembaChoiceField(
                 queryset=Flow.objects.none(),
                 required=True,
@@ -2088,7 +2085,7 @@ class FlowCRUDL(SmartCRUDL):
                 return JsonResponse(org.as_environment_def())
             else:
                 results = [{"iso": code, "name": languages.get_name(code)} for code in org.flow_languages]
-                return JsonResponse({"results": sorted(results, key=lambda l: l["name"])})
+                return JsonResponse({"results": sorted(results, key=lambda lang: lang["name"])})
 
 
 # this is just for adhoc testing of the preprocess url

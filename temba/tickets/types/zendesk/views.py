@@ -1,8 +1,6 @@
 import re
 from urllib.parse import urlparse
 
-from smartmin.views import SmartFormView, SmartReadView
-
 from django import forms
 from django.conf import settings
 from django.contrib import messages
@@ -15,6 +13,7 @@ from django.utils.translation import gettext_lazy as _
 from django.views.decorators.clickjacking import xframe_options_exempt
 from django.views.decorators.csrf import csrf_exempt
 from django.views.generic import View
+from smartmin.views import SmartFormView, SmartReadView
 
 from temba.orgs.views import OrgPermsMixin
 from temba.utils import json
@@ -62,7 +61,7 @@ class ConnectView(BaseConnectView):
         if request.GET.get("error"):
             messages.error(request, request.GET.get("error_description"))
 
-        return super(ConnectView, self).get(request, *args, **kwargs)
+        return super().get(request, *args, **kwargs)
 
     def get_absolute_url(self):
         brand = self.org.get_branding()
@@ -97,7 +96,7 @@ class ConnectView(BaseConnectView):
             )
         except ClientError:
             messages.error(request, _("Unable to request OAuth token."))
-            return super(ConnectView, self).get(request, *args, **kwargs)
+            return super().get(request, *args, **kwargs)
 
         config = {
             ZendeskType.CONFIG_SUBDOMAIN: subdomain,
@@ -247,7 +246,7 @@ class AdminUIView(SmartFormView):
         When Zendesk initially requests this view, it makes a POST, which we don't want to confuse with a POST
         of the form, so we check the referer.
         """
-        referer = urlparse(self.request.META.get("HTTP_REFERER", "")).netloc
+        referer = urlparse(self.request.headers.get("referer", "")).netloc
         return referer.endswith("zendesk.com")
 
     def get_form_kwargs(self):

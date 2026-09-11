@@ -1,7 +1,6 @@
-from smartmin.models import SmartModel
-
 from django.db import models
 from django.utils.translation import gettext_lazy as _
+from smartmin.models import SmartModel
 
 
 class Lead(SmartModel):

@@ -1,12 +1,11 @@
 import phonenumbers
-from phonenumbers.phonenumberutil import region_code_for_number
-from smartmin.views import SmartFormView
-from twilio.base.exceptions import TwilioRestException
-
 from django import forms
 from django.http import HttpResponseRedirect
 from django.urls import reverse
 from django.utils.translation import gettext_lazy as _
+from phonenumbers.phonenumberutil import region_code_for_number
+from smartmin.views import SmartFormView
+from twilio.base.exceptions import TwilioRestException
 
 from temba.channels.types.twilio.views import SUPPORTED_COUNTRIES
 from temba.contacts.models import URN
@@ -41,11 +40,11 @@ class ClaimView(BaseClaimNumberMixin, SmartFormView):
             self.client = org.get_twilio_client()
             if not self.client:
                 return HttpResponseRedirect(
-                    f'{reverse("orgs.org_twilio_connect")}?claim_type={self.channel_type.slug}'
+                    f"{reverse('orgs.org_twilio_connect')}?claim_type={self.channel_type.slug}"
                 )
             self.account = self.client.api.account.fetch()
         except TwilioRestException:
-            return HttpResponseRedirect(f'{reverse("orgs.org_twilio_connect")}?claim_type={self.channel_type.slug}')
+            return HttpResponseRedirect(f"{reverse('orgs.org_twilio_connect')}?claim_type={self.channel_type.slug}")
 
     def get_search_countries_tuple(self):
         return []

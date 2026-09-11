@@ -50,7 +50,6 @@ def reverse(apps, schema_editor):  # pragma: no cover
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("tickets", "0033_populate_is_system"),
     ]

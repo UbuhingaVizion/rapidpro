@@ -6,11 +6,6 @@ from datetime import datetime
 
 import iso8601
 import pytz
-from django_redis import get_redis_connection
-from packaging.version import Version
-from smartmin.models import SmartModel
-from xlsxlite.writer import XLSXBook
-
 from django.conf import settings
 from django.contrib.auth.models import Group, User
 from django.contrib.postgres.fields import ArrayField
@@ -20,6 +15,10 @@ from django.db.models import Max, Q, Sum
 from django.db.models.functions import Lower, TruncDate
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
+from django_redis import get_redis_connection
+from packaging.version import Version
+from smartmin.models import SmartModel
+from xlsxlite.writer import XLSXBook
 
 from temba import mailroom
 from temba.assets.models import register_asset_store
@@ -249,7 +248,7 @@ class Flow(LegacyUUIDMixin, TembaModel, DependencyMixin):
         """
         Creates a special 'single message' flow
         """
-        name = "Single Message (%s)" % str(uuid4())
+        name = f"Single Message ({uuid4()!s})"
         flow = Flow.create(org, user, name, flow_type=Flow.TYPE_BACKGROUND, is_system=True)
         flow.update_single_message_flow(user, message, base_language)
         return flow
@@ -265,7 +264,7 @@ class Flow(LegacyUUIDMixin, TembaModel, DependencyMixin):
         """
         base_language = org.flow_languages[0] if org.flow_languages else "base"
 
-        name = Flow.get_unique_name(org, "Join %s" % group.name)
+        name = Flow.get_unique_name(org, f"Join {group.name}")
         flow = Flow.create(org, user, name, base_language=base_language)
         flow.version_number = "13.0.0"
         flow.save(update_fields=("version_number",))
@@ -1503,9 +1502,7 @@ class FlowCategoryCount(SquashableModel):
         )
         INSERT INTO %(table)s("flow_id", "node_uuid", "result_key", "result_name", "category_name", "count", "is_squashed")
         VALUES (%%s, %%s, %%s, %%s, %%s, GREATEST(0, (SELECT SUM("count") FROM removed)), TRUE);
-        """ % {
-            "table": cls._meta.db_table
-        }
+        """ % {"table": cls._meta.db_table}
 
         params = (
             distinct_set.flow_id,
@@ -1517,7 +1514,7 @@ class FlowCategoryCount(SquashableModel):
         return sql, params
 
     def __str__(self):
-        return "%s: %s" % (self.category_name, self.count)
+        return f"{self.category_name}: {self.count}"
 
 
 class FlowPathCount(SquashableModel):
@@ -1549,9 +1546,7 @@ class FlowPathCount(SquashableModel):
         )
         INSERT INTO %(table)s("flow_id", "from_uuid", "to_uuid", "period", "count", "is_squashed")
         VALUES (%%s, %%s, %%s, date_trunc('hour', %%s), GREATEST(0, (SELECT SUM("count") FROM removed)), TRUE);
-        """ % {
-            "table": cls._meta.db_table
-        }
+        """ % {"table": cls._meta.db_table}
 
         params = (distinct_set.flow_id, distinct_set.from_uuid, distinct_set.to_uuid, distinct_set.period) * 2
         return sql, params
@@ -1560,10 +1555,10 @@ class FlowPathCount(SquashableModel):
     def get_totals(cls, flow):
         counts = cls.objects.filter(flow=flow)
         totals = list(counts.values_list("from_uuid", "to_uuid").annotate(replies=Sum("count")))
-        return {"%s:%s" % (t[0], t[1]): t[2] for t in totals}
+        return {f"{t[0]}:{t[1]}": t[2] for t in totals}
 
     class Meta:
-        index_together = ["flow", "from_uuid", "to_uuid", "period"]
+        indexes = [models.Index(fields=["flow", "from_uuid", "to_uuid", "period"])]
 
 
 class FlowNodeCount(SquashableModel):
@@ -1589,9 +1584,7 @@ class FlowNodeCount(SquashableModel):
         )
         INSERT INTO %(table)s("flow_id", "node_uuid", "count", "is_squashed")
         VALUES (%%s, %%s, GREATEST(0, (SELECT SUM("count") FROM removed)), TRUE);
-        """ % {
-            "table": cls._meta.db_table
-        }
+        """ % {"table": cls._meta.db_table}
 
         return sql, (distinct_set.node_uuid, distinct_set.flow_id, distinct_set.node_uuid)
 
@@ -1626,9 +1619,7 @@ class FlowRunCount(SquashableModel):
             )
             INSERT INTO %(table)s("flow_id", "exit_type", "count", "is_squashed")
             VALUES (%%s, %%s, GREATEST(0, (SELECT SUM("count") FROM removed)), TRUE);
-            """ % {
-                "table": cls._meta.db_table
-            }
+            """ % {"table": cls._meta.db_table}
 
             params = (distinct_set.flow_id, distinct_set.exit_type) * 2
         else:
@@ -1638,9 +1629,7 @@ class FlowRunCount(SquashableModel):
             )
             INSERT INTO %(table)s("flow_id", "exit_type", "count", "is_squashed")
             VALUES (%%s, NULL, GREATEST(0, (SELECT SUM("count") FROM removed)), TRUE);
-            """ % {
-                "table": cls._meta.db_table
-            }
+            """ % {"table": cls._meta.db_table}
 
             params = (distinct_set.flow_id,) * 2
 
@@ -1652,7 +1641,7 @@ class FlowRunCount(SquashableModel):
         return {t[0]: t[1] for t in totals}
 
     class Meta:
-        index_together = ("flow", "exit_type")
+        indexes = [models.Index(fields=("flow", "exit_type"))]
 
 
 class ExportFlowResultsTask(BaseExportTask):
@@ -1710,10 +1699,10 @@ class ExportFlowResultsTask(BaseExportTask):
         columns.append("Name")
 
         for gr in groups:
-            columns.append("Group:%s" % gr.name)
+            columns.append(f"Group:{gr.name}")
 
         for cf in contact_fields:
-            columns.append("Field:%s" % cf.name)
+            columns.append(f"Field:{cf.name}")
 
         columns.append("Started")
         columns.append("Modified")
@@ -1846,7 +1835,7 @@ class ExportFlowResultsTask(BaseExportTask):
         runs = FlowRun.objects.filter(flow__in=flows).order_by("modified_on").using("readonly")
         if responded_only:
             runs = runs.filter(responded=True)
-        run_ids = array(str("l"), runs.values_list("id", flat=True))
+        run_ids = array("l", runs.values_list("id", flat=True))
 
         logger.info(
             f"Results export #{self.id} for org #{self.org.id}: found {len(run_ids)} runs in database to export"
@@ -2138,9 +2127,7 @@ class FlowStartCount(SquashableModel):
         )
         INSERT INTO %(table)s("start_id", "count", "is_squashed")
         VALUES (%%s, GREATEST(0, (SELECT SUM("count") FROM deleted)), TRUE);
-        """ % {
-            "table": cls._meta.db_table
-        }
+        """ % {"table": cls._meta.db_table}
 
         return sql, (distinct_set.start_id,) * 2
 
@@ -2216,7 +2203,7 @@ class FlowLabel(LegacyUUIDMixin, TembaModel):
 
     def __str__(self):
         if self.parent:
-            return "%s > %s" % (self.parent, self.name)
+            return f"{self.parent} > {self.name}"
         return self.name
 
     class Meta:
@@ -2237,7 +2224,7 @@ def get_flow_user(org):
         __flow_users = {}
 
     branding = org.get_branding()
-    username = "%s_flow" % branding["slug"]
+    username = f"{branding['slug']}_flow"
     flow_user = __flow_users.get(username)
 
     # not cached, let's look it up

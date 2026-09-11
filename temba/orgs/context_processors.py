@@ -9,8 +9,8 @@ class RolePermsWrapper:
     """
 
     def __init__(self, role):
-        self.empty = defaultdict(lambda: False)
-        self.apps = defaultdict(lambda: defaultdict(lambda: False))
+        self.empty = defaultdict(bool)
+        self.apps = defaultdict(lambda: defaultdict(bool))
 
         for perm in role.permissions:
             (app_label, codename) = perm.split(".")

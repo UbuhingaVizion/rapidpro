@@ -23,14 +23,14 @@ class SpaMixin(View):
 
     @cached_property
     def spa_path(self) -> tuple:
-        return tuple(s for s in self.request.META.get("HTTP_TEMBA_PATH", "").split("/") if s)
+        return tuple(s for s in self.request.headers.get("temba-path", "").split("/") if s)
 
     @cached_property
     def spa_referrer_path(self) -> tuple:
-        return tuple(s for s in self.request.META.get("HTTP_TEMBA_REFERER_PATH", "").split("/") if s)
+        return tuple(s for s in self.request.headers.get("temba-referer-path", "").split("/") if s)
 
     def is_spa(self):
-        is_spa = "HTTP_TEMBA_SPA" in self.request.META
+        is_spa = "temba-spa" in self.request.headers
         return is_spa
 
     def get_template_names(self):
@@ -242,7 +242,7 @@ class RequireRecentAuthMixin:
     recent_auth_includes_formax = False
 
     def pre_process(self, request, *args, **kwargs):
-        is_formax = "HTTP_X_FORMAX" in request.META
+        is_formax = "x-formax" in request.headers
         if not is_formax or self.recent_auth_includes_formax:
             last_auth_on = request.user.settings.last_auth_on
             if not last_auth_on or (timezone.now() - last_auth_on).total_seconds() > self.recent_auth_seconds:

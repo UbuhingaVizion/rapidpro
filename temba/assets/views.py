@@ -1,10 +1,9 @@
 import mimetypes
 
-from smartmin.views import SmartTemplateView, SmartView
-
 from django.http import HttpResponse, HttpResponseForbidden, HttpResponseNotFound, HttpResponseRedirect
 from django.utils.translation import gettext_lazy as _
 from django.views.generic import View
+from smartmin.views import SmartTemplateView, SmartView
 
 from temba.notifications.views import NotificationTargetMixin
 
@@ -25,7 +24,7 @@ def handle_asset_request(user, asset_store, pk):
         else:
             asset_file = open("." + location, "rb")
             response = HttpResponse(asset_file, content_type=mime_type)
-            response["Content-Disposition"] = "attachment; filename=%s" % filename
+            response["Content-Disposition"] = f"attachment; filename={filename}"
 
         return response
     except AssetEntityNotFound:

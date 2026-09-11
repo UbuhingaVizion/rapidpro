@@ -6,7 +6,6 @@ import temba.utils.fields
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("flows", "0281_update_deleted_flow_names"),
     ]

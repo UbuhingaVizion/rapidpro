@@ -67,11 +67,11 @@ class ZendeskTypeTest(TembaTest):
 
         # will fail as we don't have anything filled out
         response = self.client.post(connect_url, {})
-        self.assertFormError(response, "form", "subdomain", ["This field is required."])
+        self.assertFormError(response.context["form"], "subdomain", ["This field is required."])
 
         # try with invalid subdomain
         response = self.client.post(connect_url, {"subdomain": "%x.&y"})
-        self.assertFormError(response, "form", "subdomain", ["Not a valid subdomain name."])
+        self.assertFormError(response.context["form"], "subdomain", ["Not a valid subdomain name."])
 
         # try with subdomain already taken by this org
         Ticketer.create(
@@ -79,7 +79,9 @@ class ZendeskTypeTest(TembaTest):
         )
         response = self.client.post(connect_url, {"subdomain": "chispa"})
         self.assertFormError(
-            response, "form", "subdomain", ["There is already a ticketing service configured for this subdomain."]
+            response.context["form"],
+            "subdomain",
+            ["There is already a ticketing service configured for this subdomain."],
         )
 
         # submitting with valid subdomain redirects us to Zendesk
@@ -179,7 +181,7 @@ class ZendeskTypeTest(TembaTest):
                 "instance_push_id": "push1234",
                 "zendesk_access_token": "sesame",
             },
-            HTTP_REFERER="https://example.zendesk.com/channels",
+            headers={"referer": "https://example.zendesk.com/channels"},
         )
 
         self.assertEqual(200, response.status_code)
@@ -204,8 +206,8 @@ class ZendeskTypeTest(TembaTest):
                 "zendesk_access_token": "sesame",
             },
         )
-        self.assertFormError(response, "form", "name", "This field is required.")
-        self.assertFormError(response, "form", "secret", "This field is required.")
+        self.assertFormError(response.context["form"], "name", "This field is required.")
+        self.assertFormError(response.context["form"], "secret", "This field is required.")
 
         # try submitting with incorrect secret
         response = self.client.post(
@@ -220,7 +222,7 @@ class ZendeskTypeTest(TembaTest):
                 "zendesk_access_token": "sesame",
             },
         )
-        self.assertFormError(response, "form", "secret", "Secret is incorrect.")
+        self.assertFormError(response.context["form"], "secret", "Secret is incorrect.")
 
         # try submitting with correct secret
         response = self.client.post(

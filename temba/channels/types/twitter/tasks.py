@@ -1,9 +1,7 @@
+from celery import shared_task
+from django.conf import settings
 from django_redis import get_redis_connection
 from twython import Twython
-
-from django.conf import settings
-
-from celery import shared_task
 
 from temba.contacts.models import URN, Contact, ContactURN
 from temba.utils import chunk_list
@@ -27,7 +25,7 @@ def resolve_twitter_ids():
         client = Twython(api_key, api_secret)
 
         updated = 0
-        print("found %d twitter urns to resolve" % len(twitter_urns))
+        print(f"found {len(twitter_urns)} twitter urns to resolve")
 
         # contacts we will stop
         stop_contacts = []
@@ -70,7 +68,7 @@ def resolve_twitter_ids():
                 # if this wasn't an exception caused by not finding any of the users, then break
                 if str(e).find("No user matches") < 0:
                     # exit, we'll try again later
-                    print("exiting resolve_twitter_ids due to exception: %s" % e)
+                    print(f"exiting resolve_twitter_ids due to exception: {e}")
                     break
 
             # add all remaining contacts to the contacts we will stop

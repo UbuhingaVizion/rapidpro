@@ -23,7 +23,6 @@ def reverse(apps, schema_editor):  # pragma: no cover
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("contacts", "0160_contactfield_is_system_contactfield_name"),
     ]

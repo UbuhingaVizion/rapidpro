@@ -1069,8 +1069,8 @@ class FlowMigrationTest(TembaTest):
         # at the time of this fix
         for v in ("4", "5", "6", "7", "8", "9", "10"):
             error = 'Failure migrating group names "%s" forward from v%s'
-            flow = self.get_flow("favorites_bad_group_name_v%s" % v)
-            self.assertIsNotNone(flow, "Failure importing favorites from v%s" % v)
+            flow = self.get_flow(f"favorites_bad_group_name_v{v}")
+            self.assertIsNotNone(flow, f"Failure importing favorites from v{v}")
             self.assertTrue(ContactGroup.objects.filter(name="Contacts < 25").exists(), error % ("< 25", v))
             self.assertTrue(ContactGroup.objects.filter(name="Contacts > 100").exists(), error % ("> 100", v))
 

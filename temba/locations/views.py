@@ -1,11 +1,10 @@
-from smartmin.views import SmartCRUDL, SmartReadView, SmartUpdateView
-
 from django.contrib import messages
 from django.db.models import Prefetch
 from django.http import HttpResponse, HttpResponseRedirect, JsonResponse
 from django.urls import reverse
 from django.utils.translation import gettext_lazy as _
 from django.views.decorators.csrf import csrf_exempt
+from smartmin.views import SmartCRUDL, SmartReadView, SmartUpdateView
 
 from temba.locations.models import AdminBoundary, BoundaryAlias
 from temba.orgs.views import OrgPermsMixin
@@ -21,7 +20,7 @@ class BoundaryCRUDL(SmartCRUDL):
         def derive_url_pattern(cls, path, action):
             # though we are a read view, we don't actually need an id passed
             # in, that is derived
-            return r"^%s/%s/$" % (path, action)
+            return rf"^{path}/{action}/$"
 
         def get_gear_links(self):
             return [dict(title=_("Home"), style="button-light", href=reverse("orgs.org_home"))]
@@ -48,7 +47,7 @@ class BoundaryCRUDL(SmartCRUDL):
         def derive_url_pattern(cls, path, action):
             # though we are a read view, we don't actually need an id passed
             # in, that is derived
-            return r"^%s/%s/(?P<osmId>\w+\.?\d+\.?\d?\_?\d?)/$" % (path, action)
+            return rf"^{path}/{action}/(?P<osmId>\w+\.?\d+\.?\d?\_?\d?)/$"
 
         def get_object(self):
             return AdminBoundary.geometries.get(osm_id=self.kwargs["osmId"])
@@ -67,7 +66,7 @@ class BoundaryCRUDL(SmartCRUDL):
         def derive_url_pattern(cls, path, action):
             # though we are a read view, we don't actually need an id passed
             # in, that is derived
-            return r"^%s/%s/(?P<osmId>[\w\.]+)/$" % (path, action)
+            return rf"^{path}/{action}/(?P<osmId>[\w\.]+)/$"
 
         def get_object(self):
             return AdminBoundary.geometries.get(osm_id=self.kwargs["osmId"])
@@ -100,7 +99,7 @@ class BoundaryCRUDL(SmartCRUDL):
             try:
                 boundary_update = json.loads(json_string)
             except Exception as e:
-                return JsonResponse(dict(status="error", description="Error parsing JSON: %s" % str(e)), status=400)
+                return JsonResponse(dict(status="error", description=f"Error parsing JSON: {e!s}"), status=400)
 
             boundary = AdminBoundary.objects.filter(osm_id=boundary_update["osm_id"]).first()
             aliases = boundary_update.get("aliases", "")

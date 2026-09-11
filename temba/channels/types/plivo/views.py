@@ -1,8 +1,6 @@
 import phonenumbers
 import pycountry
 import requests
-from smartmin.views import SmartFormView
-
 from django import forms
 from django.conf import settings
 from django.core.exceptions import ValidationError
@@ -10,6 +8,7 @@ from django.http import HttpResponseRedirect, JsonResponse
 from django.urls import reverse
 from django.utils.http import urlencode
 from django.utils.translation import gettext_lazy as _
+from smartmin.views import SmartFormView
 
 from temba.channels.models import Channel
 from temba.channels.views import BaseClaimNumberMixin, ClaimViewMixin
@@ -68,7 +67,7 @@ class ClaimView(BaseClaimNumberMixin, SmartFormView):
 
         headers = http_headers(extra={"Content-Type": "application/json"})
         response = requests.get(
-            "https://api.plivo.com/v1/Account/%s/" % auth_id, headers=headers, auth=(auth_id, auth_token)
+            f"https://api.plivo.com/v1/Account/{auth_id}/", headers=headers, auth=(auth_id, auth_token)
         )
 
         if response.status_code == 200:
@@ -100,7 +99,7 @@ class ClaimView(BaseClaimNumberMixin, SmartFormView):
 
         headers = http_headers(extra={"Content-Type": "application/json"})
         response = requests.get(
-            "https://api.plivo.com/v1/Account/%s/Number/" % auth_id, headers=headers, auth=(auth_id, auth_token)
+            f"https://api.plivo.com/v1/Account/{auth_id}/Number/", headers=headers, auth=(auth_id, auth_token)
         )
 
         account_numbers = []
@@ -128,13 +127,13 @@ class ClaimView(BaseClaimNumberMixin, SmartFormView):
 
         plivo_uuid = generate_uuid()
         callback_domain = org.get_brand_domain()
-        app_name = "%s_%s" % (callback_domain.lower().replace(".", "_"), plivo_uuid)
+        app_name = f"{callback_domain.lower().replace('.', '_')}_{plivo_uuid}"
 
         message_url = f"https://{callback_domain}{reverse('courier.pl', args=[plivo_uuid, 'receive'])}"
         answer_url = f"{settings.STORAGE_URL}/plivo_voice_unavailable.xml"
 
         headers = http_headers(extra={"Content-Type": "application/json"})
-        create_app_url = "https://api.plivo.com/v1/Account/%s/Application/" % auth_id
+        create_app_url = f"https://api.plivo.com/v1/Account/{auth_id}/Application/"
 
         response = requests.post(
             create_app_url,
@@ -157,14 +156,14 @@ class ClaimView(BaseClaimNumberMixin, SmartFormView):
 
         plivo_number = phone_number.strip("+ ").replace(" ", "")
         response = requests.get(
-            "https://api.plivo.com/v1/Account/%s/Number/%s/" % (auth_id, plivo_number),
+            f"https://api.plivo.com/v1/Account/{auth_id}/Number/{plivo_number}/",
             headers=headers,
             auth=(auth_id, auth_token),
         )
 
         if response.status_code != 200:
             response = requests.post(
-                "https://api.plivo.com/v1/Account/%s/PhoneNumber/%s/" % (auth_id, plivo_number),
+                f"https://api.plivo.com/v1/Account/{auth_id}/PhoneNumber/{plivo_number}/",
                 headers=headers,
                 auth=(auth_id, auth_token),
             )
@@ -175,14 +174,14 @@ class ClaimView(BaseClaimNumberMixin, SmartFormView):
                 )
 
             response = requests.get(
-                "https://api.plivo.com/v1/Account/%s/Number/%s/" % (auth_id, plivo_number),
+                f"https://api.plivo.com/v1/Account/{auth_id}/Number/{plivo_number}/",
                 headers=headers,
                 auth=(auth_id, auth_token),
             )
 
         if response.status_code == 200:
             response = requests.post(
-                "https://api.plivo.com/v1/Account/%s/Number/%s/" % (auth_id, plivo_number),
+                f"https://api.plivo.com/v1/Account/{auth_id}/Number/{plivo_number}/",
                 json=dict(app_id=plivo_app_id),
                 headers=headers,
                 auth=(auth_id, auth_token),

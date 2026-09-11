@@ -3,11 +3,9 @@ import re
 import time
 
 import requests
-from django_redis import get_redis_connection
-
-from django.utils import timezone
-
 from celery import shared_task
+from django.utils import timezone
+from django_redis import get_redis_connection
 
 from temba.channels.models import Channel
 from temba.contacts.models import URN, Contact, ContactURN
@@ -53,11 +51,11 @@ def refresh_whatsapp_contacts(channel_id):
                 time.sleep(10)
 
             # build a list of the fully qualified numbers we have
-            contacts = ["+%s" % u.path for u in urn_batch]
+            contacts = [f"+{u.path}" for u in urn_batch]
             payload = {"blocking": "wait", "contacts": contacts}
 
             # go fetch our contacts
-            headers = {"Authorization": "Bearer %s" % channel.config[Channel.CONFIG_AUTH_TOKEN]}
+            headers = {"Authorization": f"Bearer {channel.config[Channel.CONFIG_AUTH_TOKEN]}"}
             url = channel.config[Channel.CONFIG_BASE_URL] + "/v1/contacts"
 
             start = timezone.now()
@@ -99,7 +97,6 @@ def update_local_templates(channel, templates_data):
     # run through all our templates making sure they are present in our DB
     seen = []
     for template in templates_data:
-
         template_status = template["status"]
 
         template_status = template_status.upper()
@@ -169,14 +166,12 @@ def refresh_whatsapp_templates():
     with r.lock("refresh_whatsapp_templates", 1800):
         # for every whatsapp channel
         for channel in Channel.objects.filter(is_active=True, channel_type__in=["WA", "D3", "WAC"]):
-
             # update the version only when have it set in the config
             if channel.config.get("version"):
                 # fetches API version and saves on channel.config
                 update_api_version(channel)
             # fetch all our templates
             try:
-
                 templates_data, valid = channel.type.get_api_templates(channel)
                 if not valid:
                     continue

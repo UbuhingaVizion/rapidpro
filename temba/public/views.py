@@ -1,13 +1,12 @@
 from urllib.parse import parse_qs, urlencode
 
-from smartmin.views import SmartCreateView, SmartCRUDL, SmartFormView, SmartListView, SmartReadView, SmartTemplateView
-
 from django.conf import settings
 from django.http import HttpResponse, HttpResponseRedirect
 from django.urls import reverse
 from django.utils.translation import gettext_lazy as _
 from django.views.decorators.csrf import csrf_exempt
 from django.views.generic import RedirectView, View
+from smartmin.views import SmartCreateView, SmartCRUDL, SmartFormView, SmartListView, SmartReadView, SmartTemplateView
 
 from temba.apks.models import Apk
 from temba.public.models import Lead, Video
@@ -133,7 +132,7 @@ class LeadCRUDL(SmartCRUDL):
             return super().dispatch(request, *args, **kwargs)
 
         def get_success_url(self):
-            return reverse("orgs.org_signup") + "?%s" % urlencode({"email": self.form.cleaned_data["email"]})
+            return reverse("orgs.org_signup") + f"?{urlencode({'email': self.form.cleaned_data['email']})}"
 
         def form_invalid(self, form):
             url = reverse("public.public_index")
@@ -142,7 +141,7 @@ class LeadCRUDL(SmartCRUDL):
             if "from_url" in form.data:  # pragma: needs cover
                 url = reverse(form.data["from_url"])
 
-            return HttpResponseRedirect(url + "?errors=%s" % email)
+            return HttpResponseRedirect(url + f"?errors={email}")
 
         def pre_save(self, obj):
             anon = get_anonymous_user()

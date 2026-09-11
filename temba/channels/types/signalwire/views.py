@@ -1,10 +1,9 @@
 import phonenumbers
 import requests
-from smartmin.views import SmartFormView
-
 from django import forms
 from django.forms import ValidationError
 from django.utils.translation import gettext_lazy as _
+from smartmin.views import SmartFormView
 
 from temba.utils.fields import SelectWidget
 

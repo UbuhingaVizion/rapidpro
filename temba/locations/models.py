@@ -1,12 +1,11 @@
 import logging
 
 import geojson
-from mptt.models import MPTTModel, TreeForeignKey
-from smartmin.models import SmartModel
-
 from django.contrib.gis.db import models
 from django.db.models import F, Value
 from django.db.models.functions import Concat
+from mptt.models import MPTTModel, TreeForeignKey
+from smartmin.models import SmartModel
 
 logger = logging.getLogger(__name__)
 
@@ -113,9 +112,7 @@ class AdminBoundary(MPTTModel, models.Model):
 
         def _update_child_paths(boundary):
             boundaries = AdminBoundary.objects.filter(parent=boundary).only("name", "parent__path")
-            boundaries.update(
-                path=Concat(Value(boundary.path), Value(" %s " % AdminBoundary.PATH_SEPARATOR), F("name"))
-            )
+            boundaries.update(path=Concat(Value(boundary.path), Value(f" {AdminBoundary.PATH_SEPARATOR} "), F("name")))
             for boundary in boundaries:
                 _update_child_paths(boundary)
 
@@ -165,7 +162,7 @@ class AdminBoundary(MPTTModel, models.Model):
         return boundary
 
     def __str__(self):
-        return "%s" % self.name
+        return f"{self.name}"
 
 
 class BoundaryAlias(SmartModel):

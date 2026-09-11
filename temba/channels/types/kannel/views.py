@@ -1,7 +1,6 @@
-from smartmin.views import SmartFormView
-
 from django import forms
 from django.utils.translation import gettext_lazy as _
+from smartmin.views import SmartFormView
 
 from temba.utils.fields import ExternalURLField, SelectWidget
 from temba.utils.uuid import uuid4
@@ -35,16 +34,12 @@ class ClaimView(ClaimViewMixin, SmartFormView):
         username = forms.CharField(
             max_length=64,
             required=False,
-            help_text=_(
-                "The username to use to authenticate to Kannel, if left blank we " "will generate one for you"
-            ),
+            help_text=_("The username to use to authenticate to Kannel, if left blank we will generate one for you"),
         )
         password = forms.CharField(
             max_length=64,
             required=False,
-            help_text=_(
-                "The password to use to authenticate to Kannel, if left blank we " "will generate one for you"
-            ),
+            help_text=_("The password to use to authenticate to Kannel, if left blank we will generate one for you"),
         )
         encoding = forms.ChoiceField(
             choices=Channel.ENCODING_CHOICES,
@@ -61,7 +56,7 @@ class ClaimView(ClaimViewMixin, SmartFormView):
             initial=False,
             required=False,
             label=_("Use National Numbers"),
-            help_text=_("Use only the national number (no country code) when " "sending (not recommended)"),
+            help_text=_("Use only the national number (no country code) when sending (not recommended)"),
         )
 
     form_class = KannelClaimForm

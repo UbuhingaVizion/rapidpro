@@ -3,14 +3,13 @@ import logging
 from datetime import time, timedelta
 
 from dateutil.relativedelta import relativedelta
-from smartmin.models import SmartModel
-
 from django.contrib.humanize.templatetags.humanize import ordinal
 from django.db import models
 from django.db.models import Index, Q
 from django.utils import timezone
 from django.utils.timesince import timeuntil
 from django.utils.translation import gettext_lazy as _
+from smartmin.models import SmartModel
 
 logger = logging.getLogger(__name__)
 
@@ -202,9 +201,9 @@ class Schedule(SmartModel):
             return _("each day at %(time)s") % {"time": time_of_day}
         elif self.repeat_period == self.REPEAT_WEEKLY:
             days = [str(day) for day in self.get_repeat_days_display()]
-            return _("each week on %(daysofweek)s" % {"daysofweek": ", ".join(days)})
+            return _(f"each week on {', '.join(days)}")
         elif self.repeat_period == self.REPEAT_MONTHLY:
-            return _("each month on the %(dayofmonth)s" % {"dayofmonth": ordinal(self.repeat_day_of_month)})
+            return _(f"each month on the {ordinal(self.repeat_day_of_month)}")
 
     @staticmethod
     def _day_of_week(d):

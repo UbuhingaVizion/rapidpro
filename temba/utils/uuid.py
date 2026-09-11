@@ -1,6 +1,7 @@
 import random
 import sys
-from uuid import UUID, uuid4 as real_uuid4
+from uuid import UUID
+from uuid import uuid4 as real_uuid4
 
 default_generator = real_uuid4
 

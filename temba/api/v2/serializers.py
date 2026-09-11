@@ -6,10 +6,9 @@ import iso8601
 import pycountry
 import pytz
 import regex
-from rest_framework import serializers
-
 from django.conf import settings
 from django.contrib.auth.models import User
+from rest_framework import serializers
 
 from temba import mailroom
 from temba.api.models import Resthook, ResthookSubscriber, WebHookEvent
@@ -66,7 +65,7 @@ def _normalize_extra(extra, count):
     elif isinstance(extra, dict):
         count += 1
         normalized = OrderedDict()
-        for (k, v) in extra.items():
+        for k, v in extra.items():
             (normalized[normalize_key(k)], count) = _normalize_extra(v, count)
 
             if count >= settings.FLOW_START_PARAMS_SIZE:
@@ -77,7 +76,7 @@ def _normalize_extra(extra, count):
     elif isinstance(extra, list):
         count += 1
         normalized = OrderedDict()
-        for (i, v) in enumerate(extra):
+        for i, v in enumerate(extra):
             (normalized[str(i)], count) = _normalize_extra(v, count)
 
             if count >= settings.FLOW_START_PARAMS_SIZE:
@@ -89,7 +88,7 @@ def _normalize_extra(extra, count):
         return "", count + 1
 
     else:  # pragma: no cover
-        raise ValueError("Unsupported type %s in extra" % str(type(extra)))
+        raise ValueError(f"Unsupported type {type(extra)!s} in extra")
 
 
 class ReadSerializer(serializers.ModelSerializer):
@@ -388,7 +387,6 @@ class CampaignEventWriteSerializer(WriteSerializer):
         flow = self.validated_data.get("flow")
 
         if self.instance:
-
             # we dont update, we only create
             self.instance = self.instance.recreate()
 
@@ -622,7 +620,7 @@ class ContactWriteSerializer(WriteSerializer):
         if not self.instance:
             for urn in value:
                 if Contact.from_urn(org, urn):
-                    raise serializers.ValidationError("URN belongs to another contact: %s" % urn)
+                    raise serializers.ValidationError(f"URN belongs to another contact: {urn}")
 
         return value
 
@@ -733,7 +731,7 @@ class ContactFieldWriteSerializer(WriteSerializer):
 
         key = ContactField.make_key(value)
         if not ContactField.is_valid_key(key):
-            raise serializers.ValidationError('Generated key "%s" is invalid or a reserved name.' % key)
+            raise serializers.ValidationError(f'Generated key "{key}" is invalid or a reserved name.')
 
         return value
 
@@ -830,16 +828,16 @@ class ContactBulkActionSerializer(WriteSerializer):
         group = data.get("group")
 
         if action in self.ACTIONS_WITH_GROUP and not group:
-            raise serializers.ValidationError('For action "%s" you should also specify a group' % action)
+            raise serializers.ValidationError(f'For action "{action}" you should also specify a group')
         elif action not in self.ACTIONS_WITH_GROUP and group:
-            raise serializers.ValidationError('For action "%s" you should not specify a group' % action)
+            raise serializers.ValidationError(f'For action "{action}" you should not specify a group')
 
         if action == self.ADD:
             # if adding to a group, check for non-active contacts
             invalid_uuids = {c.uuid for c in contacts if c.status != Contact.STATUS_ACTIVE}
             if invalid_uuids:
                 raise serializers.ValidationError(
-                    "Non-active contacts cannot be added to groups: %s" % ", ".join(invalid_uuids)
+                    f"Non-active contacts cannot be added to groups: {', '.join(invalid_uuids)}"
                 )
 
         return data
@@ -1276,9 +1274,9 @@ class MsgBulkActionSerializer(WriteSerializer):
             raise serializers.ValidationError("Can't specify both label and label_name.")
 
         if action in self.ACTIONS_WITH_LABEL and not (label or label_name):
-            raise serializers.ValidationError('For action "%s" you should also specify a label' % action)
+            raise serializers.ValidationError(f'For action "{action}" you should also specify a label')
         elif action not in self.ACTIONS_WITH_LABEL and (label or label_name):
-            raise serializers.ValidationError('For action "%s" you should not specify a label' % action)
+            raise serializers.ValidationError(f'For action "{action}" you should not specify a label')
 
         return data
 
@@ -1354,7 +1352,7 @@ class ResthookSubscriberWriteSerializer(WriteSerializer):
     def validate_resthook(self, value):
         resthook = Resthook.objects.filter(is_active=True, org=self.context["org"], slug=value).first()
         if not resthook:
-            raise serializers.ValidationError("No resthook with slug: %s" % value)
+            raise serializers.ValidationError(f"No resthook with slug: {value}")
         return resthook
 
     def validate(self, data):
@@ -1482,11 +1480,11 @@ class TicketBulkActionSerializer(WriteSerializer):
         action = data["action"]
 
         if action == self.ACTION_ASSIGN and "assignee" not in data:
-            raise serializers.ValidationError('For action "%s" you must specify the assignee' % action)
+            raise serializers.ValidationError(f'For action "{action}" you must specify the assignee')
         elif action == self.ACTION_ADD_NOTE and not data.get("note"):
-            raise serializers.ValidationError('For action "%s" you must specify the note' % action)
+            raise serializers.ValidationError(f'For action "{action}" you must specify the note')
         elif action == self.ACTION_CHANGE_TOPIC and not data.get("topic"):
-            raise serializers.ValidationError('For action "%s" you must specify the topic' % action)
+            raise serializers.ValidationError(f'For action "{action}" you must specify the topic')
 
         return data
 

@@ -4,7 +4,6 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("tickets", "0037_alter_ticket_assignee_alter_ticketcount_assignee_and_more"),
     ]

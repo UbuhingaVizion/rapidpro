@@ -1,13 +1,12 @@
 import base64
 import copy
+import datetime as dt
 import hashlib
 import hmac
 import time
 from datetime import datetime, timedelta
 from unittest.mock import patch
 from urllib.parse import quote
-
-from smartmin.tests import SmartminTest
 
 from django.conf import settings
 from django.contrib.auth.models import Group, User
@@ -18,6 +17,7 @@ from django.test.utils import override_settings
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.encoding import force_bytes
+from smartmin.tests import SmartminTest
 
 from temba.channels.views import channel_status_processor
 from temba.contacts.models import URN, Contact, ContactGroup, ContactURN
@@ -78,7 +78,7 @@ class ChannelTest(TembaTest):
         org = org or self.org
         user = user or self.user
 
-        group = ContactGroup.get_or_create(org, user, "Numbers: %s" % ",".join(numbers))
+        group = ContactGroup.get_or_create(org, user, f"Numbers: {','.join(numbers)}")
 
         contacts = []
         for number in numbers:
@@ -107,7 +107,7 @@ class ChannelTest(TembaTest):
             if cmd["cmd"] == cmd_name:
                 return
 
-        raise Exception("Did not find '%s' cmd in response: '%s'" % (cmd_name, response.content))
+        raise Exception(f"Did not find '{cmd_name}' cmd in response: '{response.content}'")
 
     def test_channel_read_with_customer_support(self):
         self.login(self.customer_support)
@@ -176,7 +176,7 @@ class ChannelTest(TembaTest):
 
         # we cannot add multiple callers
         response = self.client.post(reverse("channels.channel_create_caller"), post_data)
-        self.assertFormError(response, "form", "channel", "A caller has already been added for that number")
+        self.assertFormError(response.context["form"], "channel", "A caller has already been added for that number")
 
         # should now have the option to disable
         self.login(self.admin)
@@ -184,9 +184,9 @@ class ChannelTest(TembaTest):
         self.assertContains(response, "Disable Voice Calling")
 
         # try adding a caller for an invalid channel
-        response = self.client.post("%s?channel=20000" % reverse("channels.channel_create_caller"))
+        response = self.client.post(f"{reverse('channels.channel_create_caller')}?channel=20000")
         self.assertEqual(200, response.status_code)
-        self.assertFormError(response, "form", "channel", "A caller cannot be added for that number")
+        self.assertFormError(response.context["form"], "channel", "A caller cannot be added for that number")
 
         # disable our twilio connection
         with patch("temba.channels.types.twilio.TwilioType.deactivate"):
@@ -710,13 +710,13 @@ class ChannelTest(TembaTest):
 
         # Must be POST
         response = self.client.get(
-            "%s?signature=sig&ts=123" % (reverse("sync", args=[100])), content_type="application/json"
+            f"{reverse('sync', args=[100])}?signature=sig&ts=123", content_type="application/json"
         )
         self.assertEqual(500, response.status_code)
 
         # Unknown channel
         response = self.client.post(
-            "%s?signature=sig&ts=123" % (reverse("sync", args=[999])), content_type="application/json"
+            f"{reverse('sync', args=[999])}?signature=sig&ts=123", content_type="application/json"
         )
         self.assertEqual(200, response.status_code)
         self.assertEqual("rel", response.json()["cmds"][0]["cmd"])
@@ -1595,6 +1595,8 @@ class ChannelEventCRUDLTest(TembaTest, CRUDLTestMixin):
 
 class SyncEventTest(SmartminTest):
     def setUp(self):
+        self.create_anonymous_user()
+
         self.superuser = User.objects.create_superuser(username="super", email="super@user.com", password="super")
         self.user = self.create_user("tito")
         self.org = Org.objects.create(
@@ -2079,12 +2081,12 @@ class ChannelLogTest(TembaTest):
         self.assertContains(response, "{&quot;say&quot;: &quot;Hello&quot;}")
 
         # if duration isn't set explicitly, it can be calculated
-        call.started_on = datetime(2019, 8, 12, 11, 4, 0, 0, timezone.utc)
+        call.started_on = datetime(2019, 8, 12, 11, 4, 0, 0, dt.timezone.utc)
         call.status = IVRCall.STATUS_IN_PROGRESS
         call.duration = None
         call.save(update_fields=("started_on", "status", "duration"))
 
-        with patch("django.utils.timezone.now", return_value=datetime(2019, 8, 12, 11, 4, 30, 0, timezone.utc)):
+        with patch("django.utils.timezone.now", return_value=datetime(2019, 8, 12, 11, 4, 30, 0, dt.timezone.utc)):
             response = self.client.get(
                 reverse("channels.channellog_list", args=[self.channel.uuid]) + "?connections=1"
             )
@@ -2755,7 +2757,7 @@ class FacebookWhitelistTest(TembaTest):
         with patch("requests.post") as mock:
             mock.return_value = MockResponse(400, '{"error": { "message": "FB Error" } }')
             response = self.client.post(whitelist_url, dict(whitelisted_domain="https://foo.bar"))
-            self.assertFormError(response, "form", None, "FB Error")
+            self.assertFormError(response.context["form"], None, "FB Error")
 
         with patch("requests.post") as mock:
             mock.return_value = MockResponse(200, '{ "ok": "true" }')

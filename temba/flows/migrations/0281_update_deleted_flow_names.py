@@ -23,7 +23,6 @@ def reverse(apps, schema_editor):  # pragma: no cover
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("flows", "0280_alter_flowrun_contact_and_more"),
     ]

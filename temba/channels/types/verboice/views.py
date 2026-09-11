@@ -1,8 +1,7 @@
 import phonenumbers
-from smartmin.views import SmartFormView
-
 from django import forms
 from django.utils.translation import gettext_lazy as _
+from smartmin.views import SmartFormView
 
 from temba.channels.views import ALL_COUNTRIES, ClaimViewMixin
 from temba.utils.fields import SelectWidget
@@ -23,7 +22,7 @@ class ClaimView(ClaimViewMixin, SmartFormView):
             min_length=1,
             label=_("Number"),
             help_text=_(
-                "The phone number with country code or short code you are connecting. " "ex: +250788123124 or 15543"
+                "The phone number with country code or short code you are connecting. ex: +250788123124 or 15543"
             ),
         )
         username = forms.CharField(

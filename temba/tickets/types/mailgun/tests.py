@@ -32,7 +32,7 @@ class MailgunTypeTest(TembaTest):
 
         # will fail as we don't have anything filled out
         response = self.client.post(connect_url, {})
-        self.assertFormError(response, "form", "to_address", ["This field is required."])
+        self.assertFormError(response.context["form"], "to_address", ["This field is required."])
 
         # submitting will send a verification email
         with patch("temba.utils.email.send_temba_email") as mock_send_email:
@@ -56,11 +56,13 @@ class MailgunTypeTest(TembaTest):
 
         # submit without code...
         response = self.client.post(step2_url, {})
-        self.assertFormError(response, "form", "verification_code", ["This field is required."])
+        self.assertFormError(response.context["form"], "verification_code", ["This field is required."])
 
         # submit with wrong code
         response = self.client.post(step2_url, {"verification_code": "XYZ"})
-        self.assertFormError(response, "form", "verification_code", ["Code does not match, please check your email."])
+        self.assertFormError(
+            response.context["form"], "verification_code", ["Code does not match, please check your email."]
+        )
 
         # submit with correct code
         response = self.client.post(step2_url, {"verification_code": code})
@@ -81,4 +83,6 @@ class MailgunTypeTest(TembaTest):
 
         # submit again after code has been cleared
         response = self.client.post(step2_url, {"verification_code": "12341"})
-        self.assertFormError(response, "form", "verification_code", ["No verification code found, please start over."])
+        self.assertFormError(
+            response.context["form"], "verification_code", ["No verification code found, please start over."]
+        )

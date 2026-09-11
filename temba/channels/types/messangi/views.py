@@ -1,10 +1,6 @@
-# -*- coding: utf-8 -*-
-from __future__ import absolute_import, division, print_function, unicode_literals
-
-from smartmin.views import SmartFormView
-
 from django import forms
 from django.utils.translation import gettext_lazy as _
+from smartmin.views import SmartFormView
 
 from ...models import Channel
 from ...views import ClaimViewMixin
@@ -43,9 +39,9 @@ class ClaimView(ClaimViewMixin, SmartFormView):
             user,
             "JM",
             self.channel_type,
-            name="Messangi: %s" % data["shortcode"],
+            name=f"Messangi: {data['shortcode']}",
             address=data["shortcode"],
             config=config,
         )
 
-        return super(ClaimView, self).form_valid(form)
+        return super().form_valid(form)

@@ -5,10 +5,12 @@
 *.pyc
 *~
 .envrc
+.env
 .direnv
 .commit
 
 rp-indexer
+mailroom
 
 # temba
 dump.rdb

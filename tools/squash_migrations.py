@@ -23,7 +23,7 @@ import shutil
 import subprocess
 import sys
 from collections import defaultdict
-from typing import Callable, List
+from collections.abc import Callable
 
 import colorama
 
@@ -41,7 +41,7 @@ class Migration(migrations.Migration):
 """
 
 
-def get_app_names(exclude: List[str]) -> List[str]:
+def get_app_names(exclude: list[str]) -> list[str]:
     """
     Gets names of all apps using migrations
     """
@@ -54,7 +54,7 @@ def get_app_names(exclude: List[str]) -> List[str]:
     return sorted(names)
 
 
-def get_app_migration_modules(app_name: str) -> List[str]:
+def get_app_migration_modules(app_name: str) -> list[str]:
     """
     Gets module names of all migration files for the given app
     """
@@ -76,7 +76,7 @@ def cmd(line: str):
 
 
 def rewrite_file(path: str, transform: Callable[[str], str]) -> bool:
-    with open(path, "r") as f:
+    with open(path) as f:
         data = f.read()
 
     new_data = transform(data)
@@ -99,7 +99,7 @@ def squash_migrations(step: int):
         for mig_mod in mig_mods:
             mig_path = f"temba/{app_name}/migrations/{mig_mod}.py"
 
-            with open(mig_path, "r") as f:
+            with open(mig_path) as f:
                 is_empty = f.read().startswith("# This is a dummy migration")
 
             if is_empty:

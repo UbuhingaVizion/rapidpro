@@ -1,9 +1,8 @@
 import phonenumbers
-from smartmin.views import SmartFormView
-
 from django import forms
 from django.urls import reverse
 from django.utils.translation import gettext_lazy as _
+from smartmin.views import SmartFormView
 
 from temba.apks.models import Apk
 from temba.orgs.models import Org
@@ -76,7 +75,7 @@ class ClaimView(ClaimViewMixin, SmartFormView):
         return context
 
     def get_success_url(self):
-        return "%s?success" % reverse("public.public_welcome")
+        return f"{reverse('public.public_welcome')}?success"
 
     def form_valid(self, form):
         org = self.request.user.get_org()

@@ -5,7 +5,6 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("orgs", "0096_user"),
         ("tickets", "0036_backfill_ticket_reply_timings"),

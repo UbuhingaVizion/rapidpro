@@ -2,11 +2,10 @@ import contextlib
 from uuid import UUID
 
 import iso8601
+from django.db import transaction
 from rest_framework import generics, mixins, status
 from rest_framework.pagination import CursorPagination
 from rest_framework.response import Response
-
-from django.db import transaction
 
 from temba.api.models import APIPermission, SSLPermission
 from temba.api.support import InvalidQueryError
@@ -81,14 +80,14 @@ class BaseAPIView(NonAtomicMixin, generics.GenericAPIView):
         try:
             return int(param) if param is not None else None
         except ValueError:
-            raise InvalidQueryError("Value for %s must be an integer" % name)
+            raise InvalidQueryError(f"Value for {name} must be an integer")
 
     def get_uuid_param(self, name):
         param = self.request.query_params.get(name)
         try:
             return UUID(param) if param is not None else None
         except ValueError:
-            raise InvalidQueryError("Value for %s must be a valid UUID" % name)
+            raise InvalidQueryError(f"Value for {name} must be a valid UUID")
 
     def get_serializer_context(self):
         context = super().get_serializer_context()
@@ -105,7 +104,7 @@ class BaseAPIView(NonAtomicMixin, generics.GenericAPIView):
         try:
             return URN.identity(URN.normalize(value, country_code=org.default_country_code))
         except ValueError:
-            raise InvalidQueryError("Invalid URN: %s" % value)
+            raise InvalidQueryError(f"Invalid URN: {value}")
 
 
 class ListAPIMixin(mixins.ListModelMixin):
@@ -130,7 +129,7 @@ class ListAPIMixin(mixins.ListModelMixin):
     def check_query(self, params):
         # check user hasn't provided values for more than one of any exclusive params
         if sum([(1 if params.get(p) else 0) for p in self.exclusive_params]) > 1:
-            raise InvalidQueryError("You may only specify one of the %s parameters" % ", ".join(self.exclusive_params))
+            raise InvalidQueryError(f"You may only specify one of the {', '.join(self.exclusive_params)} parameters")
 
     def filter_before_after(self, queryset, field):
         """

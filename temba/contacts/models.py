@@ -11,9 +11,6 @@ import phonenumbers
 import pyexcel
 import pytz
 import regex
-from django_redis import get_redis_connection
-from smartmin.models import SmartModel
-
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.core.validators import validate_email
@@ -22,6 +19,8 @@ from django.db.models import Count, F, Max, Q, Sum, Value
 from django.db.models.functions import Concat, Lower
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
+from django_redis import get_redis_connection
+from smartmin.models import SmartModel
 
 from temba import mailroom
 from temba.assets.models import register_asset_store
@@ -106,10 +105,10 @@ class URN:
         Formats a URN scheme and path as single URN string, e.g. tel:+250783835665
         """
         if not scheme or (scheme not in cls.VALID_SCHEMES and scheme != cls.DELETED_SCHEME):
-            raise ValueError("Invalid scheme component: '%s'" % scheme)
+            raise ValueError(f"Invalid scheme component: '{scheme}'")
 
         if not path:
-            raise ValueError("Invalid path component: '%s'" % path)
+            raise ValueError(f"Invalid path component: '{path}'")
 
         return str(ParsedURN(scheme, path, query=query, fragment=display))
 
@@ -124,7 +123,7 @@ class URN:
             raise ValueError("URN strings must contain scheme and path components")
 
         if parsed.scheme not in cls.VALID_SCHEMES and parsed.scheme != cls.DELETED_SCHEME:
-            raise ValueError("URN contains an invalid scheme component: '%s'" % parsed.scheme)
+            raise ValueError(f"URN contains an invalid scheme component: '{parsed.scheme}'")
         return parsed.scheme, parsed.path, parsed.query or None, parsed.fragment or None
 
     @classmethod
@@ -1142,7 +1141,6 @@ class Contact(LegacyUUIDMixin, SmartModel):
 
             # any urns currently owned by us
             for urn in self.urns.all():
-
                 # release any messages attached with each urn,
                 # these could include messages that began life
                 # on a different contact
@@ -1776,9 +1774,7 @@ class ContactGroupCount(SquashableModel):
         )
         INSERT INTO %(table)s("group_id", "count", "is_squashed")
         VALUES (%%s, GREATEST(0, (SELECT SUM("count") FROM deleted)), TRUE);
-        """ % {
-            "table": cls._meta.db_table
-        }
+        """ % {"table": cls._meta.db_table}
 
         return sql, (distinct_set.group_id,) * 2
 
@@ -1881,7 +1877,7 @@ class ExportContactsTask(BaseExportTask):
             fields.append(
                 dict(
                     field=contact_field,
-                    label="Field:%s" % contact_field.name,
+                    label=f"Field:{contact_field.name}",
                     key=contact_field.key,
                     urn_scheme=None,
                 )
@@ -1889,7 +1885,7 @@ class ExportContactsTask(BaseExportTask):
 
         group_fields = []
         for group in self.group_memberships.all():
-            group_fields.append(dict(label="Group:%s" % group.name, key=None, group_id=group.id, group=group))
+            group_fields.append(dict(label=f"Group:{group.name}", key=None, group_id=group.id, group=group))
 
         return fields, scheme_counts, group_fields
 
@@ -1951,8 +1947,8 @@ class ExportContactsTask(BaseExportTask):
                         % (
                             self.org.name,
                             total_exported_contacts * 100 // len(contact_ids),
-                            "{:,}".format(total_exported_contacts),
-                            "{:,}".format(len(contact_ids)),
+                            f"{total_exported_contacts:,}",
+                            f"{len(contact_ids):,}",
                             time.time() - start,
                             predicted,
                         )

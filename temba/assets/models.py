@@ -97,7 +97,7 @@ class BaseAssetStore:
         Saves a file asset
         """
         if extension not in self.extensions:  # pragma: needs cover
-            raise ValueError("Extension %s not supported by handler" % extension)
+            raise ValueError(f"Extension {extension} not supported by handler")
 
         asset = self.derive_asset(pk)
 
@@ -124,11 +124,11 @@ class BaseAssetStore:
         directory = os.path.join(settings.STORAGE_ROOT_DIR, str(org.pk), self.directory)
 
         if extension:
-            return "%s/%s.%s" % (directory, base_name, extension)
+            return f"{directory}/{base_name}.{extension}"
 
         # no explicit extension so look for one with an existing file
         for ext in extension or self.extensions:
-            path = "%s/%s.%s" % (directory, base_name, ext)
+            path = f"{directory}/{base_name}.{ext}"
             if default_storage.exists(path):
                 return path
 

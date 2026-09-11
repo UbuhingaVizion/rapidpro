@@ -3,12 +3,11 @@ import subprocess
 import sys
 
 import pytz
-from django_redis import get_redis_connection
-
 from django.conf import settings
 from django.core.management import BaseCommand, CommandError, call_command
 from django.db import connection
 from django.utils import timezone
+from django_redis import get_redis_connection
 
 from temba.campaigns.models import Campaign, CampaignEvent
 from temba.channels.models import Channel
@@ -51,7 +50,7 @@ class Command(BaseCommand):
     help = "Generates a database suitable for mailroom testing"
 
     def handle(self, *args, **kwargs):
-        with open(ORGS_SPEC_FILE, "r") as orgs_file:
+        with open(ORGS_SPEC_FILE) as orgs_file:
             orgs_spec = json.load(orgs_file)
 
         self._log("Checking Postgres database version... ")
@@ -120,7 +119,7 @@ class Command(BaseCommand):
         """
         Loads admin boundary records from the given dump of that table
         """
-        self._log("Loading locations from %s... " % path)
+        self._log(f"Loading locations from {path}... ")
 
         # load dump into current db with pg_restore
         db_config = settings.DATABASES["default"]
@@ -332,7 +331,7 @@ class Command(BaseCommand):
         self._log(f"Creating {len(spec['flows'])} flows... ")
 
         for f in spec["flows"]:
-            with open("media/test_flows/mailroom/" + f["file"], "r") as flow_file:
+            with open("media/test_flows/mailroom/" + f["file"]) as flow_file:
                 org.import_app(json.load(flow_file), user)
 
                 # set the uuid on this flow

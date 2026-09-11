@@ -16,7 +16,7 @@ def register_classifier_type(type_class):
         type_class.slug = type_class.__module__.split(".")[-2]
 
     if type_class.slug in TYPES:  # pragma: no cover
-        raise ValueError("More than one classifier type with slug: %s" % type_class.slug)
+        raise ValueError(f"More than one classifier type with slug: {type_class.slug}")
     TYPES[type_class.slug] = type_class()
 
 

@@ -1,12 +1,11 @@
 import logging
 
-from requests_toolbelt.utils import dump
-
 from django.db import models
 from django.db.models import Index, Q
 from django.utils import timezone
 from django.utils.functional import cached_property
 from django.utils.translation import gettext_lazy as _
+from requests_toolbelt.utils import dump
 
 from temba.airtime.models import AirtimeTransfer
 from temba.channels.models import Channel

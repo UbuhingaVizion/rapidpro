@@ -52,7 +52,7 @@ class TwitterType(ChannelType):
             config["api_key"], config["api_secret"], config["access_token"], config["access_token_secret"]
         )
 
-        callback_url = "https://%s%s" % (channel.callback_domain, reverse("courier.twt", args=[channel.uuid]))
+        callback_url = f"https://{channel.callback_domain}{reverse('courier.twt', args=[channel.uuid])}"
         try:
             # check for existing hooks, if there is just one, remove it
             hooks = client.get_webhooks(config["env_name"])

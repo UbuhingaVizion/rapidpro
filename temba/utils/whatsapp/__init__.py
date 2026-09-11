@@ -1,7 +1,6 @@
 import logging
 
 import requests
-
 from django.utils import timezone
 
 from temba.channels.models import Channel

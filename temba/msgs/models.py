@@ -5,8 +5,6 @@ from datetime import datetime, timedelta
 
 import iso8601
 import pytz
-from xlsxlite.writer import XLSXBook
-
 from django.conf import settings
 from django.contrib.auth.models import User
 from django.contrib.postgres.fields import ArrayField
@@ -16,6 +14,7 @@ from django.db.models import Prefetch, Q, Sum
 from django.db.models.functions import Lower
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
+from xlsxlite.writer import XLSXBook
 
 from temba import mailroom
 from temba.assets.models import register_asset_store
@@ -532,7 +531,7 @@ class Msg(models.Model):
         """
         sorted_logs = None
         if self.channel and self.channel.is_active:
-            sorted_logs = sorted(self.channel_logs.all(), key=lambda l: l.created_on, reverse=True)
+            sorted_logs = sorted(self.channel_logs.all(), key=lambda log: log.created_on, reverse=True)
         return sorted_logs[0] if sorted_logs else None
 
     def update(self, cmd):
@@ -728,9 +727,7 @@ class BroadcastMsgCount(SquashableModel):
         )
         INSERT INTO %(table)s("broadcast_id", "count", "is_squashed")
         VALUES (%%s, GREATEST(0, (SELECT SUM("count") FROM deleted)), TRUE);
-        """ % {
-            "table": cls._meta.db_table
-        }
+        """ % {"table": cls._meta.db_table}
 
         return sql, (distinct_set.broadcast_id,) * 2
 
@@ -802,7 +799,7 @@ class SystemLabel:
         elif label_type == cls.TYPE_CALLS:
             qs = ChannelEvent.objects.filter(event_type__in=ChannelEvent.CALL_TYPES)
         else:  # pragma: needs cover
-            raise ValueError("Invalid label type: %s" % label_type)
+            raise ValueError(f"Invalid label type: {label_type}")
 
         return qs.filter(org=org)
 
@@ -852,9 +849,7 @@ class SystemLabelCount(SquashableModel):
         )
         INSERT INTO %(table)s("org_id", "label_type", "is_archived", "count", "is_squashed")
         VALUES (%%s, %%s, %%s, GREATEST(0, (SELECT SUM("count") FROM deleted)), TRUE);
-        """ % {
-            "table": cls._meta.db_table
-        }
+        """ % {"table": cls._meta.db_table}
 
         return sql, (distinct_set.org_id, distinct_set.label_type, distinct_set.is_archived) * 2
 
@@ -871,7 +866,7 @@ class SystemLabelCount(SquashableModel):
         return {lb: counts_by_type.get(lb, 0) for lb, n in SystemLabel.TYPE_CHOICES}
 
     class Meta:
-        index_together = ("org", "label_type")
+        indexes = [models.Index(fields=("org", "label_type"))]
 
 
 class Label(LegacyUUIDMixin, TembaModel, DependencyMixin):
@@ -1001,7 +996,7 @@ class Label(LegacyUUIDMixin, TembaModel, DependencyMixin):
 
     def __str__(self):
         if self.folder:
-            return "%s > %s" % (str(self.folder), self.name)
+            return f"{self.folder!s} > {self.name}"
         return self.name
 
     class Meta:
@@ -1027,9 +1022,7 @@ class LabelCount(SquashableModel):
             )
             INSERT INTO %(table)s("label_id", "is_archived", "count", "is_squashed")
             VALUES (%%s, %%s, GREATEST(0, (SELECT SUM("count") FROM deleted)), TRUE);
-            """ % {
-            "table": cls._meta.db_table
-        }
+            """ % {"table": cls._meta.db_table}
 
         return sql, (distinct_set.label_id, distinct_set.is_archived) * 2
 
@@ -1244,7 +1237,7 @@ class ExportMessagesTask(BaseExportTask):
         if last_created_on:
             messages = messages.filter(created_on__gt=last_created_on)
 
-        all_message_ids = array(str("l"), messages.values_list("id", flat=True))
+        all_message_ids = array("l", messages.values_list("id", flat=True))
 
         logger.info(
             f"Msgs export #{self.id} for org #{self.org.id}: found {len(all_message_ids)} msgs in database to export"
@@ -1253,7 +1246,7 @@ class ExportMessagesTask(BaseExportTask):
         prefetch = Prefetch("labels", queryset=Label.objects.order_by("name"))
         for msg_batch in MsgIterator(
             all_message_ids,
-            order_by=["" "created_on"],
+            order_by=["created_on"],
             select_related=["contact", "contact_urn", "channel", "flow"],
             prefetch_related=[prefetch],
         ):

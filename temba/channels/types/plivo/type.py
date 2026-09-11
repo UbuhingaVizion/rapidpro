@@ -1,6 +1,5 @@
 import requests
-
-from django.urls import re_path
+from django.urls import path
 from django.utils.translation import gettext_lazy as _
 
 from temba.channels.models import Channel, ChannelType
@@ -43,4 +42,4 @@ class PlivoType(ChannelType):
         )
 
     def get_urls(self):
-        return [self.get_claim_url(), re_path(r"^search$", SearchView.as_view(), name="search")]
+        return [self.get_claim_url(), path("search", SearchView.as_view(), name="search")]

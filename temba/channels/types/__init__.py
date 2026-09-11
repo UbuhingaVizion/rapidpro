@@ -14,7 +14,7 @@ def register_channel_type(type_class):
         type_class.slug = type_class.__module__.split(".")[-2]
 
     if type_class.code in TYPES:  # pragma: no cover
-        raise ValueError("More than channel type with code: %s" % type_class.code)
+        raise ValueError(f"More than channel type with code: {type_class.code}")
     TYPES[type_class.code] = type_class()
 
 

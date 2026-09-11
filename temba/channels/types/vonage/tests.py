@@ -1,7 +1,6 @@
 from unittest.mock import call, patch
 
 import vonage
-
 from django.urls import reverse
 
 from temba.channels.models import Channel

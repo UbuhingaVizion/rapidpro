@@ -53,7 +53,7 @@ def migrate_to_version_11_12(json_flow, flow=None):
                     continue
                 else:
                     action["channel"] = channel.uuid
-                    action["name"] = "%s: %s" % (channel.get_channel_type_display(), channel.get_address_display())
+                    action["name"] = f"{channel.get_channel_type_display()}: {channel.get_address_display()}"
 
             # the action is valid append it
             valid_actions.append(action)
@@ -202,7 +202,6 @@ def migrate_to_version_11_10(json_flow, flow=None, flow_types=None):
         if rule_set["ruleset_type"] == "subflow":
             subflow_type = get_flow_type(rule_set["config"]["flow"]["uuid"])
             if subflow_type and not flow_types_eq(subflow_type, json_flow["flow_type"]):
-
                 # create new action set in same place with same connections
                 json_flow["action_sets"].append(
                     {
@@ -286,14 +285,12 @@ def migrate_to_version_11_9(json_flow, flow=None):
                 if action["type"] == "flow":
                     flow_uuid = action["flow"]["uuid"]
                     if flow_uuid in invalid_flow_uuids:
-
                         del new_flow_json["action_sets"][actionset_index]["actions"][action_index]
                         total_removed_actions += 1
 
                 if action["type"] == "trigger-flow":
                     flow_uuid = action["flow"]["uuid"]
                     if flow_uuid in invalid_flow_uuids:
-
                         del new_flow_json["action_sets"][actionset_index]["actions"][action_index]
                         total_removed_actions += 1
 
@@ -302,7 +299,6 @@ def migrate_to_version_11_9(json_flow, flow=None):
                 flow_uuid = rule_set["config"]["flow"]["uuid"]
 
                 if flow_uuid in invalid_flow_uuids:
-
                     del new_flow_json["rule_sets"][ruleset_index]
                     total_removed_rulesets += 1
 
@@ -361,7 +357,7 @@ def migrate_to_version_11_7(json_flow, flow=None):
 
         destination = nodes_by_uuid.get(actionset["destination"]) if actionset.get("destination") else None
 
-        for (i, new_set) in reversed(list(enumerate(new_sets))):
+        for i, new_set in reversed(list(enumerate(new_sets))):
             # if this is first new node, it gets the UUID of the actionset being
             # replaced so that nodes pointing to this actionset will now point to it
             new_node_uuid = actionset["uuid"] if i == 0 else str(uuid4())
@@ -470,7 +466,6 @@ def migrate_to_version_11_6(json_flow, flow=None):
 
     def remap_group(group):
         if type(group) is dict:
-
             # we haven't been mapped yet (also, non-uuid groups can't be mapped)
             if "uuid" not in group or group["uuid"] not in uuid_map and group.get("name"):
                 group_instance = ContactGroup.get_group_by_name(flow.org, group["name"])
@@ -627,7 +622,6 @@ def _base_migrate_to_version_11_1(json_flow, country_code):
 
     def _traverse(obj, country_code):
         if isinstance(obj, dict):
-
             if _is_this_a_lang_object(obj):
                 new_obj = {}
 
@@ -704,13 +698,12 @@ def migrate_export_to_version_11_0(json_export, org, same_site=True):
         format_function = "format_date" if cf.value_type == "D" else "format_location"
         replacements.append(
             [
-                r"@contact\.%s([^0-9a-zA-Z\.]|\.[^0-9a-zA-Z\.]|$|\.$)" % cf.key,
-                r"@(%s(contact.%s))\1" % (format_function, cf.key),
+                rf"@contact\.{cf.key}([^0-9a-zA-Z\.]|\.[^0-9a-zA-Z\.]|$|\.$)",
+                rf"@({format_function}(contact.{cf.key}))\1",
             ]
         )
 
     for flow in json_export.get("flows", []):
-
         # figure out which rulesets are date or location
         for rs in flow.get("rule_sets", []):
             rs_type = None
@@ -731,7 +724,7 @@ def migrate_export_to_version_11_0(json_export, org, same_site=True):
             key = label_to_slug(rs["label"])
 
             # any reference to this result value's time property needs wrapped in format_date
-            replacements.append([r"@flow\.%s\.time" % key, r"@(format_date(flow.%s.time))" % key])
+            replacements.append([rf"@flow\.{key}\.time", rf"@(format_date(flow.{key}.time))"])
 
             # how we wrap the actual result value depends on its type
             if rs_type in ["date", "date_before", "date_after", "date_equal"]:
@@ -743,8 +736,8 @@ def migrate_export_to_version_11_0(json_export, org, same_site=True):
 
             replacements.append(
                 [
-                    r"@flow\.%s([^0-9a-zA-Z\.]|\.[^0-9a-zA-Z\.]|$|\.$)" % key,
-                    r"@(%s(flow.%s))\1" % (format_function, key),
+                    rf"@flow\.{key}([^0-9a-zA-Z\.]|\.[^0-9a-zA-Z\.]|$|\.$)",
+                    rf"@({format_function}(flow.{key}))\1",
                 ]
             )
 
@@ -1151,7 +1144,7 @@ def migrate_to_version_6(json_flow, flow=None):
 
     def convert_to_dict(d, key):
         if key not in d:  # pragma: no cover
-            raise ValueError("Missing '%s' in dict: %s" % (key, d))
+            raise ValueError(f"Missing '{key}' in dict: {d}")
 
         if not isinstance(d[key], dict):
             d[key] = {base_language: d[key]}
@@ -1161,11 +1154,10 @@ def migrate_to_version_6(json_flow, flow=None):
 
         for ruleset in definition.get("rule_sets", []):
             for rule in ruleset.get("rules"):
-
                 # betweens haven't always required a category name, create one
                 rule_test = rule["test"]
                 if rule_test["type"] == "between" and "category" not in rule:
-                    rule["category"] = "%s-%s" % (rule_test["min"], rule_test["max"])
+                    rule["category"] = f"{rule_test['min']}-{rule_test['max']}"
 
                 # convert the category name
                 convert_to_dict(rule, "category")
@@ -1202,7 +1194,6 @@ def migrate_to_version_5(json_flow, flow=None):
     definition = map_actions(json_flow.get("definition"), cleanse_group_names)
 
     for ruleset in definition.get("rule_sets", []):
-
         response_type = ruleset.pop("response_type", None)
         ruleset_type = ruleset.get("ruleset_type", None)
         label = ruleset.get("label")
@@ -1213,7 +1204,6 @@ def migrate_to_version_5(json_flow, flow=None):
                 del rule["config"]
 
         if response_type and not ruleset_type:
-
             # webhooks now live in their own ruleset, insert one
             webhook_url = ruleset.pop("webhook", None)
             webhook_action = ruleset.pop("webhook_action", None)
@@ -1240,11 +1230,9 @@ def migrate_to_version_5(json_flow, flow=None):
                 elif response_type == "R":  # pragma: no cover
                     ruleset["ruleset_type"] = "wait_recording"
                 else:
-
                     if operand == "@step.value":
                         ruleset["ruleset_type"] = "wait_message"
                     else:
-
                         ruleset["ruleset_type"] = "expression"
 
                         # if it's not a plain split, make us wait and create
@@ -1308,7 +1296,7 @@ def cleanse_group_names(action):
                 if "name" not in group:
                     group["name"] = "Unknown"
                 if not is_valid_name(group["name"]):
-                    group["name"] = "%s %s" % ("Contacts", group["name"])
+                    group["name"] = f"Contacts {group['name']}"
     return action
 
 

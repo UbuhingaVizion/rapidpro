@@ -12,7 +12,6 @@ import temba.utils.models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
         ("flows", "0286_alter_flow_name"),

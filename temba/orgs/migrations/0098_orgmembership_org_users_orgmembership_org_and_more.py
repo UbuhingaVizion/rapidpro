@@ -5,7 +5,6 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("orgs", "0097_alter_backuptoken_user_alter_org_administrators_and_more"),
     ]

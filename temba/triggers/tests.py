@@ -2,7 +2,6 @@ from datetime import datetime
 from unittest.mock import patch
 
 import pytz
-
 from django.urls import reverse
 from django.utils import timezone
 

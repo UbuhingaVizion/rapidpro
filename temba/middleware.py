@@ -82,7 +82,6 @@ class BrandingMiddleware:
 
 
 class ConsentMiddleware:  # pragma: no cover
-
     REQUIRES_CONSENT = ("/msg", "/contact", "/flow", "/trigger", "/org/home", "/campaign", "/channel", "/welcome")
 
     def __init__(self, get_response=None):
@@ -220,7 +219,7 @@ class ProfilerMiddleware:  # pragma: no cover
             stats = pstats.Stats(self.profiler, stream=io)
             stats.strip_dirs().sort_stats(request.GET.get("sort", "time"))
             stats.print_stats(int(request.GET.get("count", 100)))
-            response.content = "<pre>%s</pre>" % io.getvalue()
+            response.content = f"<pre>{io.getvalue()}</pre>"
         return response
 
     def can(self, request):

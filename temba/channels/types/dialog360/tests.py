@@ -1,10 +1,9 @@
 from unittest.mock import patch
 
-from django_redis import get_redis_connection
-from requests import RequestException
-
 from django.forms import ValidationError
 from django.urls import reverse
+from django_redis import get_redis_connection
+from requests import RequestException
 
 from temba.request_logs.models import HTTPLog
 from temba.templates.models import TemplateTranslation
@@ -39,7 +38,7 @@ class Dialog360TypeTest(TembaTest):
 
         # will fail with invalid phone number
         response = self.client.post(url, post_data)
-        self.assertFormError(response, "form", None, ["Please enter a valid phone number"])
+        self.assertFormError(response.context["form"], None, ["Please enter a valid phone number"])
 
         # valid number
         post_data["number"] = "0788123123"

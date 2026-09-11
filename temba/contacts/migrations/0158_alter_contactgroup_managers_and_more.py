@@ -5,7 +5,6 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("orgs", "0094_alter_org_parent"),
         ("contacts", "0157_update_group_type"),

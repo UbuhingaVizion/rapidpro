@@ -14,23 +14,6 @@ import iso8601
 import pyotp
 import pytz
 import requests
-from packaging.version import Version
-from smartmin.users.models import FailedLogin, PasswordHistory, RecoveryToken
-from smartmin.users.views import Login, UserUpdateForm
-from smartmin.views import (
-    SmartCreateView,
-    SmartCRUDL,
-    SmartDeleteView,
-    SmartFormView,
-    SmartListView,
-    SmartModelActionView,
-    SmartModelFormView,
-    SmartReadView,
-    SmartTemplateView,
-    SmartUpdateView,
-)
-from twilio.rest import Client
-
 from django import forms
 from django.conf import settings
 from django.contrib import messages
@@ -54,6 +37,22 @@ from django.utils.text import slugify
 from django.utils.translation import gettext_lazy as _
 from django.views.decorators.csrf import csrf_exempt
 from django.views.generic import View
+from packaging.version import Version
+from smartmin.users.models import FailedLogin, PasswordHistory, RecoveryToken
+from smartmin.users.views import Login, UserUpdateForm
+from smartmin.views import (
+    SmartCreateView,
+    SmartCRUDL,
+    SmartDeleteView,
+    SmartFormView,
+    SmartListView,
+    SmartModelActionView,
+    SmartModelFormView,
+    SmartReadView,
+    SmartTemplateView,
+    SmartUpdateView,
+)
+from twilio.rest import Client
 
 from temba.api.models import APIToken, Resthook
 from temba.campaigns.models import Campaign
@@ -224,7 +223,7 @@ class ModalMixin(SmartFormView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
 
-        if "HTTP_X_PJAX" in self.request.META and "HTTP_X_FORMAX" not in self.request.META:  # pragma: no cover
+        if "x-pjax" in self.request.headers and "x-formax" not in self.request.headers:  # pragma: no cover
             context["base_template"] = "smartmin/modal.html"
         if "success_url" in kwargs:  # pragma: no cover
             context["success_url"] = kwargs["success_url"]
@@ -262,7 +261,7 @@ class ModalMixin(SmartFormView):
 
             messages.success(self.request, self.derive_success_message())
 
-            if "HTTP_X_PJAX" not in self.request.META:
+            if "x-pjax" not in self.request.headers:
                 return HttpResponseRedirect(self.get_success_url())
             else:  # pragma: no cover
                 return self.render_modal_response(form)
@@ -682,7 +681,7 @@ class ConfirmAccessView(SpaMixin, Login):
 class InferOrgMixin:
     @classmethod
     def derive_url_pattern(cls, path, action):
-        return r"^%s/%s/$" % (path, action)
+        return rf"^{path}/{action}/$"
 
     def get_object(self, *args, **kwargs):
         return self.request.user.get_org()
@@ -826,7 +825,7 @@ class UserCRUDL(SmartCRUDL):
                 RecoveryToken.objects.create(token=token, user=user)
                 FailedLogin.objects.filter(username__iexact=user.username).delete()
 
-                context = dict(user=user, path=f'{reverse("users.user_recover", args=[token])}')
+                context = dict(user=user, path=f"{reverse('users.user_recover', args=[token])}")
                 send_template_email(email, subject, template, context, self.request.branding)
 
             else:
@@ -894,7 +893,7 @@ class UserCRUDL(SmartCRUDL):
 
         @classmethod
         def derive_url_pattern(cls, path, action):
-            return r"^%s/%s/$" % (path, action)
+            return rf"^{path}/{action}/$"
 
         def get_object(self, *args, **kwargs):
             return self.request.user
@@ -1218,7 +1217,7 @@ class OrgCRUDL(SmartCRUDL):
     class Menu(MenuMixin, InferOrgMixin, SmartTemplateView):
         @classmethod
         def derive_url_pattern(cls, path, action):
-            return r"^%s/%s/((?P<submenu>[A-z]+)/)?$" % (path, action)
+            return rf"^{path}/{action}/((?P<submenu>[A-z]+)/)?$"
 
         def derive_menu(self):
 
@@ -1304,7 +1303,6 @@ class OrgCRUDL(SmartCRUDL):
                     )
 
                 if self.has_org_perm("archives.archive_message"):
-
                     items = [
                         self.create_menu_item(
                             name=_("Messages"),
@@ -1338,7 +1336,6 @@ class OrgCRUDL(SmartCRUDL):
                 return menu
 
             else:
-
                 return [
                     self.create_menu_item(
                         menu_id="messages", name=_("Messages"), icon="message-square", endpoint="msgs.msg_menu"
@@ -1416,7 +1413,7 @@ class OrgCRUDL(SmartCRUDL):
             except Exception as e:
                 # this is an unexpected error, report it to sentry
                 logger = logging.getLogger(__name__)
-                logger.error("Exception on app import: %s" % str(e), exc_info=True)
+                logger.error(f"Exception on app import: {e!s}", exc_info=True)
                 form._errors["import_file"] = form.error_class([_("Sorry, your import file is invalid.")])
                 return self.form_invalid(form)
 
@@ -1441,7 +1438,7 @@ class OrgCRUDL(SmartCRUDL):
 
             export = org.export_definitions(request.branding["link"], components)
             response = JsonResponse(export, json_dumps_params=dict(indent=2))
-            response["Content-Disposition"] = "attachment; filename=%s.json" % slugify(org.name)
+            response["Content-Disposition"] = f"attachment; filename={slugify(org.name)}.json"
             return response
 
         def get_context_data(self, **kwargs):
@@ -1756,7 +1753,7 @@ class OrgCRUDL(SmartCRUDL):
                 headers = http_headers(extra={"Content-Type": "application/json"})
 
                 response = requests.get(
-                    "https://api.plivo.com/v1/Account/%s/" % auth_id, headers=headers, auth=(auth_id, auth_token)
+                    f"https://api.plivo.com/v1/Account/{auth_id}/", headers=headers, auth=(auth_id, auth_token)
                 )
 
                 if response.status_code != 200:
@@ -2046,7 +2043,7 @@ class OrgCRUDL(SmartCRUDL):
             return super().lookup_field_link(context, field, obj)
 
         def get_created_by(self, obj):  # pragma: needs cover
-            return "%s %s - %s" % (obj.created_by.first_name, obj.created_by.last_name, obj.created_by.email)
+            return f"{obj.created_by.first_name} {obj.created_by.last_name} - {obj.created_by.email}"
 
     class Update(ComponentFormMixin, SmartUpdateView):
         class Form(forms.ModelForm):
@@ -2120,7 +2117,7 @@ class OrgCRUDL(SmartCRUDL):
                     dict(
                         title=_("Service"),
                         posterize=True,
-                        href=f'{reverse("orgs.org_service")}?organization={org.pk}&redirect_url={reverse("msgs.msg_inbox", args=[])}',
+                        href=f"{reverse('orgs.org_service')}?organization={org.pk}&redirect_url={reverse('msgs.msg_inbox', args=[])}",
                     )
                 )
 
@@ -2138,7 +2135,7 @@ class OrgCRUDL(SmartCRUDL):
                             title=_("Unflag"),
                             style="button-secondary",
                             posterize=True,
-                            href="%s?action=unflag" % reverse("orgs.org_update", args=[org.pk]),
+                            href=f"{reverse('orgs.org_update', args=[org.pk])}?action=unflag",
                         )
                     )
                 else:  # pragma: needs cover
@@ -2147,7 +2144,7 @@ class OrgCRUDL(SmartCRUDL):
                             title=_("Flag"),
                             style="button-secondary",
                             posterize=True,
-                            href="%s?action=flag" % reverse("orgs.org_update", args=[org.pk]),
+                            href=f"{reverse('orgs.org_update', args=[org.pk])}?action=flag",
                         )
                     )
 
@@ -2157,7 +2154,7 @@ class OrgCRUDL(SmartCRUDL):
                             title=_("Verify"),
                             style="button-secondary",
                             posterize=True,
-                            href="%s?action=verify" % reverse("orgs.org_update", args=[org.pk]),
+                            href=f"{reverse('orgs.org_update', args=[org.pk])}?action=verify",
                         )
                     )
 
@@ -2492,7 +2489,7 @@ class OrgCRUDL(SmartCRUDL):
 
         def get_success_url(self):  # pragma: needs cover
             org_id = self.request.GET.get("org")
-            return "%s?org=%s" % (reverse("orgs.org_manage_accounts_sub_org"), org_id)
+            return f"{reverse('orgs.org_manage_accounts_sub_org')}?org={org_id}"
 
     class Service(SmartFormView):
         class ServiceForm(forms.Form):
@@ -2603,7 +2600,7 @@ class OrgCRUDL(SmartCRUDL):
             return context
 
         def get_created_by(self, obj):  # pragma: needs cover
-            return "%s %s - %s" % (obj.created_by.first_name, obj.created_by.last_name, obj.created_by.email)
+            return f"{obj.created_by.first_name} {obj.created_by.last_name} - {obj.created_by.email}"
 
     class CreateSubOrg(NonAtomicMixin, MultiOrgMixin, ModalMixin, InferOrgMixin, SmartCreateView):
         class CreateOrgForm(forms.ModelForm):
@@ -2636,7 +2633,7 @@ class OrgCRUDL(SmartCRUDL):
             self.object = form.save(commit=False)
             parent = self.org
             parent.create_sub_org(self.object.name, self.object.timezone, self.request.user)
-            if "HTTP_X_PJAX" not in self.request.META:
+            if "x-pjax" not in self.request.headers:
                 return HttpResponseRedirect(self.get_success_url())
             else:  # pragma: no cover
                 return self.render_modal_response()
@@ -2773,7 +2770,7 @@ class OrgCRUDL(SmartCRUDL):
 
         @classmethod
         def derive_url_pattern(cls, path, action):
-            return r"^%s/%s/(?P<secret>\w+)/$" % (path, action)
+            return rf"^{path}/{action}/(?P<secret>\w+)/$"
 
         def get_invitation(self, **kwargs):
             secret = self.kwargs.get("secret")
@@ -2837,7 +2834,7 @@ class OrgCRUDL(SmartCRUDL):
 
         @classmethod
         def derive_url_pattern(cls, path, action):
-            return r"^%s/%s/(?P<secret>\w+)/$" % (path, action)
+            return rf"^{path}/{action}/(?P<secret>\w+)/$"
 
     class JoinAccept(SmartUpdateView):
         class JoinAcceptForm(forms.ModelForm):
@@ -2900,7 +2897,7 @@ class OrgCRUDL(SmartCRUDL):
 
         @classmethod
         def derive_url_pattern(cls, path, action):
-            return r"^%s/%s/(?P<secret>\w+)/$" % (path, action)
+            return rf"^{path}/{action}/(?P<secret>\w+)/$"
 
         def get_invitation(self, **kwargs):  # pragma: needs cover
             secret = self.kwargs.get("secret")
@@ -2992,7 +2989,6 @@ class OrgCRUDL(SmartCRUDL):
 
         def form_valid(self, form):
             if self.get_step() == 1:
-
                 org = self.form.cleaned_data.get("org", None)
 
                 context = self.get_context_data()
@@ -3036,9 +3032,9 @@ class OrgCRUDL(SmartCRUDL):
 
         def get_template_names(self):
             if (
-                "android" in self.request.META.get("HTTP_X_REQUESTED_WITH", "")
+                "android" in self.request.headers.get("x-requested-with", "")
                 or "mobile" in self.request.GET
-                or "Android" in self.request.META.get("HTTP_USER_AGENT", "")
+                or "Android" in self.request.headers.get("user-agent", "")
             ):
                 return ["orgs/org_surveyor_mobile.haml"]
             else:
@@ -3120,7 +3116,7 @@ class OrgCRUDL(SmartCRUDL):
         submit_button_name = _("Save")
 
         def get_success_url(self):
-            return "%s?start" % reverse("public.public_welcome")
+            return f"{reverse('public.public_welcome')}?start"
 
         def pre_process(self, request, *args, **kwargs):
             # if our brand doesn't allow signups, then redirect to the homepage
@@ -3483,7 +3479,6 @@ class OrgCRUDL(SmartCRUDL):
             formax.add_section("archives", reverse("archives.archive_message"), icon="icon-box", action="link")
 
     class TwilioAccount(ComponentFormMixin, InferOrgMixin, OrgPermsMixin, SmartUpdateView):
-
         success_message = ""
 
         class TwilioKeys(forms.ModelForm):
@@ -3529,7 +3524,7 @@ class OrgCRUDL(SmartCRUDL):
             if client:
                 account_sid = client.auth[0]
                 sid_length = len(account_sid)
-                context["account_sid"] = "%s%s" % ("\u066D" * (sid_length - 16), account_sid[-16:])
+                context["account_sid"] = f"{'\u066d' * (sid_length - 16)}{account_sid[-16:]}"
             return context
 
         def derive_initial(self):
@@ -3578,7 +3573,7 @@ class OrgCRUDL(SmartCRUDL):
             context = super().get_context_data(**kwargs)
             sub_orgs = Org.objects.filter(is_active=True, parent=self.get_object())
             context["sub_orgs"] = sub_orgs
-            context["is_spa"] = "HTTP_TEMBA_SPA" in self.request.META
+            context["is_spa"] = "temba-spa" in self.request.headers
             return context
 
     class EditSubOrg(SpaMixin, ModalMixin, Edit):
@@ -3601,7 +3596,7 @@ class OrgCRUDL(SmartCRUDL):
         class TransferForm(forms.Form):
             class OrgChoiceField(forms.ModelChoiceField):
                 def label_from_instance(self, org):
-                    return "%s (%s)" % (org.name, "{:,}".format(org.get_credits_remaining()))
+                    return f"{org.name} ({org.get_credits_remaining():,})"
 
             from_org = OrgChoiceField(
                 None,
@@ -3769,7 +3764,7 @@ class OrgCRUDL(SmartCRUDL):
             return context
 
         def get(self, request, *args, **kwargs):
-            if self.request.META.get("HTTP_X_REQUESTED_WITH") == "XMLHttpRequest":
+            if self.request.headers.get("x-requested-with") == "XMLHttpRequest":
                 initial = self.request.GET.get("initial", "").split(",")
                 matches = []
 
@@ -3876,7 +3871,7 @@ class TopUpCRUDL(SmartCRUDL):
             return context
 
         def get_template_names(self):
-            if "HTTP_X_FORMAX" in self.request.META:
+            if "x-formax" in self.request.headers:
                 return ["orgs/topup_list_summary.haml"]
             else:
                 return super().get_template_names()
@@ -3925,7 +3920,7 @@ class TopUpCRUDL(SmartCRUDL):
 
         def get_price(self, obj):
             if obj.price:
-                return "$%.2f" % (obj.price / 100.0)
+                return f"${obj.price / 100.0:.2f}"
             else:
                 return "-"
 
@@ -3978,7 +3973,7 @@ class StripeHandler(View):  # pragma: no cover
             charge = event.data.object
             charge_date = datetime.fromtimestamp(charge.created)
             description = charge.description
-            amount = "$%s" % (Decimal(charge.amount) / Decimal(100)).quantize(Decimal(".01"))
+            amount = f"${(Decimal(charge.amount) / Decimal(100)).quantize(Decimal('.01'))}"
 
             # look up our customer
             customer = stripe.Customer.retrieve(charge.customer)
@@ -4021,7 +4016,7 @@ class StripeHandler(View):  # pragma: no cover
                 admin = org.get_admins().first()
 
                 analytics.track(admin, track, context)
-                return HttpResponse("Event '%s': %s" % (track, context))
+                return HttpResponse(f"Event '{track}': {context}")
 
         # empty response, 200 lets Stripe know we handled it
         return HttpResponse("Ignored, uninteresting event")

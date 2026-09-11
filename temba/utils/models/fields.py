@@ -22,7 +22,7 @@ class TranslatableField(HStoreField):
         def __call__(self, value):
             for lang, translation in value.items():
                 if lang != "base" and len(lang) != 3:
-                    raise ValidationError("'%s' is not a valid language code." % lang)
+                    raise ValidationError(f"'{lang}' is not a valid language code.")
                 if len(translation) > self.max_length:
                     raise ValidationError(
                         "Translation for '%s' exceeds the %d character limit." % (lang, self.max_length)
@@ -95,11 +95,11 @@ class JSONAsTextField(CheckFieldDefaultMixin, models.Field):
             data = json.loads(value)
 
             if type(data) not in (list, dict, OrderedDict):
-                raise ValueError("JSONAsTextField should be a dict or a list, got %s => %s" % (type(data), data))
+                raise ValueError(f"JSONAsTextField should be a dict or a list, got {type(data)} => {data}")
             else:
                 return data
         else:
-            raise ValueError('Unexpected type "%s" for JSONAsTextField' % (type(value),))
+            raise ValueError(f'Unexpected type "{type(value)}" for JSONAsTextField')
 
     def get_db_prep_value(self, value, *args, **kwargs):
         # if the value is falsy we will save is as null
@@ -110,7 +110,7 @@ class JSONAsTextField(CheckFieldDefaultMixin, models.Field):
             return None
 
         if type(value) not in (list, dict, OrderedDict):
-            raise ValueError("JSONAsTextField should be a dict or a list, got %s => %s" % (type(value), value))
+            raise ValueError(f"JSONAsTextField should be a dict or a list, got {type(value)} => {value}")
 
         serialized = json.dumps(value)
 

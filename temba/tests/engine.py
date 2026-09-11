@@ -1,7 +1,6 @@
 from datetime import timedelta
 
 import iso8601
-
 from django.utils import timezone
 
 from temba.channels.models import Channel

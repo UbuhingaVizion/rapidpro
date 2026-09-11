@@ -1,9 +1,8 @@
 import time
 from enum import Enum
 
-from django_redis import get_redis_connection
-
 from django.utils import timezone
+from django_redis import get_redis_connection
 
 from temba.utils import json
 
@@ -161,9 +160,9 @@ def queue_interrupt(org, *, contacts=None, channel=None, flow=None, session=None
     Queues an interrupt task for handling by mailroom
     """
 
-    assert (
-        contacts or channel or flow or session
-    ), "must specify either a set of contacts or a channel or a flow or a session"
+    assert contacts or channel or flow or session, (
+        "must specify either a set of contacts or a channel or a flow or a session"
+    )
 
     task = {}
     if contacts:

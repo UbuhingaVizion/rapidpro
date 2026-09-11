@@ -29,8 +29,7 @@ class MockEventStream:
         self.events.append({"End": {}})
 
     def __iter__(self):
-        for event in self.events:
-            yield event
+        yield from self.events
 
 
 class MockS3Client:

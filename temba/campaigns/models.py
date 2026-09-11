@@ -1,8 +1,8 @@
-from smartmin.models import SmartModel
-
 from django.db import models
 from django.utils import timezone
-from django.utils.translation import gettext_lazy as _, ngettext
+from django.utils.translation import gettext_lazy as _
+from django.utils.translation import ngettext
+from smartmin.models import SmartModel
 
 from temba import mailroom
 from temba.contacts.models import Contact, ContactField, ContactGroup
@@ -109,7 +109,6 @@ class Campaign(TembaModel):
 
                 # create our message flow for message events
                 if event_spec["event_type"] == CampaignEvent.TYPE_MESSAGE:
-
                     message = event_spec["message"]
                     base_language = event_spec.get("base_language")
 
@@ -369,7 +368,7 @@ class CampaignEvent(TembaUUIDMixin, SmartModel):
                 period = "p.m."
                 if i > 12:
                     hour -= 12
-            hours.append((i, "at %s:00 %s" % (hour, period)))
+            hours.append((i, f"at {hour}:00 {period}"))
         return hours
 
     @property

@@ -1,13 +1,12 @@
 from random import randint
 
 import requests
-from smartmin.views import SmartFormView, SmartModelActionView, SmartTemplateView
-
 from django import forms
 from django.conf import settings
 from django.http import HttpResponseRedirect, JsonResponse
 from django.urls import reverse
 from django.utils.translation import gettext_lazy as _
+from smartmin.views import SmartFormView, SmartModelActionView, SmartTemplateView
 
 from temba.orgs.views import ModalMixin, OrgObjPermsMixin, OrgPermsMixin
 from temba.utils.fields import InputWidget

@@ -1,3 +1,4 @@
+import datetime as dt
 from datetime import date, datetime
 from unittest.mock import patch
 
@@ -243,8 +244,7 @@ class TicketCRUDLTest(TembaTest, CRUDLTestMixin):
         response = self.client.get(
             list_url,
             content_type="application/json",
-            HTTP_TEMBA_SPA="1",
-            HTTP_TEMBA_REFERER_PATH=f"/tickets/mine/open/{ticket.uuid}",
+            headers={"temba-spa": "1", "temba-referer-path": f"/tickets/mine/open/{ticket.uuid}"},
         )
         self.assertEqual("spa.html", response.context["base_template"])
         self.assertEqual(("tickets", "mine", "open", str(ticket.uuid)), response.context["temba_referer"])
@@ -947,37 +947,37 @@ class BackfillTicketDailyReplyTimingsTest(MigrationTest):
 
         # ticket opened on May 1
         self.ticket1 = self.create_ticket(
-            ticketer, contact, "Help", opened_on=datetime(2022, 5, 1, 10, 30, 0, 0, tzinfo=timezone.utc)
+            ticketer, contact, "Help", opened_on=datetime(2022, 5, 1, 10, 30, 0, 0, tzinfo=dt.timezone.utc)
         )
 
         # first reply 30 mins later, then another 30 mins after that
         self._ticket_reply(
-            self.ticket1, "What is the problem?", datetime(2022, 5, 1, 11, 0, 0, 0, tzinfo=timezone.utc)
+            self.ticket1, "What is the problem?", datetime(2022, 5, 1, 11, 0, 0, 0, tzinfo=dt.timezone.utc)
         )
-        self._ticket_reply(self.ticket1, "Still there?", datetime(2022, 5, 1, 11, 30, 0, 0, tzinfo=timezone.utc))
+        self._ticket_reply(self.ticket1, "Still there?", datetime(2022, 5, 1, 11, 30, 0, 0, tzinfo=dt.timezone.utc))
 
         # another ticket opened on May 1
         self.ticket2 = self.create_ticket(
-            ticketer, contact, "Help", opened_on=datetime(2022, 5, 1, 13, 0, 0, 0, tzinfo=timezone.utc)
+            ticketer, contact, "Help", opened_on=datetime(2022, 5, 1, 13, 0, 0, 0, tzinfo=dt.timezone.utc)
         )
 
         # only reply 1 hour later
         self._ticket_reply(
-            self.ticket2, "What is the problem?", datetime(2022, 5, 1, 14, 0, 0, 0, tzinfo=timezone.utc)
+            self.ticket2, "What is the problem?", datetime(2022, 5, 1, 14, 0, 0, 0, tzinfo=dt.timezone.utc)
         )
 
         # another ticket opened on May 2, no replies
         self.ticket3 = self.create_ticket(
-            ticketer, contact, "Help", opened_on=datetime(2022, 5, 2, 13, 0, 0, 0, tzinfo=timezone.utc)
+            ticketer, contact, "Help", opened_on=datetime(2022, 5, 2, 13, 0, 0, 0, tzinfo=dt.timezone.utc)
         )
 
         # finally another ticket on May 2 which has a reply that is already counted
         self.ticket4 = self.create_ticket(
-            ticketer, contact, "Help", opened_on=datetime(2022, 5, 2, 15, 0, 0, 0, tzinfo=timezone.utc)
+            ticketer, contact, "Help", opened_on=datetime(2022, 5, 2, 15, 0, 0, 0, tzinfo=dt.timezone.utc)
         )
-        self._ticket_reply(self.ticket4, "Hi?", datetime(2022, 5, 2, 15, 30, 0, 0, tzinfo=timezone.utc))
+        self._ticket_reply(self.ticket4, "Hi?", datetime(2022, 5, 2, 15, 30, 0, 0, tzinfo=dt.timezone.utc))
 
-        self.ticket4.replied_on = datetime(2022, 5, 1, 15, 30, 0, 0, tzinfo=timezone.utc)
+        self.ticket4.replied_on = datetime(2022, 5, 1, 15, 30, 0, 0, tzinfo=dt.timezone.utc)
         self.ticket4.save(update_fields=("replied_on",))
 
         TicketDailyTiming.objects.create(
@@ -994,10 +994,10 @@ class BackfillTicketDailyReplyTimingsTest(MigrationTest):
         self.ticket3.refresh_from_db()
         self.ticket4.refresh_from_db()
 
-        self.assertEqual(datetime(2022, 5, 1, 11, 0, 0, 0, tzinfo=timezone.utc), self.ticket1.replied_on)
-        self.assertEqual(datetime(2022, 5, 1, 14, 0, 0, 0, tzinfo=timezone.utc), self.ticket2.replied_on)
+        self.assertEqual(datetime(2022, 5, 1, 11, 0, 0, 0, tzinfo=dt.timezone.utc), self.ticket1.replied_on)
+        self.assertEqual(datetime(2022, 5, 1, 14, 0, 0, 0, tzinfo=dt.timezone.utc), self.ticket2.replied_on)
         self.assertIsNone(self.ticket3.replied_on)
-        self.assertEqual(datetime(2022, 5, 2, 15, 30, 0, 0, tzinfo=timezone.utc), self.ticket4.replied_on)
+        self.assertEqual(datetime(2022, 5, 2, 15, 30, 0, 0, tzinfo=dt.timezone.utc), self.ticket4.replied_on)
 
         self.assertEqual(
             [(date(2022, 5, 1), 2), (date(2022, 5, 2), 1)],

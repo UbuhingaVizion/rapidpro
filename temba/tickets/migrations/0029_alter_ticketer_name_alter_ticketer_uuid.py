@@ -7,7 +7,6 @@ import temba.utils.uuid
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("tickets", "0028_alter_topic_name"),
     ]

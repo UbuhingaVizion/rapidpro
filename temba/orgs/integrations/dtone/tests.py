@@ -22,7 +22,7 @@ class DTOneTypeTest(TembaTest):
         self.assertContains(response, "Connect your DT One account.")
 
         # formax includes form to connect account
-        response = self.client.get(account_url, HTTP_X_FORMAX=True)
+        response = self.client.get(account_url, headers={"x-formax": True})
         self.assertEqual(["api_key", "api_secret", "disconnect", "loc"], list(response.context["form"].fields.keys()))
 
         # simulate credentials being rejected
@@ -52,7 +52,7 @@ class DTOneTypeTest(TembaTest):
         self.assertContains(response, reverse("airtime.airtimetransfer_list"))
 
         # formax includes the disconnect link
-        response = self.client.get(account_url, HTTP_X_FORMAX=True)
+        response = self.client.get(account_url, headers={"x-formax": True})
         self.assertContains(response, f"{account_url}?disconnect=true")
 
         # now disconnect

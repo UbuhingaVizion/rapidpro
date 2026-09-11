@@ -1,9 +1,8 @@
 from gettext import gettext as _
 
-from smartmin.views import SmartCreateView, SmartCRUDL, SmartListView, SmartUpdateView
-
 from django import forms
 from django.urls import reverse
+from smartmin.views import SmartCreateView, SmartCRUDL, SmartListView, SmartUpdateView
 
 from temba.orgs.views import DependencyDeleteModal, DependencyUsagesModal, ModalMixin, OrgObjPermsMixin, OrgPermsMixin
 from temba.utils.fields import InputWidget
@@ -130,7 +129,7 @@ class GlobalCRUDL(SmartCRUDL):
             org_globals = self.org.globals.filter(is_active=True)
             all_count = org_globals.count()
 
-            if "HTTP_X_FORMAX" in self.request.META:
+            if "x-formax" in self.request.headers:
                 context["global_count"] = all_count
             else:
                 unused_count = Global.annotate_usage(org_globals).filter(usage_count=0).count()

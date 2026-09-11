@@ -6,7 +6,6 @@ import temba.utils.uuid
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("campaigns", "0046_alter_campaign_name"),
     ]

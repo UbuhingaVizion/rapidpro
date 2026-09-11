@@ -1,3 +1,9 @@
+from django import forms
+from django.contrib import messages
+from django.core.exceptions import ValidationError
+from django.http import Http404, HttpResponseRedirect
+from django.urls import reverse
+from django.utils.translation import gettext_lazy as _
 from smartmin.views import (
     SmartCreateView,
     SmartCRUDL,
@@ -7,13 +13,6 @@ from smartmin.views import (
     SmartTemplateView,
     SmartUpdateView,
 )
-
-from django import forms
-from django.contrib import messages
-from django.core.exceptions import ValidationError
-from django.http import Http404, HttpResponseRedirect
-from django.urls import reverse
-from django.utils.translation import gettext_lazy as _
 
 from temba.contacts.models import ContactField, ContactGroup
 from temba.flows.models import Flow
@@ -186,7 +185,7 @@ class CampaignCRUDL(SmartCRUDL):
                     dict(
                         title=_("Service"),
                         posterize=True,
-                        href=f'{reverse("orgs.org_service")}?organization={self.object.org_id}&redirect_url={reverse("campaigns.campaign_read", args=[self.object.uuid])}',
+                        href=f"{reverse('orgs.org_service')}?organization={self.object.org_id}&redirect_url={reverse('campaigns.campaign_read', args=[self.object.uuid])}",
                     )
                 )
 
@@ -265,7 +264,6 @@ class CampaignCRUDL(SmartCRUDL):
             return qs
 
     class Archive(OrgFilterMixin, OrgPermsMixin, SmartUpdateView):
-
         fields = ()
         success_url = "uuid@campaigns.campaign_read"
         success_message = _("Campaign archived")
@@ -285,7 +283,6 @@ class CampaignCRUDL(SmartCRUDL):
 
 
 class CampaignEventForm(forms.ModelForm):
-
     event_type = forms.ChoiceField(
         choices=((CampaignEvent.TYPE_MESSAGE, "Send a message"), (CampaignEvent.TYPE_FLOW, "Start a flow")),
         required=True,
@@ -395,7 +392,6 @@ class CampaignEventForm(forms.ModelForm):
 
         # if its a message flow, set that accordingly
         if self.cleaned_data["event_type"] == CampaignEvent.TYPE_MESSAGE:
-
             if self.instance.id:
                 base_language = self.instance.flow.base_language
             else:
@@ -536,7 +532,7 @@ class CampaignEventCRUDL(SmartCRUDL):
     class Read(SpaMixin, OrgObjPermsMixin, SmartReadView):
         @classmethod
         def derive_url_pattern(cls, path, action):
-            return r"^%s/%s/(?P<campaign_uuid>[0-9a-f-]+)/(?P<pk>\d+)/$" % (path, action)
+            return rf"^{path}/{action}/(?P<campaign_uuid>[0-9a-f-]+)/(?P<pk>\d+)/$"
 
         def derive_title(self):
             return _("Event History")
@@ -595,7 +591,6 @@ class CampaignEventCRUDL(SmartCRUDL):
             return links
 
     class Delete(ModalMixin, OrgObjPermsMixin, SmartDeleteView):
-
         default_template = "smartmin/delete_confirm.html"
         submit_button_name = _("Delete")
         fields = ("uuid",)
@@ -722,7 +717,6 @@ class CampaignEventCRUDL(SmartCRUDL):
             return reverse("campaigns.campaignevent_read", args=[self.object.campaign.uuid, self.object.pk])
 
     class Create(OrgPermsMixin, ModalMixin, SmartCreateView):
-
         default_fields = [
             "event_type",
             "flow_to_start",

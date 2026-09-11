@@ -1,5 +1,4 @@
 import requests
-
 from django.conf import settings
 from django.forms import ValidationError
 from django.urls import reverse

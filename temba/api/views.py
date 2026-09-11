@@ -1,7 +1,6 @@
-from smartmin.views import SmartView
-
 from django.http import JsonResponse
 from django.views.generic import View
+from smartmin.views import SmartView
 
 from temba.orgs.views import OrgPermsMixin
 

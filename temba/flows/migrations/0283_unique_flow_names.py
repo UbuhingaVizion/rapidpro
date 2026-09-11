@@ -24,11 +24,11 @@ def make_flow_names_unique(apps, schema_editor):  # pragma: no cover
                     for f in flows[1:]:
                         count = 2
                         count_str = f" {count}"
-                        new_name = f"{f.name[:64 - len(count_str)]}{count_str}"
+                        new_name = f"{f.name[: 64 - len(count_str)]}{count_str}"
                         while new_name.lower() in unique_names:
                             count += 1
                             count_str = f" {count}"
-                            new_name = f"{f.name[:64 - len(count_str)]}{count_str}"
+                            new_name = f"{f.name[: 64 - len(count_str)]}{count_str}"
 
                         print(f" > org '{org.name}' flow {f.uuid} '{f.name}' renamed to '{new_name}'")
 
@@ -49,7 +49,6 @@ def apply_manual():  # pragma: no cover
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("flows", "0282_alter_flow_name"),
     ]

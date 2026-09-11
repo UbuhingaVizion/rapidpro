@@ -91,7 +91,7 @@ class MockTwilioClient(Client):
             return iter([MockTwilioClient.MockShortCode("1122")])
 
         def update(self, sid, **kwargs):
-            print("Updating short code with sid %s" % sid)
+            print(f"Updating short code with sid {sid}")
 
     class MockCallInstance(MockInstanceResource):
         def __init__(self, *args, **kwargs):
@@ -99,7 +99,7 @@ class MockTwilioClient(Client):
             pass
 
         def update(self, status):
-            print("Updating call %s to status %s" % (self.sid, status))
+            print(f"Updating call {self.sid} to status {status}")
 
     class MockApplication(MockInstanceResource):
         def __init__(self, friendly_name):
@@ -183,7 +183,7 @@ class MockTwilioClient(Client):
             return MockTwilioClient.MockCallInstance(to=to, from_=from_, url=url, status_callback=status_callback)
 
         def hangup(self, external_id):
-            print("Hanging up %s on Twilio" % external_id)
+            print(f"Hanging up {external_id} on Twilio")
 
         def update(self, external_id, url):
-            print("Updating call for %s to url %s" % (external_id, url))
+            print(f"Updating call for {external_id} to url {url}")

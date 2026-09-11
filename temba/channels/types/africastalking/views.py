@@ -1,7 +1,6 @@
-from smartmin.views import SmartFormView
-
 from django import forms
 from django.utils.translation import gettext_lazy as _
+from smartmin.views import SmartFormView
 
 from temba.utils.fields import SelectWidget
 
@@ -59,7 +58,7 @@ class ClaimView(ClaimViewMixin, SmartFormView):
             user,
             data["country"],
             self.channel_type,
-            name="Africa's Talking: %s" % data["shortcode"],
+            name=f"Africa's Talking: {data['shortcode']}",
             address=data["shortcode"],
             config=config,
         )
