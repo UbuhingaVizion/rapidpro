@@ -1,10 +1,12 @@
 import os
 import shutil
 import tempfile
+import zipfile
 from unittest.mock import Mock, mock_open, patch
 
 import responses
 from django.core.management import call_command
+from django.test import SimpleTestCase
 from django.test.utils import captured_stdout
 from django.urls import reverse
 
@@ -726,3 +728,78 @@ class DownloadGeoJsonTest(TembaTest):
         self.assertTrue(os.path.exists(good_path))
         with open(good_path) as fp:
             self.assertEqual(fp.read(), "the-relation-json")
+
+
+class ConvertCodAbTest(SimpleTestCase):
+    def _write_source_zip(self, path, coordinates=None):
+        coordinates = coordinates or [[[0, 0], [0, 1], [1, 1], [1, 0], [0, 0]]]
+
+        def feature(pcode_key, pcode, name_key, name, parent_key=None, parent=None):
+            properties = {pcode_key: pcode, name_key: name}
+            if parent_key:
+                properties[parent_key] = parent
+            return {
+                "type": "Feature",
+                "properties": properties,
+                "geometry": {"type": "Polygon", "coordinates": coordinates},
+            }
+
+        admin0 = {"type": "FeatureCollection", "features": [feature("adm0_pcode", "KE", "adm0_name", "Kenya")]}
+        admin1 = {
+            "type": "FeatureCollection",
+            "features": [feature("adm1_pcode", "KE001", "adm1_name", "Mombasa", "adm0_pcode", "KE")],
+        }
+        admin2 = {
+            "type": "FeatureCollection",
+            "features": [feature("adm2_pcode", "KE00101", "adm2_name", "Changamwe", "adm1_pcode", "KE001")],
+        }
+
+        with zipfile.ZipFile(path, "w") as zf:
+            zf.writestr("ken_admin0.geojson", json.dumps(admin0))
+            zf.writestr("ken_admin1.geojson", json.dumps(admin1))
+            zf.writestr("ken_admin2.geojson", json.dumps(admin2))
+
+    def test_convert(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = os.path.join(tmp, "source.zip")
+            out = os.path.join(tmp, "out")
+            self._write_source_zip(source)
+
+            call_command("convert_cod_ab", "KEN", source=source, out=out, levels=[0, 1, 2], no_simplify=True)
+
+            with open(os.path.join(out, "admin_level_1_simplified.json")) as fp:
+                level1 = json.load(fp)
+            self.assertEqual(
+                level1["features"][0]["properties"],
+                {"osm_id": "KE001", "name": "Mombasa", "name_en": "Mombasa", "parent_id": "KE", "is_in_country": "KE"},
+            )
+
+            with open(os.path.join(out, "admin_level_2_simplified.json")) as fp:
+                level2 = json.load(fp)
+            self.assertEqual(
+                level2["features"][0]["properties"],
+                {
+                    "osm_id": "KE00101",
+                    "name": "Changamwe",
+                    "name_en": "Changamwe",
+                    "parent_id": "KE001",
+                    "is_in_state": "KE001",
+                },
+            )
+
+    def test_convert_simplifies(self):
+        # a square with a dense, collinear top edge which simplification should reduce
+        coordinates = [[[0, 0]] + [[i / 50, 1] for i in range(51)] + [[1, 0], [0, 0]]]
+
+        with tempfile.TemporaryDirectory() as tmp:
+            source = os.path.join(tmp, "source.zip")
+            out = os.path.join(tmp, "out")
+            self._write_source_zip(source, coordinates=coordinates)
+
+            call_command("convert_cod_ab", "KEN", source=source, out=out, levels=[0])
+
+            with open(os.path.join(out, "admin_level_0_simplified.json")) as fp:
+                level0 = json.load(fp)
+
+            simplified = level0["features"][0]["geometry"]["coordinates"][0]
+            self.assertLess(len(simplified), len(coordinates[0]))
