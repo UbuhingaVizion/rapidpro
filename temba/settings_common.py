@@ -396,7 +396,10 @@ GROUP_PERMISSIONS = {
         "contacts.contactgroup_list",
         "flows.flow_list",
         "locations.adminboundary_list",
+        # offline Surveyor client endpoints: /api/v2/org.json (org_read) and /api/v2/media.json (media_create)
+        "msgs.media_create",
         "orgs.org_export",
+        "orgs.org_read",
         "orgs.org_surveyor",
     ),
     "Customer Support": (),

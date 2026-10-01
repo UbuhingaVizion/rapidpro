@@ -5452,6 +5452,15 @@ class SystemChecksTest(TembaTest):
         with override_settings(MAILROOM_URL=None):
             self.assertEqual(mailroom_url(None)[0].msg, "No mailroom URL set, simulation will not be available")
 
+    def test_surveyor_spec_compatibility(self):
+        # The RapidPro Surveyor Android app bundles a goflow engine which accepts flow spec major
+        # versions 11-13 and rejects newer major versions. Keep CURRENT_SPEC_VERSION within that range
+        # or the offline client will refuse to load published survey flows (it would prompt the user to
+        # update the app). See UbuhingaVizion/surveyor README.
+        major = int(Flow.CURRENT_SPEC_VERSION.split(".")[0])
+        self.assertGreaterEqual(major, 11)
+        self.assertLessEqual(major, 13)
+
 
 class FlowRevisionTest(TembaTest):
     def test_trim_revisions(self):

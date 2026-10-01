@@ -57,6 +57,23 @@ class APITest(APITestMixin, TembaTest):
 
         return Media.objects.get(uuid=response.json()["uuid"])
 
+    def test_surveyor_endpoints(self):
+        # The offline Surveyor app authenticates with role=S and then calls these API v2 endpoints. Guard the
+        # Surveyors group permissions (org.json needs orgs.org_read, media.json needs msgs.media_create) so a
+        # permission refactor can't silently 403 the offline client.
+        token = APIToken.get_or_create(self.org, self.surveyor, role=OrgRole.SURVEYOR)
+        self.create_flow("Survey", flow_type=Flow.TYPE_SURVEY)
+
+        for endpoint in ("org", "fields", "groups", "flows", "boundaries", "definitions"):
+            response = self.client.get(
+                reverse(f"api.v2.{endpoint}") + ".json", headers={"authorization": f"Token {token.key}"}
+            )
+            self.assertEqual(200, response.status_code, f"{endpoint} should be readable by a surveyor")
+
+        # surveyors can upload media (used for offline attachments)
+        media = self.upload_media(self.surveyor, f"{settings.MEDIA_ROOT}/test_media/steve marten.jpg")
+        self.assertIsNotNone(media.uuid)
+
 
 class FieldsTest(APITest):
     def assert_field(self, f, *, submissions: dict, representations: dict):
