@@ -9,6 +9,21 @@ from temba.orgs.context_processors import user_group_perms_processor
 logger = logging.getLogger(__name__)
 
 
+class FormaxResponseMixin:
+    """
+    Restores smartmin's removed HTTP_X_FORMAX success handling: when a form is submitted as part of a formax
+    section, re-render the section and return the redirect target in a header instead of redirecting the request.
+    """
+
+    def form_valid(self, form):
+        response = super().form_valid(form)
+        if "x-formax" in self.request.headers:
+            rendered = self.render_to_response(self.get_context_data(form=form))
+            rendered["REDIRECT"] = self.get_success_url()
+            return rendered
+        return response
+
+
 class FormaxMixin:
     def derive_formax_sections(self, formax, context):  # pragma: needs cover
         pass

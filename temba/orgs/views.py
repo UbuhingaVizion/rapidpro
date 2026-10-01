@@ -47,7 +47,7 @@ from smartmin.views import (
 from temba.api.models import APIToken, Resthook
 from temba.campaigns.models import Campaign
 from temba.flows.models import Flow
-from temba.formax import FormaxMixin
+from temba.formax import FormaxMixin, FormaxResponseMixin
 from temba.orgs.tasks import send_user_verification_email
 from temba.utils import analytics, get_anonymous_user, json, languages
 from temba.utils.email import is_valid_address
@@ -626,7 +626,7 @@ class ConfirmAccessView(Login):
         return super().form_valid(form)
 
 
-class InferOrgMixin:
+class InferOrgMixin(FormaxResponseMixin):
     """
     Mixin for view whose object is the current org
     """
@@ -639,7 +639,7 @@ class InferOrgMixin:
         return self.request.org
 
 
-class InferUserMixin:
+class InferUserMixin(FormaxResponseMixin):
     """
     Mixin for view whose object is the current user
     """

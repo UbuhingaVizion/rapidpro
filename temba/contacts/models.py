@@ -2452,6 +2452,11 @@ class ContactImport(SmartModel):
         """
 
         if isinstance(value, datetime):
+            # Excel date cells (no time component) are read as naive midnight datetimes by the current
+            # reader stack; serialize those as plain dates so they round-trip like a date field
+            if value.tzinfo is None and not (value.hour or value.minute or value.second or value.microsecond):
+                return value.date().isoformat()
+
             # make naive datetime timezone-aware
             if not value.tzinfo and tz:
                 value = value.replace(tzinfo=tz) if tz else value.replace(tzinfo=tzone.utc)
