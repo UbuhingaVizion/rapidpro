@@ -39,7 +39,6 @@ urlpatterns += [
     path("relayers/relayer/register/", register, {}, "register"),
     re_path(r"users/user/forget/", RedirectView.as_view(pattern_name="orgs.user_forget", permanent=True)),
     path("users/", include("smartmin.users.urls")),
-    path("imports/", include("smartmin.csv_imports.urls")),
     path("assets/", include("temba.assets.urls")),
     path("jsi18n/", JavaScriptCatalog.as_view(), js_info_dict, name="django.views.i18n.javascript_catalog"),
 ]

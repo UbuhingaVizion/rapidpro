@@ -23,6 +23,17 @@ class TembaEmailValidator(EmailValidator):
         re.IGNORECASE,
     )
 
+    def validate_domain_part(self, domain_part):
+        if super().validate_domain_part(domain_part):
+            return True
+
+        # Django dropped its IDN (punycode) fallback; retry with an ASCII-encoded domain so internationalized
+        # addresses like test@example.परीक्षा remain valid
+        try:
+            return super().validate_domain_part(domain_part.encode("idna").decode("ascii"))
+        except UnicodeError:
+            return False
+
 
 temba_validate_email = TembaEmailValidator()
 
