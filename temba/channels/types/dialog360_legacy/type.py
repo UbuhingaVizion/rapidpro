@@ -1,5 +1,4 @@
 import requests
-
 from django.forms import ValidationError
 from django.urls import re_path, reverse
 from django.utils import timezone
@@ -27,9 +26,9 @@ class Dialog360LegacyType(ChannelType):
     courier_url = r"^d3/(?P<uuid>[a-z0-9\-]+)/(?P<action>receive)$"
     schemes = [URN.WHATSAPP_SCHEME]
 
-    claim_blurb = _("Activate your own enterprise WhatsApp account in %(link)s to communicate with your contacts. ") % {
-        "link": '<a target="_blank" href="https://www.360dialog.com/">360Dialog</a>'
-    }
+    claim_blurb = _(
+        "Activate your own enterprise WhatsApp account in %(link)s to communicate with your contacts. "
+    ) % {"link": '<a target="_blank" href="https://www.360dialog.com/">360Dialog</a>'}
     claim_view = ClaimView
 
     config_ui = ConfigUI()  # has own template
@@ -66,7 +65,7 @@ class Dialog360LegacyType(ChannelType):
         if Channel.CONFIG_AUTH_TOKEN not in channel.config:  # pragma: no cover
             return [], False
 
-        templates_url = "%s/v1/configs/templates" % channel.config.get(Channel.CONFIG_BASE_URL, "")
+        templates_url = f"{channel.config.get(Channel.CONFIG_BASE_URL, '')}/v1/configs/templates"
         start = timezone.now()
 
         try:

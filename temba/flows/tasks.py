@@ -1,14 +1,14 @@
 import logging
 from collections import defaultdict
-from datetime import datetime, timedelta, timezone as tzone
+from datetime import datetime, timedelta
+from datetime import timezone as tzone
 
 from celery import shared_task
-from django_redis import get_redis_connection
-
 from django.conf import settings
 from django.db.models import F, Prefetch
 from django.utils import timezone
 from django.utils.timesince import timesince
+from django_redis import get_redis_connection
 
 from temba import mailroom
 from temba.contacts.models import ContactField, ContactGroup

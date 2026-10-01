@@ -4,7 +4,7 @@ from . import get_versions_after, migrations
 def migrate(org, exported_json, same_site, version):
     for version in get_versions_after(version):
         version_slug = version.replace(".", "_")
-        migrate_fn = getattr(migrations, "migrate_export_to_version_%s" % version_slug, None)
+        migrate_fn = getattr(migrations, f"migrate_export_to_version_{version_slug}", None)
 
         if migrate_fn:
             exported_json = migrate_fn(exported_json, org, same_site)
@@ -18,7 +18,7 @@ def migrate(org, exported_json, same_site, version):
             exported_json["flows"] = flows
 
         else:
-            migrate_fn = getattr(migrations, "migrate_to_version_%s" % version_slug, None)
+            migrate_fn = getattr(migrations, f"migrate_to_version_{version_slug}", None)
             if migrate_fn:
                 flows = []
                 for json_flow in exported_json.get("flows", []):

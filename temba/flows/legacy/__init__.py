@@ -43,7 +43,7 @@ def migrate_definition(json_flow: dict, flow=None):
     versions = get_versions_after(json_flow["version"])
     for version in versions:
         version_slug = version.replace(".", "_")
-        migrate_fn = getattr(migrations, "migrate_to_version_%s" % version_slug, None)
+        migrate_fn = getattr(migrations, f"migrate_to_version_{version_slug}", None)
 
         if migrate_fn:
             json_flow = migrate_fn(json_flow, flow)

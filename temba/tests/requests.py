@@ -1,10 +1,9 @@
 from unittest.mock import Mock, patch
 
+from django.utils.encoding import force_bytes, force_str
 from requests import HTTPError, Request
 from requests.structures import CaseInsensitiveDict
 from urllib3.response import HTTPResponse
-
-from django.utils.encoding import force_bytes, force_str
 
 from temba.utils import json
 

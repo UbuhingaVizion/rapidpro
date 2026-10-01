@@ -3,7 +3,6 @@ from unittest.mock import MagicMock
 from django.core.files import File
 from django.urls import reverse
 
-from temba import __version__ as temba_version
 from temba.apks.models import Apk
 from temba.tests import TembaTest
 
@@ -15,7 +14,7 @@ class PublicTest(TembaTest):
         home_url = reverse("public.public_index")
         response = self.client.get(home_url, follow=True)
         self.assertEqual(response.request["PATH_INFO"], "/")
-        self.assertContains(response, temba_version)
+        self.assertContains(response, "RapidPro")
 
         response = self.client.get(home_url + "?errors=&foo", follow=True)
         self.assertEqual(response.request["PATH_INFO"], "/")
@@ -103,19 +102,19 @@ class PublicTest(TembaTest):
         self.assertEqual(response.request["PATH_INFO"], status_url)
         self.assertContains(response, "Invalid")
 
-        response = self.client.get("%s?text=somethinginvalid" % status_url)
+        response = self.client.get(f"{status_url}?text=somethinginvalid")
         self.assertEqual(response.request["PATH_INFO"], status_url)
         self.assertContains(response, "Invalid")
 
-        response = self.client.get("%s?text=cu001" % status_url)
+        response = self.client.get(f"{status_url}?text=cu001")
         self.assertEqual(response.request["PATH_INFO"], status_url)
         self.assertContains(response, "Shipped")
 
-        response = self.client.get("%s?text=cu002" % status_url)
+        response = self.client.get(f"{status_url}?text=cu002")
         self.assertEqual(response.request["PATH_INFO"], status_url)
         self.assertContains(response, "Pending")
 
-        response = self.client.get("%s?text=cu003" % status_url)
+        response = self.client.get(f"{status_url}?text=cu003")
         self.assertEqual(response.request["PATH_INFO"], status_url)
         self.assertContains(response, "Cancelled")
 

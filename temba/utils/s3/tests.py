@@ -1,5 +1,6 @@
 import io
-from datetime import datetime, timezone as tzone
+from datetime import datetime
+from datetime import timezone as tzone
 from unittest.mock import patch
 
 from temba.tests import TembaTest

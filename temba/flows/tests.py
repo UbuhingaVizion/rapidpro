@@ -1,17 +1,17 @@
 import decimal
 import io
 import os
-from datetime import datetime, timedelta, timezone as tzone
+from datetime import datetime, timedelta
+from datetime import timezone as tzone
 from unittest.mock import patch
-
-from django_redis import get_redis_connection
-from openpyxl import load_workbook
 
 from django.conf import settings
 from django.db.models.functions import TruncDate
 from django.test.utils import override_settings
 from django.urls import reverse
 from django.utils import timezone
+from django_redis import get_redis_connection
+from openpyxl import load_workbook
 
 from temba import mailroom
 from temba.api.models import Resthook
@@ -390,9 +390,9 @@ class FlowTest(TembaTest, CRUDLTestMixin):
         self.assertEqual({color_split["uuid"]: 1}, active)
         self.assertEqual(
             {
-                f'{color_prompt["exits"][0]["uuid"]}:{color_split["uuid"]}': 1,
-                f'{color_split["exits"][-1]["uuid"]}:{color_other["uuid"]}': 1,
-                f'{color_other["exits"][0]["uuid"]}:{color_split["uuid"]}': 1,
+                f"{color_prompt['exits'][0]['uuid']}:{color_split['uuid']}": 1,
+                f"{color_split['exits'][-1]['uuid']}:{color_other['uuid']}": 1,
+                f"{color_other['exits'][0]['uuid']}:{color_split['uuid']}": 1,
             },
             visited,
         )
@@ -422,9 +422,9 @@ class FlowTest(TembaTest, CRUDLTestMixin):
         self.assertEqual({color_split["uuid"]: 1}, active)
         self.assertEqual(
             {
-                f'{color_prompt["exits"][0]["uuid"]}:{color_split["uuid"]}': 1,
-                f'{color_split["exits"][-1]["uuid"]}:{color_other["uuid"]}': 2,
-                f'{color_other["exits"][0]["uuid"]}:{color_split["uuid"]}': 2,
+                f"{color_prompt['exits'][0]['uuid']}:{color_split['uuid']}": 1,
+                f"{color_split['exits'][-1]['uuid']}:{color_other['uuid']}": 2,
+                f"{color_other['exits'][0]['uuid']}:{color_split['uuid']}": 2,
             },
             visited,
         )
@@ -446,11 +446,11 @@ class FlowTest(TembaTest, CRUDLTestMixin):
         self.assertEqual({beer_split["uuid"]: 1}, active)
         self.assertEqual(
             {
-                f'{color_prompt["exits"][0]["uuid"]}:{color_split["uuid"]}': 1,
-                f'{color_split["exits"][-1]["uuid"]}:{color_other["uuid"]}': 2,
-                f'{color_other["exits"][0]["uuid"]}:{color_split["uuid"]}': 2,
-                f'{color_split["exits"][2]["uuid"]}:{beer_prompt["uuid"]}': 1,
-                f'{beer_prompt["exits"][0]["uuid"]}:{beer_split["uuid"]}': 1,
+                f"{color_prompt['exits'][0]['uuid']}:{color_split['uuid']}": 1,
+                f"{color_split['exits'][-1]['uuid']}:{color_other['uuid']}": 2,
+                f"{color_other['exits'][0]['uuid']}:{color_split['uuid']}": 2,
+                f"{color_split['exits'][2]['uuid']}:{beer_prompt['uuid']}": 1,
+                f"{beer_prompt['exits'][0]['uuid']}:{beer_split['uuid']}": 1,
             },
             visited,
         )
@@ -477,11 +477,11 @@ class FlowTest(TembaTest, CRUDLTestMixin):
         self.assertEqual({color_split["uuid"]: 1, beer_split["uuid"]: 1}, active)
         self.assertEqual(
             {
-                f'{color_prompt["exits"][0]["uuid"]}:{color_split["uuid"]}': 2,
-                f'{color_split["exits"][-1]["uuid"]}:{color_other["uuid"]}': 3,
-                f'{color_other["exits"][0]["uuid"]}:{color_split["uuid"]}': 3,
-                f'{color_split["exits"][2]["uuid"]}:{beer_prompt["uuid"]}': 1,
-                f'{beer_prompt["exits"][0]["uuid"]}:{beer_split["uuid"]}': 1,
+                f"{color_prompt['exits'][0]['uuid']}:{color_split['uuid']}": 2,
+                f"{color_split['exits'][-1]['uuid']}:{color_other['uuid']}": 3,
+                f"{color_other['exits'][0]['uuid']}:{color_split['uuid']}": 3,
+                f"{color_split['exits'][2]['uuid']}:{beer_prompt['uuid']}": 1,
+                f"{beer_prompt['exits'][0]['uuid']}:{beer_split['uuid']}": 1,
             },
             visited,
         )
@@ -527,14 +527,14 @@ class FlowTest(TembaTest, CRUDLTestMixin):
         self.assertEqual({beer_split["uuid"]: 1}, active)
         self.assertEqual(
             {
-                f'{color_prompt["exits"][0]["uuid"]}:{color_split["uuid"]}': 2,
-                f'{color_split["exits"][-1]["uuid"]}:{color_other["uuid"]}': 3,
-                f'{color_other["exits"][0]["uuid"]}:{color_split["uuid"]}': 3,
-                f'{color_split["exits"][2]["uuid"]}:{beer_prompt["uuid"]}': 2,
-                f'{beer_prompt["exits"][0]["uuid"]}:{beer_split["uuid"]}': 2,
-                f'{beer_split["exits"][2]["uuid"]}:{name_prompt["uuid"]}': 1,
-                f'{name_prompt["exits"][0]["uuid"]}:{name_split["uuid"]}': 1,
-                f'{name_split["exits"][0]["uuid"]}:{end_prompt["uuid"]}': 1,
+                f"{color_prompt['exits'][0]['uuid']}:{color_split['uuid']}": 2,
+                f"{color_split['exits'][-1]['uuid']}:{color_other['uuid']}": 3,
+                f"{color_other['exits'][0]['uuid']}:{color_split['uuid']}": 3,
+                f"{color_split['exits'][2]['uuid']}:{beer_prompt['uuid']}": 2,
+                f"{beer_prompt['exits'][0]['uuid']}:{beer_split['uuid']}": 2,
+                f"{beer_split['exits'][2]['uuid']}:{name_prompt['uuid']}": 1,
+                f"{name_prompt['exits'][0]['uuid']}:{name_split['uuid']}": 1,
+                f"{name_split['exits'][0]['uuid']}:{end_prompt['uuid']}": 1,
             },
             visited,
         )
@@ -557,14 +557,14 @@ class FlowTest(TembaTest, CRUDLTestMixin):
         self.assertEqual({beer_split["uuid"]: 1}, active)
         self.assertEqual(
             {
-                f'{color_prompt["exits"][0]["uuid"]}:{color_split["uuid"]}': 2,
-                f'{color_split["exits"][-1]["uuid"]}:{color_other["uuid"]}': 3,
-                f'{color_other["exits"][0]["uuid"]}:{color_split["uuid"]}': 3,
-                f'{color_split["exits"][2]["uuid"]}:{beer_prompt["uuid"]}': 2,
-                f'{beer_prompt["exits"][0]["uuid"]}:{beer_split["uuid"]}': 2,
-                f'{beer_split["exits"][2]["uuid"]}:{name_prompt["uuid"]}': 1,
-                f'{name_prompt["exits"][0]["uuid"]}:{name_split["uuid"]}': 1,
-                f'{name_split["exits"][0]["uuid"]}:{end_prompt["uuid"]}': 1,
+                f"{color_prompt['exits'][0]['uuid']}:{color_split['uuid']}": 2,
+                f"{color_split['exits'][-1]['uuid']}:{color_other['uuid']}": 3,
+                f"{color_other['exits'][0]['uuid']}:{color_split['uuid']}": 3,
+                f"{color_split['exits'][2]['uuid']}:{beer_prompt['uuid']}": 2,
+                f"{beer_prompt['exits'][0]['uuid']}:{beer_split['uuid']}": 2,
+                f"{beer_split['exits'][2]['uuid']}:{name_prompt['uuid']}": 1,
+                f"{name_prompt['exits'][0]['uuid']}:{name_split['uuid']}": 1,
+                f"{name_split['exits'][0]['uuid']}:{end_prompt['uuid']}": 1,
             },
             visited,
         )
@@ -600,14 +600,14 @@ class FlowTest(TembaTest, CRUDLTestMixin):
         self.assertEqual({beer_split["uuid"]: 1}, active)
         self.assertEqual(
             {
-                f'{color_prompt["exits"][0]["uuid"]}:{color_split["uuid"]}': 1,
-                f'{color_split["exits"][-1]["uuid"]}:{color_other["uuid"]}': 1,
-                f'{color_other["exits"][0]["uuid"]}:{color_split["uuid"]}': 1,
-                f'{color_split["exits"][2]["uuid"]}:{beer_prompt["uuid"]}': 1,
-                f'{beer_prompt["exits"][0]["uuid"]}:{beer_split["uuid"]}': 1,
-                f'{beer_split["exits"][2]["uuid"]}:{name_prompt["uuid"]}': 0,
-                f'{name_prompt["exits"][0]["uuid"]}:{name_split["uuid"]}': 0,
-                f'{name_split["exits"][0]["uuid"]}:{end_prompt["uuid"]}': 0,
+                f"{color_prompt['exits'][0]['uuid']}:{color_split['uuid']}": 1,
+                f"{color_split['exits'][-1]['uuid']}:{color_other['uuid']}": 1,
+                f"{color_other['exits'][0]['uuid']}:{color_split['uuid']}": 1,
+                f"{color_split['exits'][2]['uuid']}:{beer_prompt['uuid']}": 1,
+                f"{beer_prompt['exits'][0]['uuid']}:{beer_split['uuid']}": 1,
+                f"{beer_split['exits'][2]['uuid']}:{name_prompt['uuid']}": 0,
+                f"{name_prompt['exits'][0]['uuid']}:{name_split['uuid']}": 0,
+                f"{name_split['exits'][0]['uuid']}:{end_prompt['uuid']}": 0,
             },
             visited,
         )
@@ -652,14 +652,14 @@ class FlowTest(TembaTest, CRUDLTestMixin):
         self.assertEqual({}, active)
         self.assertEqual(
             {
-                f'{color_prompt["exits"][0]["uuid"]}:{color_split["uuid"]}': 1,
-                f'{color_split["exits"][-1]["uuid"]}:{color_other["uuid"]}': 1,
-                f'{color_other["exits"][0]["uuid"]}:{color_split["uuid"]}': 1,
-                f'{color_split["exits"][2]["uuid"]}:{beer_prompt["uuid"]}': 1,
-                f'{beer_prompt["exits"][0]["uuid"]}:{beer_split["uuid"]}': 1,
-                f'{beer_split["exits"][2]["uuid"]}:{name_prompt["uuid"]}': 1,
-                f'{name_prompt["exits"][0]["uuid"]}:{name_split["uuid"]}': 1,
-                f'{name_split["exits"][0]["uuid"]}:{end_prompt["uuid"]}': 1,
+                f"{color_prompt['exits'][0]['uuid']}:{color_split['uuid']}": 1,
+                f"{color_split['exits'][-1]['uuid']}:{color_other['uuid']}": 1,
+                f"{color_other['exits'][0]['uuid']}:{color_split['uuid']}": 1,
+                f"{color_split['exits'][2]['uuid']}:{beer_prompt['uuid']}": 1,
+                f"{beer_prompt['exits'][0]['uuid']}:{beer_split['uuid']}": 1,
+                f"{beer_split['exits'][2]['uuid']}:{name_prompt['uuid']}": 1,
+                f"{name_prompt['exits'][0]['uuid']}:{name_split['uuid']}": 1,
+                f"{name_split['exits'][0]['uuid']}:{end_prompt['uuid']}": 1,
             },
             visited,
         )
@@ -680,14 +680,14 @@ class FlowTest(TembaTest, CRUDLTestMixin):
         self.assertEqual({}, active)
         self.assertEqual(
             {
-                f'{color_prompt["exits"][0]["uuid"]}:{color_split["uuid"]}': 0,
-                f'{color_split["exits"][-1]["uuid"]}:{color_other["uuid"]}': 0,
-                f'{color_other["exits"][0]["uuid"]}:{color_split["uuid"]}': 0,
-                f'{color_split["exits"][2]["uuid"]}:{beer_prompt["uuid"]}': 0,
-                f'{beer_prompt["exits"][0]["uuid"]}:{beer_split["uuid"]}': 0,
-                f'{beer_split["exits"][2]["uuid"]}:{name_prompt["uuid"]}': 0,
-                f'{name_prompt["exits"][0]["uuid"]}:{name_split["uuid"]}': 0,
-                f'{name_split["exits"][0]["uuid"]}:{end_prompt["uuid"]}': 0,
+                f"{color_prompt['exits'][0]['uuid']}:{color_split['uuid']}": 0,
+                f"{color_split['exits'][-1]['uuid']}:{color_other['uuid']}": 0,
+                f"{color_other['exits'][0]['uuid']}:{color_split['uuid']}": 0,
+                f"{color_split['exits'][2]['uuid']}:{beer_prompt['uuid']}": 0,
+                f"{beer_prompt['exits'][0]['uuid']}:{beer_split['uuid']}": 0,
+                f"{beer_split['exits'][2]['uuid']}:{name_prompt['uuid']}": 0,
+                f"{name_prompt['exits'][0]['uuid']}:{name_split['uuid']}": 0,
+                f"{name_split['exits'][0]['uuid']}:{end_prompt['uuid']}": 0,
             },
             visited,
         )
@@ -738,14 +738,14 @@ class FlowTest(TembaTest, CRUDLTestMixin):
         self.assertEqual({color_split["uuid"]: 1}, active)
         self.assertEqual(
             {
-                f'{color_prompt["exits"][0]["uuid"]}:{color_split["uuid"]}': 1,
-                f'{color_split["exits"][-1]["uuid"]}:{color_other["uuid"]}': 1,
-                f'{color_other["exits"][0]["uuid"]}:{color_split["uuid"]}': 1,
-                f'{color_split["exits"][2]["uuid"]}:{beer_prompt["uuid"]}': 0,
-                f'{beer_prompt["exits"][0]["uuid"]}:{beer_split["uuid"]}': 0,
-                f'{beer_split["exits"][2]["uuid"]}:{name_prompt["uuid"]}': 0,
-                f'{name_prompt["exits"][0]["uuid"]}:{name_split["uuid"]}': 0,
-                f'{name_split["exits"][0]["uuid"]}:{end_prompt["uuid"]}': 0,
+                f"{color_prompt['exits'][0]['uuid']}:{color_split['uuid']}": 1,
+                f"{color_split['exits'][-1]['uuid']}:{color_other['uuid']}": 1,
+                f"{color_other['exits'][0]['uuid']}:{color_split['uuid']}": 1,
+                f"{color_split['exits'][2]['uuid']}:{beer_prompt['uuid']}": 0,
+                f"{beer_prompt['exits'][0]['uuid']}:{beer_split['uuid']}": 0,
+                f"{beer_split['exits'][2]['uuid']}:{name_prompt['uuid']}": 0,
+                f"{name_prompt['exits'][0]['uuid']}:{name_split['uuid']}": 0,
+                f"{name_split['exits'][0]['uuid']}:{end_prompt['uuid']}": 0,
             },
             visited,
         )
@@ -769,14 +769,14 @@ class FlowTest(TembaTest, CRUDLTestMixin):
         self.assertEqual({}, active)
         self.assertEqual(
             {
-                f'{color_prompt["exits"][0]["uuid"]}:{color_split["uuid"]}': 1,
-                f'{color_split["exits"][-1]["uuid"]}:{color_other["uuid"]}': 1,
-                f'{color_other["exits"][0]["uuid"]}:{color_split["uuid"]}': 1,
-                f'{color_split["exits"][2]["uuid"]}:{beer_prompt["uuid"]}': 0,
-                f'{beer_prompt["exits"][0]["uuid"]}:{beer_split["uuid"]}': 0,
-                f'{beer_split["exits"][2]["uuid"]}:{name_prompt["uuid"]}': 0,
-                f'{name_prompt["exits"][0]["uuid"]}:{name_split["uuid"]}': 0,
-                f'{name_split["exits"][0]["uuid"]}:{end_prompt["uuid"]}': 0,
+                f"{color_prompt['exits'][0]['uuid']}:{color_split['uuid']}": 1,
+                f"{color_split['exits'][-1]['uuid']}:{color_other['uuid']}": 1,
+                f"{color_other['exits'][0]['uuid']}:{color_split['uuid']}": 1,
+                f"{color_split['exits'][2]['uuid']}:{beer_prompt['uuid']}": 0,
+                f"{beer_prompt['exits'][0]['uuid']}:{beer_split['uuid']}": 0,
+                f"{beer_split['exits'][2]['uuid']}:{name_prompt['uuid']}": 0,
+                f"{name_prompt['exits'][0]['uuid']}:{name_split['uuid']}": 0,
+                f"{name_split['exits'][0]['uuid']}:{end_prompt['uuid']}": 0,
             },
             visited,
         )
@@ -1386,12 +1386,12 @@ class FlowTest(TembaTest, CRUDLTestMixin):
 
             # make sure our field exists after import
             field = ContactField.user_fields.filter(key=key, name=name).first()
-            self.assertIsNotNone(field, "Couldn't find field %s (%s)" % (key, name))
+            self.assertIsNotNone(field, f"Couldn't find field {key} ({name})")
 
             # and our flow is dependent on us
             self.assertIsNotNone(
                 flow.field_dependencies.filter(key__in=[key]).first(),
-                "Flow is missing dependency on %s (%s)" % (key, name),
+                f"Flow is missing dependency on {key} ({name})",
             )
 
         # we can delete our child flow and the parent ('Dependencies') will be marked as having issues
@@ -1742,8 +1742,7 @@ class FlowCRUDLTest(TembaTest, CRUDLTestMixin):
             },
         )
         self.assertFormError(
-            response,
-            "form",
+            response.context["form"],
             "keyword_triggers",
             "Must be single words, less than 16 characters, containing only letters and numbers.",
         )
@@ -1752,7 +1751,9 @@ class FlowCRUDLTest(TembaTest, CRUDLTestMixin):
         response = self.client.post(
             create_url, {"name": "Flow With Existing Keyword Triggers", "keyword_triggers": ["this", "is", "unique"]}
         )
-        self.assertFormError(response, "form", "keyword_triggers", '"unique" is already used for another flow.')
+        self.assertFormError(
+            response.context["form"], "keyword_triggers", '"unique" is already used for another flow.'
+        )
 
         # create another trigger so there are two in the way
         trigger = Trigger.create(
@@ -1768,7 +1769,7 @@ class FlowCRUDLTest(TembaTest, CRUDLTestMixin):
             create_url, {"name": "Flow With Existing Keyword Triggers", "keyword_triggers": ["this", "is", "unique"]}
         )
         self.assertFormError(
-            response, "form", "keyword_triggers", '"this", "unique" are already used for another flow.'
+            response.context["form"], "keyword_triggers", '"this", "unique" are already used for another flow.'
         )
         trigger.delete()
 
@@ -2153,7 +2154,7 @@ class FlowCRUDLTest(TembaTest, CRUDLTestMixin):
         self.assertEqual([flow2], list(response.context["object_list"]))
 
         response = self.client.get(reverse("flows.flow_filter", args=[label2.uuid]))
-        self.assertEquals(f"/flow/labels/{label2.uuid}", response.headers.get(TEMBA_MENU_SELECTION))
+        self.assertEqual(f"/flow/labels/{label2.uuid}", response.headers.get(TEMBA_MENU_SELECTION))
 
     def test_get_definition(self):
         flow = self.get_flow("color_v13")
@@ -2609,7 +2610,7 @@ class FlowCRUDLTest(TembaTest, CRUDLTestMixin):
             content_type="application/json",
         )
 
-        self.assertEquals(
+        self.assertEqual(
             response.json()["warnings"],
             ["The message template affirmation does not exist on your account and cannot be sent."],
         )
@@ -2627,7 +2628,7 @@ class FlowCRUDLTest(TembaTest, CRUDLTestMixin):
             content_type="application/json",
         )
 
-        self.assertEquals(
+        self.assertEqual(
             response.json()["warnings"], ["Your message template affirmation is not approved and cannot be sent."]
         )
 
@@ -2661,7 +2662,7 @@ class FlowCRUDLTest(TembaTest, CRUDLTestMixin):
             content_type="application/json",
         )
 
-        self.assertEquals(
+        self.assertEqual(
             response.json()["warnings"], ["Your message template affirmation is not approved and cannot be sent."]
         )
 
@@ -2678,7 +2679,7 @@ class FlowCRUDLTest(TembaTest, CRUDLTestMixin):
             content_type="application/json",
         )
 
-        self.assertEquals(response.json()["warnings"], [])
+        self.assertEqual(response.json()["warnings"], [])
 
     @mock_mailroom
     def test_broadcast(self, mr_mocks):
@@ -2782,7 +2783,7 @@ class FlowCRUDLTest(TembaTest, CRUDLTestMixin):
 
         response = self.client.post(reverse("flows.flow_copy", args=[flow.id]))
 
-        flow_copy = Flow.objects.get(org=self.org, name="Copy of %s" % flow.name)
+        flow_copy = Flow.objects.get(org=self.org, name=f"Copy of {flow.name}")
 
         self.assertRedirect(response, reverse("flows.flow_editor", args=[flow_copy.uuid]))
 
@@ -3005,9 +3006,9 @@ class FlowCRUDLTest(TembaTest, CRUDLTestMixin):
                 "is_starting": False,
                 "nodes": {beer_split["uuid"]: 1},
                 "segments": {
-                    f'{color_prompt["exits"][0]["uuid"]}:{color_split["uuid"]}': 1,
-                    f'{color_split["exits"][2]["uuid"]}:{beer_prompt["uuid"]}': 1,
-                    f'{beer_prompt["exits"][0]["uuid"]}:{beer_split["uuid"]}': 1,
+                    f"{color_prompt['exits'][0]['uuid']}:{color_split['uuid']}": 1,
+                    f"{color_split['exits'][2]['uuid']}:{beer_prompt['uuid']}": 1,
+                    f"{beer_prompt['exits'][0]['uuid']}:{beer_split['uuid']}": 1,
                 },
             },
             response.json(),
@@ -3130,7 +3131,7 @@ class FlowCRUDLTest(TembaTest, CRUDLTestMixin):
             self.assertEqual('attachment; filename="favorites.spa.po"', response["Content-Disposition"])
 
         # check submitting the form from a modal
-        response = self.client.post(export_url, data={}, HTTP_X_PJAX=True)
+        response = self.client.post(export_url, data={}, headers={"x-pjax": True})
         self.assertEqual(f"/flow/download_translation/?flow={flow.id}&language=", response["Temba-Success"])
 
     def test_import_translation(self):
@@ -3149,11 +3150,11 @@ class FlowCRUDLTest(TembaTest, CRUDLTestMixin):
 
         # submit with something that's empty
         response = self.requestView(step1_url, self.admin, post_data={"po_file": io.BytesIO(b"")})
-        self.assertFormError(response, "form", "po_file", "The submitted file is empty.")
+        self.assertFormError(response.context["form"], "po_file", "The submitted file is empty.")
 
         # submit with something that's not a valid PO file
         response = self.requestView(step1_url, self.admin, post_data={"po_file": io.BytesIO(b"msgid")})
-        self.assertFormError(response, "form", "po_file", "File doesn't appear to be a valid PO file.")
+        self.assertFormError(response.context["form"], "po_file", "File doesn't appear to be a valid PO file.")
 
         # submit with something that's in the base language of the flow
         po_file = io.BytesIO(
@@ -3171,7 +3172,9 @@ msgstr "Bluuu"
         )
         response = self.requestView(step1_url, self.admin, post_data={"po_file": po_file})
         self.assertFormError(
-            response, "form", "po_file", "Contains translations in English which is the base language of this flow."
+            response.context["form"],
+            "po_file",
+            "Contains translations in English which is the base language of this flow.",
         )
 
         # submit with something that's in the base language of the flow
@@ -3190,8 +3193,7 @@ msgstr "Bleu"
         )
         response = self.requestView(step1_url, self.admin, post_data={"po_file": po_file})
         self.assertFormError(
-            response,
-            "form",
+            response.context["form"],
             "po_file",
             "Contains translations in French which is not a supported translation language.",
         )
@@ -3388,22 +3390,20 @@ class FlowRunTest(TembaTest):
 
         self.assertEqual(
             set(run_json.keys()),
-            set(
-                [
-                    "id",
-                    "uuid",
-                    "flow",
-                    "contact",
-                    "responded",
-                    "path",
-                    "values",
-                    "created_on",
-                    "modified_on",
-                    "exited_on",
-                    "exit_type",
-                    "submitted_by",
-                ]
-            ),
+            {
+                "id",
+                "uuid",
+                "flow",
+                "contact",
+                "responded",
+                "path",
+                "values",
+                "created_on",
+                "modified_on",
+                "exited_on",
+                "exit_type",
+                "submitted_by",
+            },
         )
 
         self.assertEqual(run.id, run_json["id"])
@@ -3996,16 +3996,16 @@ class ExportFlowResultsTest(TembaTest):
 
         # try to submit without specifying dates (UI doesn't actually allow this)
         response = self.client.post(export_url, {})
-        self.assertFormError(response, "form", "start_date", "This field is required.")
-        self.assertFormError(response, "form", "end_date", "This field is required.")
+        self.assertFormError(response.context["form"], "start_date", "This field is required.")
+        self.assertFormError(response.context["form"], "end_date", "This field is required.")
 
         # try to submit with start date in future
         response = self.client.post(export_url, {"start_date": "2200-01-01", "end_date": "2022-09-28"})
-        self.assertFormError(response, "form", None, "Start date can't be in the future.")
+        self.assertFormError(response.context["form"], None, "Start date can't be in the future.")
 
         # try to submit with start date > end date
         response = self.client.post(export_url, {"start_date": "2022-09-01", "end_date": "2022-03-01"})
-        self.assertFormError(response, "form", None, "End date can't be before start date.")
+        self.assertFormError(response.context["form"], None, "End date can't be before start date.")
 
         with self.assertNumQueries(44):
             workbook = self._export(

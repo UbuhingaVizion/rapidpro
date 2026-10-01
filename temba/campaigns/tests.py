@@ -207,7 +207,9 @@ class CampaignTest(TembaTest):
             relative_to=self.planting_date,
             offset=1,
             unit="D",
-            message={"eng": "Hi @(upper(contact.name)) don't forget to plant on @(format_date(contact.planting_date))"},
+            message={
+                "eng": "Hi @(upper(contact.name)) don't forget to plant on @(format_date(contact.planting_date))"
+            },
             base_language="eng",
         )
 
@@ -255,7 +257,9 @@ class CampaignTest(TembaTest):
 
         # manually create two event fires
         EventFire.objects.create(event=event, contact=self.farmer1, scheduled=trim_date, fired=trim_date)
-        e2 = EventFire.objects.create(event=event, contact=self.farmer1, scheduled=timezone.now(), fired=timezone.now())
+        e2 = EventFire.objects.create(
+            event=event, contact=self.farmer1, scheduled=timezone.now(), fired=timezone.now()
+        )
 
         # create an unfired fire and release its event
         EventFire.objects.create(event=second_event, contact=self.farmer1, scheduled=trim_date)
@@ -275,7 +279,7 @@ class CampaignTest(TembaTest):
         current_year = timezone.now().year
 
         # update the planting date for our contacts
-        self.set_contact_field(self.farmer1, "planting_date", f"1/10/{current_year-2}")
+        self.set_contact_field(self.farmer1, "planting_date", f"1/10/{current_year - 2}")
 
         # don't log in, try to create a new campaign
         response = self.client.get(reverse("campaigns.campaign_create"))
@@ -367,7 +371,9 @@ class CampaignTest(TembaTest):
             flow_to_start=self.reminder_flow.pk,
             flow_start_mode="I",
         )
-        response = self.client.post(reverse("campaigns.campaignevent_create") + "?campaign=%d" % campaign.pk, post_data)
+        response = self.client.post(
+            reverse("campaigns.campaignevent_create") + "?campaign=%d" % campaign.pk, post_data
+        )
 
         self.assertTrue(response.context["form"].errors)
         self.assertIn("A message is required", str(response.context["form"].errors["__all__"]))
@@ -384,10 +390,14 @@ class CampaignTest(TembaTest):
             flow_start_mode="I",
         )
 
-        response = self.client.post(reverse("campaigns.campaignevent_create") + "?campaign=%d" % campaign.pk, post_data)
+        response = self.client.post(
+            reverse("campaigns.campaignevent_create") + "?campaign=%d" % campaign.pk, post_data
+        )
 
         self.assertFormError(
-            response, "form", None, f"Translation for 'English' exceeds the {Msg.MAX_TEXT_LEN} character limit."
+            response.context["form"],
+            None,
+            f"Translation for 'English' exceeds the {Msg.MAX_TEXT_LEN} character limit.",
         )
 
         post_data = dict(
@@ -400,9 +410,11 @@ class CampaignTest(TembaTest):
             event_type="F",
             flow_start_mode="I",
         )
-        response = self.client.post(reverse("campaigns.campaignevent_create") + "?campaign=%d" % campaign.pk, post_data)
+        response = self.client.post(
+            reverse("campaigns.campaignevent_create") + "?campaign=%d" % campaign.pk, post_data
+        )
 
-        self.assertFormError(response, "form", "flow_to_start", "This field is required.")
+        self.assertFormError(response.context["form"], "flow_to_start", "This field is required.")
 
         post_data = dict(
             relative_to=self.planting_date.pk,
@@ -415,7 +427,9 @@ class CampaignTest(TembaTest):
             flow_to_start=self.reminder_flow.pk,
             flow_start_mode="I",
         )
-        response = self.client.post(reverse("campaigns.campaignevent_create") + "?campaign=%d" % campaign.pk, post_data)
+        response = self.client.post(
+            reverse("campaigns.campaignevent_create") + "?campaign=%d" % campaign.pk, post_data
+        )
 
         event = CampaignEvent.objects.filter(is_active=True).get()
         # should be redirected back to our campaign read page
@@ -565,17 +579,17 @@ class CampaignTest(TembaTest):
         self.assertEqual(5, len(mr_mocks.queued_batch_tasks))
 
         # set a planting date on our other farmer
-        self.set_contact_field(self.farmer2, "planting_date", f"1/6/{current_year+1}")
+        self.set_contact_field(self.farmer2, "planting_date", f"1/6/{current_year + 1}")
 
         # should have an event fire now
         fires = EventFire.objects.filter(event__is_active=True)
         self.assertEqual(1, len(fires))
 
         # setting a planting date on our outside contact has no effect
-        self.set_contact_field(self.nonfarmer, "planting_date", f"1/7/{current_year+3}")
+        self.set_contact_field(self.nonfarmer, "planting_date", f"1/7/{current_year + 3}")
         self.assertEqual(1, EventFire.objects.filter(event__is_active=True).count())
 
-        self.set_contact_field(self.farmer1, "planting_date", f"4/8/{current_year-2}")
+        self.set_contact_field(self.farmer1, "planting_date", f"4/8/{current_year - 2}")
 
         event = CampaignEvent.objects.filter(is_active=True).first()
 
@@ -602,7 +616,9 @@ class CampaignTest(TembaTest):
             flow_start_mode="I",
             flow_to_start=self.background_flow.pk,
         )
-        response = self.client.post(reverse("campaigns.campaignevent_create") + "?campaign=%d" % campaign.pk, post_data)
+        response = self.client.post(
+            reverse("campaigns.campaignevent_create") + "?campaign=%d" % campaign.pk, post_data
+        )
 
         # events created with background flows are always passive start mode
         event = CampaignEvent.objects.filter(is_active=True).get()
@@ -740,7 +756,9 @@ class CampaignTest(TembaTest):
             message_start_mode="I",
         )
 
-        response = self.client.post(reverse("campaigns.campaignevent_create") + "?campaign=%d" % campaign.pk, post_data)
+        response = self.client.post(
+            reverse("campaigns.campaignevent_create") + "?campaign=%d" % campaign.pk, post_data
+        )
 
         self.assertRedirect(response, reverse("campaigns.campaign_read", args=[campaign.uuid]))
 
@@ -748,7 +766,9 @@ class CampaignTest(TembaTest):
         campaign.is_archived = True
         campaign.save()
 
-        response = self.client.post(reverse("campaigns.campaignevent_create") + "?campaign=%d" % campaign.pk, post_data)
+        response = self.client.post(
+            reverse("campaigns.campaignevent_create") + "?campaign=%d" % campaign.pk, post_data
+        )
 
         # we should get 404 for the archived campaign
         self.assertEqual(response.status_code, 404)
@@ -758,7 +778,9 @@ class CampaignTest(TembaTest):
         campaign.is_active = False
         campaign.save()
 
-        response = self.client.post(reverse("campaigns.campaignevent_create") + "?campaign=%d" % campaign.pk, post_data)
+        response = self.client.post(
+            reverse("campaigns.campaignevent_create") + "?campaign=%d" % campaign.pk, post_data
+        )
 
         # we should get 404 for the inactive campaign
         self.assertEqual(response.status_code, 404)

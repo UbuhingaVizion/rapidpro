@@ -1,14 +1,14 @@
 import json
 from collections import OrderedDict
-from datetime import date, datetime, timedelta, timezone as tzone
+from datetime import date, datetime, timedelta
+from datetime import timezone as tzone
 from unittest.mock import patch
-
-from openpyxl import load_workbook
 
 from django.conf import settings
 from django.test import override_settings
 from django.urls import reverse
 from django.utils import timezone
+from openpyxl import load_workbook
 
 from temba import mailroom
 from temba.archives.models import Archive
@@ -145,7 +145,9 @@ class MediaTest(TembaTest):
             f"/media/test_orgs/{self.org.id}/media/14f6/14f6ea01-456b-4417-b0b8-35e942f549f1/allo.mp3", alt1.url
         )
         self.assertEqual("audio/mp3", alt1.content_type)
-        self.assertEqual(f"test_orgs/{self.org.id}/media/14f6/14f6ea01-456b-4417-b0b8-35e942f549f1/allo.mp3", alt1.path)
+        self.assertEqual(
+            f"test_orgs/{self.org.id}/media/14f6/14f6ea01-456b-4417-b0b8-35e942f549f1/allo.mp3", alt1.path
+        )
         self.assertAlmostEqual(5517, alt1.size, delta=1000)
         self.assertEqual(5110, alt1.duration)
         self.assertEqual(0, alt1.width)
@@ -157,7 +159,9 @@ class MediaTest(TembaTest):
             f"/media/test_orgs/{self.org.id}/media/d1ee/d1ee73f0-bdb5-47ce-99dd-0c95d4ebf008/allo.m4a", alt2.url
         )
         self.assertEqual("audio/mp4", alt2.content_type)
-        self.assertEqual(f"test_orgs/{self.org.id}/media/d1ee/d1ee73f0-bdb5-47ce-99dd-0c95d4ebf008/allo.m4a", alt2.path)
+        self.assertEqual(
+            f"test_orgs/{self.org.id}/media/d1ee/d1ee73f0-bdb5-47ce-99dd-0c95d4ebf008/allo.m4a", alt2.path
+        )
         self.assertAlmostEqual(20552, alt2.size, delta=7500)
         self.assertEqual(5110, alt2.duration)
         self.assertEqual(0, alt2.width)
@@ -1067,7 +1071,7 @@ class MsgTest(TembaTest, CRUDLTestMixin):
         # try export with user label
         self.assertExcelSheet(
             request_export(
-                "?l=%s" % label.uuid, {"export_all": 0, "start_date": "2000-09-01", "end_date": "2022-09-28"}
+                f"?l={label.uuid}", {"export_all": 0, "start_date": "2000-09-01", "end_date": "2022-09-28"}
             ),
             [
                 expected_headers,
@@ -1171,24 +1175,24 @@ class MsgTest(TembaTest, CRUDLTestMixin):
 
         # try to submit an invalid date (UI doesn't actually allow this)
         response = self.client.post(export_url + "?l=I", {"export_all": 1, "start_date": "xyz"})
-        self.assertFormError(response, "form", "start_date", "Enter a valid date.")
+        self.assertFormError(response.context["form"], "start_date", "Enter a valid date.")
 
         # try to submit without specifying dates (UI doesn't actually allow this)
         response = self.client.post(export_url + "?l=I", {"export_all": 1})
-        self.assertFormError(response, "form", "start_date", "This field is required.")
-        self.assertFormError(response, "form", "end_date", "This field is required.")
+        self.assertFormError(response.context["form"], "start_date", "This field is required.")
+        self.assertFormError(response.context["form"], "end_date", "This field is required.")
 
         # try to submit with start date in future
         response = self.client.post(
             export_url + "?l=I", {"export_all": 1, "start_date": "2200-01-01", "end_date": "2022-09-28"}
         )
-        self.assertFormError(response, "form", None, "Start date can't be in the future.")
+        self.assertFormError(response.context["form"], None, "Start date can't be in the future.")
 
         # try to submit with start date > end date
         response = self.client.post(
             export_url + "?l=I", {"export_all": 1, "start_date": "2022-09-01", "end_date": "2022-03-01"}
         )
-        self.assertFormError(response, "form", None, "End date can't be before start date.")
+        self.assertFormError(response.context["form"], None, "End date can't be before start date.")
 
         # test as anon org to check that URNs don't end up in exports
         with self.anonymous(self.org):
@@ -1502,7 +1506,9 @@ class MsgCRUDLTest(TembaTest, CRUDLTestMixin):
         with self.assertNumQueries(13):
             self.client.get(flows_url)
 
-        response = self.assertListFetch(flows_url, allow_viewers=True, allow_editors=True, context_objects=[msg2, msg1])
+        response = self.assertListFetch(
+            flows_url, allow_viewers=True, allow_editors=True, context_objects=[msg2, msg1]
+        )
 
         self.assertEqual(("archive", "label"), response.context["actions"])
 
@@ -1585,7 +1591,9 @@ class MsgCRUDLTest(TembaTest, CRUDLTestMixin):
         msg4, msg3, msg2 = broadcast2.msgs.order_by("-id")
 
         broadcast3 = Broadcast.create(self.channel.org, self.admin, {"eng": "Pending broadcast"}, contacts=[contact4])
-        broadcast4 = Broadcast.create(self.channel.org, self.admin, {"eng": "Scheduled broadcast"}, contacts=[contact4])
+        broadcast4 = Broadcast.create(
+            self.channel.org, self.admin, {"eng": "Scheduled broadcast"}, contacts=[contact4]
+        )
 
         broadcast4.schedule = Schedule.create(self.org, timezone.now(), Schedule.REPEAT_DAILY)
         broadcast4.save(update_fields=("schedule",))
@@ -2607,7 +2615,9 @@ class LabelCRUDLTest(TembaTest, CRUDLTestMixin):
         self.assertCreateFetch(create_url, allow_viewers=False, allow_editors=True, form_fields=("name", "messages"))
 
         # try to create label with invalid name
-        self.assertCreateSubmit(create_url, {"name": '"Spam"'}, form_errors={"name": 'Cannot contain the character: "'})
+        self.assertCreateSubmit(
+            create_url, {"name": '"Spam"'}, form_errors={"name": 'Cannot contain the character: "'}
+        )
 
         # try again with valid name
         self.assertCreateSubmit(
@@ -2631,8 +2641,7 @@ class LabelCRUDLTest(TembaTest, CRUDLTestMixin):
         with override_settings(ORG_LIMIT_DEFAULTS={"labels": current_count}):
             response = self.client.post(create_url, {"name": "CoolStuff"})
             self.assertFormError(
-                response,
-                "form",
+                response.context["form"],
                 "name",
                 "This workspace has reached its limit of 2 labels. "
                 "You must delete existing ones before you can create new ones.",
@@ -2953,7 +2962,7 @@ class MediaCRUDLTest(CRUDLTestMixin, TembaTest):
             self.assertEqual(response.status_code, 405)
 
             with open(filename, "rb") as data:
-                response = self.client.post(upload_url, {"file": data}, HTTP_X_FORWARDED_HTTPS="https")
+                response = self.client.post(upload_url, {"file": data}, headers={"x-forwarded-https": "https"})
 
             self.assertEqual(response.status_code, 200)
             self.assertEqual(expected_json, response.json())
@@ -2997,13 +3006,13 @@ class MediaCRUDLTest(CRUDLTestMixin, TembaTest):
 
         # error message if you upload something unsupported
         with open(f"{settings.MEDIA_ROOT}/test_imports/simple.xls", "rb") as data:
-            response = self.client.post(upload_url, {"file": data}, HTTP_X_FORWARDED_HTTPS="https")
+            response = self.client.post(upload_url, {"file": data}, headers={"x-forwarded-https": "https"})
             self.assertEqual({"error": "Unsupported file type"}, response.json())
 
         # error message if upload is too big
         with patch("temba.msgs.models.Media.MAX_UPLOAD_SIZE", 1024):
             with open(f"{settings.MEDIA_ROOT}/test_media/snow.mp4", "rb") as data:
-                response = self.client.post(upload_url, {"file": data}, HTTP_X_FORWARDED_HTTPS="https")
+                response = self.client.post(upload_url, {"file": data}, headers={"x-forwarded-https": "https"})
                 self.assertEqual({"error": "Limit for file uploads is 0.0009765625 MB"}, response.json())
 
         self.clear_storage()
@@ -3016,7 +3025,7 @@ class MediaCRUDLTest(CRUDLTestMixin, TembaTest):
             self.login(user)
 
             with open(path, "rb") as data:
-                self.client.post(upload_url, {"file": data}, HTTP_X_FORWARDED_HTTPS="https")
+                self.client.post(upload_url, {"file": data}, headers={"x-forwarded-https": "https"})
                 return self.org.media.filter(original=None).order_by("id").last()
 
         media1 = upload(self.admin, f"{settings.MEDIA_ROOT}/test_media/steve marten.jpg")

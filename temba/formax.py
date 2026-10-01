@@ -31,7 +31,9 @@ class Formax:
         context = user_group_perms_processor(self.request)
         self.org = context["user_org"]
 
-    def add_section(self, name, url, icon, action="formax", button="Save", nobutton=False, dependents=None, wide=False):
+    def add_section(
+        self, name, url, icon, action="formax", button="Save", nobutton=False, dependents=None, wide=False
+    ):
         resolver = resolve(url)
         self.request.META["HTTP_X_FORMAX"] = 1
         self.request.META["HTTP_X_PJAX"] = 1
@@ -61,4 +63,4 @@ class Formax:
                 )
             )
 
-        logger.debug(f"{url} {response.status_code} {int((time.time() - start)*1000)}ms")
+        logger.debug(f"{url} {response.status_code} {int((time.time() - start) * 1000)}ms")

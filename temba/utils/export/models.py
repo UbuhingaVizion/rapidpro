@@ -4,15 +4,14 @@ import os
 import time
 from datetime import datetime, timedelta
 
-from smartmin.models import SmartModel
-from xlsxlite.writer import XLSXBook
-
 from django.core.files import File
 from django.core.files.temp import NamedTemporaryFile
 from django.db import models
 from django.http import HttpResponse
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
+from smartmin.models import SmartModel
+from xlsxlite.writer import XLSXBook
 
 from temba.assets.models import BaseAssetStore, get_asset_store
 from temba.utils import analytics
@@ -98,7 +97,7 @@ class BaseExport(TembaUUIDMixin, SmartModel):
             self.update_status(self.STATUS_COMPLETE)
             elapsed = time.time() - start
             print(f"Completed {self.analytics_key} with ID {self.id} in {elapsed:.1f} seconds")
-            analytics.track(self.created_by, "temba.%s_latency" % self.analytics_key, properties=dict(value=elapsed))
+            analytics.track(self.created_by, f"temba.{self.analytics_key}_latency", properties=dict(value=elapsed))
 
             ExportFinishedNotificationType.create(self)
         finally:
@@ -186,10 +185,10 @@ class BaseItemWithContactExport(BaseDateRangeExport):
             cols.append("URN Value")
 
         for cf in self.with_fields.all():
-            cols.append("Field:%s" % cf.name)
+            cols.append(f"Field:{cf.name}")
 
         for cg in self.with_groups.all():
-            cols.append("Group:%s" % cg.name)
+            cols.append(f"Group:{cg.name}")
 
         return cols
 

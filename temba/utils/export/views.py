@@ -1,11 +1,10 @@
 from datetime import datetime, timedelta
 
-from smartmin.views import SmartFormView
-
 from django import forms
 from django.db.models.functions import Lower
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
+from smartmin.views import SmartFormView
 
 from temba.contacts.models import ContactField, ContactGroup
 from temba.orgs.views import ModalMixin, OrgPermsMixin

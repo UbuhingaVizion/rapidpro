@@ -1,10 +1,9 @@
 from unittest.mock import call, patch
 
-from django_redis import get_redis_connection
-from requests import RequestException
-
 from django.forms import ValidationError
 from django.urls import reverse
+from django_redis import get_redis_connection
+from requests import RequestException
 
 from temba.request_logs.models import HTTPLog
 from temba.templates.models import TemplateTranslation
@@ -55,7 +54,7 @@ class WhatsAppLegacyTypeTest(CRUDLTestMixin, TembaTest):
 
         # will fail with invalid phone number
         response = self.client.post(url, post_data)
-        self.assertFormError(response, "form", None, ["Please enter a valid phone number"])
+        self.assertFormError(response.context["form"], None, ["Please enter a valid phone number"])
 
         # valid number
         post_data["address"] = "0788123123"
@@ -86,9 +85,11 @@ class WhatsAppLegacyTypeTest(CRUDLTestMixin, TembaTest):
         #         self.assertContains(response, "check user id and access token")
 
         # then success
-        with patch("requests.post") as mock_post, patch("requests.get") as mock_get, patch(
-            "requests.patch"
-        ) as mock_patch:
+        with (
+            patch("requests.post") as mock_post,
+            patch("requests.get") as mock_get,
+            patch("requests.patch") as mock_patch,
+        ):
             mock_post.return_value = MockResponse(200, '{"users": [{"token": "abc123"}]}')
             mock_get.return_value = MockResponse(200, '{"data": []}')
             mock_patch.return_value = MockResponse(200, '{"data": []}')
@@ -208,9 +209,11 @@ class WhatsAppLegacyTypeTest(CRUDLTestMixin, TembaTest):
         # will fail with invalid phone number
         response = self.client.post(url, post_data)
 
-        with patch("requests.post") as mock_post, patch("requests.get") as mock_get, patch(
-            "requests.patch"
-        ) as mock_patch:
+        with (
+            patch("requests.post") as mock_post,
+            patch("requests.get") as mock_get,
+            patch("requests.patch") as mock_patch,
+        ):
             mock_post.return_value = MockResponse(200, '{"users": [{"token": "abc123"}]}')
             mock_get.return_value = MockResponse(200, '{"data": []}')
             mock_patch.return_value = MockResponse(200, '{"data": []}')
@@ -220,23 +223,11 @@ class WhatsAppLegacyTypeTest(CRUDLTestMixin, TembaTest):
 
         channel = Channel.objects.get()
 
-        with patch("requests.post") as mock_post, patch("requests.get") as mock_get, patch(
-            "requests.patch"
-        ) as mock_patch:
-            mock_post.return_value = MockResponse(200, '{"users": [{"token": "abc123"}]}')
-            mock_get.return_value = MockResponse(200, '{"data": []}')
-            mock_patch.return_value = MockResponse(200, '{"data": []}')
-
-            response = self.client.post(url, post_data)
-            self.assertEqual(200, response.status_code)
-            self.assertFormError(response, "form", None, "This channel is already connected in this workspace.")
-
-        channel.org = self.org2
-        channel.save()
-
-        with patch("requests.post") as mock_post, patch("requests.get") as mock_get, patch(
-            "requests.patch"
-        ) as mock_patch:
+        with (
+            patch("requests.post") as mock_post,
+            patch("requests.get") as mock_get,
+            patch("requests.patch") as mock_patch,
+        ):
             mock_post.return_value = MockResponse(200, '{"users": [{"token": "abc123"}]}')
             mock_get.return_value = MockResponse(200, '{"data": []}')
             mock_patch.return_value = MockResponse(200, '{"data": []}')
@@ -244,8 +235,25 @@ class WhatsAppLegacyTypeTest(CRUDLTestMixin, TembaTest):
             response = self.client.post(url, post_data)
             self.assertEqual(200, response.status_code)
             self.assertFormError(
-                response,
-                "form",
+                response.context["form"], None, "This channel is already connected in this workspace."
+            )
+
+        channel.org = self.org2
+        channel.save()
+
+        with (
+            patch("requests.post") as mock_post,
+            patch("requests.get") as mock_get,
+            patch("requests.patch") as mock_patch,
+        ):
+            mock_post.return_value = MockResponse(200, '{"users": [{"token": "abc123"}]}')
+            mock_get.return_value = MockResponse(200, '{"data": []}')
+            mock_patch.return_value = MockResponse(200, '{"data": []}')
+
+            response = self.client.post(url, post_data)
+            self.assertEqual(200, response.status_code)
+            self.assertFormError(
+                response.context["form"],
                 None,
                 "This channel is already connected in another workspace.",
             )
@@ -353,9 +361,11 @@ class WhatsAppLegacyTypeTest(CRUDLTestMixin, TembaTest):
             self.assertContains(response, "check user id and access token")
 
         # success claim
-        with patch("requests.post") as mock_post, patch("requests.get") as mock_get, patch(
-            "requests.patch"
-        ) as mock_patch:
+        with (
+            patch("requests.post") as mock_post,
+            patch("requests.get") as mock_get,
+            patch("requests.patch") as mock_patch,
+        ):
             mock_post.return_value = MockResponse(200, '{"users": [{"token": "abc123"}]}')
             mock_get.return_value = MockResponse(200, '{"data": []}')
             mock_patch.return_value = MockResponse(200, '{"data": []}')

@@ -1,12 +1,12 @@
-from rest_framework import fields, relations, serializers
-
 from django.contrib.auth.models import User
 from django.db.models import Q
 from django.utils.translation import gettext_lazy as _
+from rest_framework import fields, relations, serializers
 
 from temba.campaigns.models import Campaign, CampaignEvent
 from temba.channels.models import Channel
-from temba.contacts.models import URN, Contact, ContactField as ContactFieldModel, ContactGroup, ContactURN
+from temba.contacts.models import URN, Contact, ContactGroup, ContactURN
+from temba.contacts.models import ContactField as ContactFieldModel
 from temba.flows.models import Flow
 from temba.msgs.models import Attachment, Label, Media, Msg
 from temba.tickets.models import Ticket, Topic
@@ -38,7 +38,7 @@ def validate_urn(value, country_code=None):
         if not URN.validate(normalized, country_code=country_code):
             raise ValueError()
     except ValueError:
-        raise serializers.ValidationError("Invalid URN: %s. Ensure phone numbers contain country codes." % value)
+        raise serializers.ValidationError(f"Invalid URN: {value}. Ensure phone numbers contain country codes.")
     return normalized
 
 
@@ -94,7 +94,9 @@ class TranslatedTextField(LanguageDictField):
     """
 
     def __init__(self, max_length, **kwargs):
-        super().__init__(allow_empty=False, max_length=50, child=serializers.CharField(max_length=max_length), **kwargs)
+        super().__init__(
+            allow_empty=False, max_length=50, child=serializers.CharField(max_length=max_length), **kwargs
+        )
 
     def to_internal_value(self, data):
         if isinstance(data, str):
@@ -209,7 +211,7 @@ class TembaModelField(serializers.RelatedField):
         query = Q()
         for lookup_field in lookup_fields:
             ignore_case = lookup_field in self.ignore_case_for_fields
-            lookup = "%s__%s" % (lookup_field, "iexact" if ignore_case else "exact")
+            lookup = f"{lookup_field}__{'iexact' if ignore_case else 'exact'}"
             query |= Q(**{lookup: value})
 
         return self.get_queryset().filter(query).first()
@@ -224,7 +226,7 @@ class TembaModelField(serializers.RelatedField):
         obj = self.get_object(data)
 
         if self.require_exists and not obj:
-            raise serializers.ValidationError("No such object: %s" % data)
+            raise serializers.ValidationError(f"No such object: {data}")
 
         return obj
 
@@ -314,7 +316,7 @@ class ContactGroupField(TembaModelField):
         obj = super().to_internal_value(data)
 
         if not self.allow_dynamic and obj.is_smart:
-            raise serializers.ValidationError("Contact group must not be query based: %s" % data)
+            raise serializers.ValidationError(f"Contact group must not be query based: {data}")
 
         return obj
 

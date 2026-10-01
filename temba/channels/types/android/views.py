@@ -1,9 +1,8 @@
 import phonenumbers
-from smartmin.views import SmartFormView
-
 from django import forms
 from django.urls import reverse
 from django.utils.translation import gettext_lazy as _
+from smartmin.views import SmartFormView
 
 from temba.apks.models import Apk
 from temba.utils import countries
@@ -62,7 +61,9 @@ class ClaimView(ClaimViewMixin, SmartFormView):
                 ).exclude(pk=channel.pk)
 
                 if conflicts.exists():
-                    raise forms.ValidationError(_("Another channel has this number. Please remove that channel first."))
+                    raise forms.ValidationError(
+                        _("Another channel has this number. Please remove that channel first.")
+                    )
 
             return number
 
@@ -82,7 +83,7 @@ class ClaimView(ClaimViewMixin, SmartFormView):
         return context
 
     def get_success_url(self):
-        return "%s?success" % reverse("public.public_welcome")
+        return f"{reverse('public.public_welcome')}?success"
 
     def form_valid(self, form):
         org = self.request.org

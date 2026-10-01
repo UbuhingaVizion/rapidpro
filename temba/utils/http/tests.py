@@ -4,7 +4,6 @@ from datetime import timedelta
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import requests
-
 from django.utils import timezone
 
 from temba.tests import TembaTest

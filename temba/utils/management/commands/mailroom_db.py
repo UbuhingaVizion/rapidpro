@@ -3,12 +3,11 @@ import subprocess
 import time
 from zoneinfo import ZoneInfo
 
-from django_redis import get_redis_connection
-
 from django.conf import settings
 from django.core.management import BaseCommand, CommandError, call_command
 from django.db import connection
 from django.utils import timezone
+from django_redis import get_redis_connection
 
 from temba.campaigns.models import Campaign, CampaignEvent
 from temba.channels.models import Channel
@@ -59,7 +58,7 @@ class Command(BaseCommand):
         self.generate_and_dump(SPECS_FILE, LOCATIONS_FILE, MAILROOM_DB_NAME, MAILROOM_DB_USER, DUMP_FILE)
 
     def generate_and_dump(self, specs_file, locs_file, db_name, db_user, dump_file):
-        with open(specs_file, "r") as orgs_file:
+        with open(specs_file) as orgs_file:
             orgs_spec = json.load(orgs_file)
 
         self._log(f"Initializing {db_name} database...\n")
@@ -124,7 +123,7 @@ class Command(BaseCommand):
         """
         Loads admin boundary records from the given dump of that table
         """
-        self._log("Loading locations from %s... " % path)
+        self._log(f"Loading locations from {path}... ")
 
         with open(path, "rb") as f:
             try:
@@ -331,7 +330,7 @@ class Command(BaseCommand):
         self._log(f"Creating {len(spec['flows'])} flows... ")
 
         for f in spec["flows"]:
-            with open("media/test_flows/mailroom/" + f["file"], "r") as flow_file:
+            with open("media/test_flows/mailroom/" + f["file"]) as flow_file:
                 org.import_app(json.load(flow_file), user)
 
                 # set the uuid on this flow

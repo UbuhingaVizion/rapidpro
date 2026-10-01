@@ -1,12 +1,11 @@
 from enum import Enum
 
-from smartmin.views import SmartCreateView, SmartCRUDL, SmartListView, SmartTemplateView, SmartUpdateView
-
 from django import forms
 from django.db.models.functions import Upper
 from django.http import HttpResponseRedirect
 from django.urls import reverse
 from django.utils.translation import gettext_lazy as _
+from smartmin.views import SmartCreateView, SmartCRUDL, SmartListView, SmartTemplateView, SmartUpdateView
 
 from temba.channels.models import Channel
 from temba.channels.types.android import AndroidType
@@ -205,7 +204,7 @@ class TriggerCRUDL(SmartCRUDL):
     class Menu(MenuMixin, SmartTemplateView):
         @classmethod
         def derive_url_pattern(cls, path, action):
-            return r"^%s/%s/((?P<submenu>[A-z]+)/)?$" % (path, action)
+            return rf"^{path}/{action}/((?P<submenu>[A-z]+)/)?$"
 
         def derive_menu(self):
             org = self.request.org

@@ -2,7 +2,6 @@ import logging
 from datetime import timedelta
 
 from celery import shared_task
-
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 

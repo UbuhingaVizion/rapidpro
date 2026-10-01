@@ -1,10 +1,9 @@
 from datetime import timedelta
 from unittest.mock import Mock
 
-from requests import Request, RequestException
-
 from django.urls import reverse
 from django.utils import timezone
+from requests import Request, RequestException
 
 from temba.classifiers.models import Classifier
 from temba.classifiers.types.wit import WitType

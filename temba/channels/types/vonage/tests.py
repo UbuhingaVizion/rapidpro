@@ -1,7 +1,6 @@
 from unittest.mock import call, patch
 
 import vonage
-
 from django.urls import reverse
 
 from temba.channels.models import Channel
@@ -190,7 +189,7 @@ class VonageTypeTest(TembaTest):
         # try posting without an account token
         post_data = {"api_key": "key"}
         response = self.client.post(connect_url, post_data)
-        self.assertFormError(response, "form", "api_secret", "This field is required.")
+        self.assertFormError(response.context["form"], "api_secret", "This field is required.")
 
         # simulate invalid credentials on both pages
         mock_check_credentials.return_value = False

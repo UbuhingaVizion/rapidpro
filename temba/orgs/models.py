@@ -12,13 +12,9 @@ from urllib.parse import quote, urlencode, urlparse
 import pycountry
 import pyotp
 import pytz
-from packaging.version import Version
-from smartmin.models import SmartModel
-from smartmin.users.models import FailedLogin, RecoveryToken
-from timezone_field import TimeZoneField
-
 from django.conf import settings
-from django.contrib.auth.models import Group, Permission, User as AuthUser
+from django.contrib.auth.models import Group, Permission
+from django.contrib.auth.models import User as AuthUser
 from django.contrib.postgres.fields import ArrayField
 from django.contrib.postgres.validators import ArrayMinLengthValidator
 from django.db import models, transaction
@@ -29,6 +25,10 @@ from django.utils.encoding import force_str
 from django.utils.functional import cached_property
 from django.utils.text import slugify
 from django.utils.translation import gettext_lazy as _
+from packaging.version import Version
+from smartmin.models import SmartModel
+from smartmin.users.models import FailedLogin, RecoveryToken
+from timezone_field import TimeZoneField
 
 from temba import mailroom
 from temba.archives.models import Archive
@@ -889,7 +889,7 @@ class Org(SmartModel):
         """
         Gets all URN schemes which this org has org has channels configured for
         """
-        cache_attr = "__schemes__%s" % role
+        cache_attr = f"__schemes__{role}"
         if hasattr(self, cache_attr):
             return getattr(self, cache_attr)
 
@@ -1115,7 +1115,7 @@ class Org(SmartModel):
         filename = os.path.join(settings.STATICFILES_DIRS[0], "examples", "sample_flows.json")
 
         # for each of our samples
-        with open(filename, "r") as example_file:
+        with open(filename) as example_file:
             samples = example_file.read()
 
         user = self.get_admins().first()
@@ -1167,7 +1167,7 @@ class Org(SmartModel):
         for flow in all_flows:
             dependencies[flow] = flow.get_export_dependencies()
         for campaign in all_campaigns:
-            dependencies[campaign] = set([e.flow for e in campaign.flow_events])
+            dependencies[campaign] = {e.flow for e in campaign.flow_events}
 
         # replace any dependency on a group with that group's associated campaigns - we're not actually interested
         # in flow-group-flow relationships - only relationships that go through a campaign
@@ -1485,7 +1485,7 @@ class OrgImport(SmartModel):
 
             # this is an unexpected error, report it to sentry
             logger = logging.getLogger(__name__)
-            logger.error("Exception on app import: %s" % str(e), exc_info=True)
+            logger.error(f"Exception on app import: {e!s}", exc_info=True)
 
         else:
             self.status = self.STATUS_COMPLETE

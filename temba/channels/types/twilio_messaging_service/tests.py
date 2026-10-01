@@ -1,8 +1,7 @@
 from unittest.mock import patch
 
-from twilio.base.exceptions import TwilioRestException
-
 from django.urls import reverse
+from twilio.base.exceptions import TwilioRestException
 
 from temba.channels.models import Channel
 from temba.tests import TembaTest
@@ -52,7 +51,7 @@ class TwilioMessagingServiceTypeTest(TembaTest):
 
             response = self.client.get(claim_twilio_ms)
             self.assertRedirects(
-                response, f'{reverse("channels.types.twilio.connect")}?claim_type=twilio_messaging_service'
+                response, f"{reverse('channels.types.twilio.connect')}?claim_type=twilio_messaging_service"
             )
 
             mock_get_twilio_client.side_effect = TwilioRestException(
@@ -61,7 +60,7 @@ class TwilioMessagingServiceTypeTest(TembaTest):
 
             response = self.client.get(claim_twilio_ms)
             self.assertRedirects(
-                response, f'{reverse("channels.types.twilio.connect")}?claim_type=twilio_messaging_service'
+                response, f"{reverse('channels.types.twilio.connect')}?claim_type=twilio_messaging_service"
             )
 
         with patch("temba.tests.twilio.MockTwilioClient.MockAccounts.get") as mock_get:
@@ -141,4 +140,4 @@ class TwilioMessagingServiceTypeTest(TembaTest):
             mock_check_credentials.return_value = False
 
             response = self.client.post(update_url, post_data)
-            self.assertFormError(response, "form", None, "Credentials don't appear to be valid.")
+            self.assertFormError(response.context["form"], None, "Credentials don't appear to be valid.")

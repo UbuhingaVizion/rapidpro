@@ -1,5 +1,7 @@
+import datetime as dt
 import io
-from datetime import date, datetime, timedelta, timezone as tzone
+from datetime import date, datetime, timedelta
+from datetime import timezone as tzone
 from decimal import Decimal
 from unittest.mock import PropertyMock, call, patch
 from uuid import UUID
@@ -7,8 +9,6 @@ from zoneinfo import ZoneInfo
 
 import iso8601
 import xlrd
-from openpyxl import load_workbook
-
 from django.conf import settings
 from django.core.validators import ValidationError
 from django.db.models import Value as DbValue
@@ -17,6 +17,7 @@ from django.db.utils import IntegrityError
 from django.test.utils import override_settings
 from django.urls import reverse
 from django.utils import timezone
+from openpyxl import load_workbook
 
 from temba.airtime.models import AirtimeTransfer
 from temba.campaigns.models import Campaign, CampaignEvent, EventFire
@@ -37,7 +38,8 @@ from temba.tickets.models import Ticket, TicketCount
 from temba.triggers.models import Trigger
 from temba.utils import json
 from temba.utils.dates import datetime_to_timestamp
-from temba.utils.templatetags.temba import datetime as datetime_tag, duration
+from temba.utils.templatetags.temba import datetime as datetime_tag
+from temba.utils.templatetags.temba import duration
 from temba.utils.views import TEMBA_MENU_SELECTION
 
 from .models import (
@@ -97,7 +99,7 @@ class ContactCRUDLTest(CRUDLTestMixin, TembaTest):
         active_contacts = self.org.active_contacts_group
 
         # fetch with spa flag
-        response = self.client.get(list_url, content_type="application/json", HTTP_TEMBA_SPA="1")
+        response = self.client.get(list_url, content_type="application/json", headers={"temba-spa": "1"})
         self.assertEqual(response.context["base_template"], "spa.html")
 
         mr_mocks.contact_search("age = 18", contacts=[frank])
@@ -112,13 +114,13 @@ class ContactCRUDLTest(CRUDLTestMixin, TembaTest):
         mr_mocks.contact_search("age = 18", contacts=[frank], total=10020)
 
         # we return up to 10000 contacts when searching with ES, so last page is 200
-        url = f'{reverse("contacts.contact_list")}?{"search=age+%3D+18&page=200"}'
+        url = f"{reverse('contacts.contact_list')}?{'search=age+%3D+18&page=200'}"
         response = self.client.get(url)
 
         self.assertEqual(response.status_code, 200)
 
         # when user requests page 201, we return a 404, page not found
-        url = f'{reverse("contacts.contact_list")}?{"search=age+%3D+18&page=201"}'
+        url = f"{reverse('contacts.contact_list')}?{'search=age+%3D+18&page=201'}"
         response = self.client.get(url)
 
         self.assertEqual(response.status_code, 404)
@@ -664,13 +666,13 @@ class ContactCRUDLTest(CRUDLTestMixin, TembaTest):
                     },
                     {
                         "type": "scheduled_broadcast",
-                        "scheduled": bcast1.schedule.next_fire.astimezone(timezone.utc).isoformat(),
+                        "scheduled": bcast1.schedule.next_fire.astimezone(dt.timezone.utc).isoformat(),
                         "repeat_period": "D",
                         "message": "Hi again",
                     },
                     {
                         "type": "scheduled_trigger",
-                        "scheduled": trigger1.schedule.next_fire.astimezone(timezone.utc).isoformat(),
+                        "scheduled": trigger1.schedule.next_fire.astimezone(dt.timezone.utc).isoformat(),
                         "repeat_period": "W",
                         "flow": {"uuid": str(trigger1_flow.uuid), "name": "Favorites 1"},
                     },
@@ -683,7 +685,7 @@ class ContactCRUDLTest(CRUDLTestMixin, TembaTest):
                     },
                     {
                         "type": "scheduled_trigger",
-                        "scheduled": trigger2.schedule.next_fire.astimezone(timezone.utc).isoformat(),
+                        "scheduled": trigger2.schedule.next_fire.astimezone(dt.timezone.utc).isoformat(),
                         "repeat_period": "M",
                         "flow": {"uuid": str(trigger2_flow.uuid), "name": "Favorites 2"},
                     },
@@ -1193,23 +1195,25 @@ class ContactGroupCRUDLTest(TembaTest, CRUDLTestMixin):
 
         # try to create a contact group whose name is only whitespace
         response = self.client.post(url, {"name": "  "})
-        self.assertFormError(response, "form", "name", "This field is required.")
+        self.assertFormError(response.context["form"], "name", "This field is required.")
 
         # try to create a contact group whose name contains a disallowed character
         response = self.client.post(url, {"name": '"People"'})
-        self.assertFormError(response, "form", "name", 'Cannot contain the character: "')
+        self.assertFormError(response.context["form"], "name", 'Cannot contain the character: "')
 
         # try to create a contact group whose name is too long
         response = self.client.post(url, {"name": "X" * 65})
-        self.assertFormError(response, "form", "name", "Ensure this value has at most 64 characters (it has 65).")
+        self.assertFormError(
+            response.context["form"], "name", "Ensure this value has at most 64 characters (it has 65)."
+        )
 
         # try to create with name that's already taken
         response = self.client.post(url, {"name": "Customers"})
-        self.assertFormError(response, "form", "name", "Already used by another group.")
+        self.assertFormError(response.context["form"], "name", "Already used by another group.")
 
         # try to create with name that's already taken by a system group
         response = self.client.post(url, {"name": "blocked"})
-        self.assertFormError(response, "form", "name", "Already used by another group.")
+        self.assertFormError(response.context["form"], "name", "Already used by another group.")
 
         # create with valid name (that will be trimmed)
         response = self.client.post(url, {"name": "first  "})
@@ -1245,8 +1249,7 @@ class ContactGroupCRUDLTest(TembaTest, CRUDLTestMixin):
         self.assertEqual(10, ContactGroup.objects.filter(is_active=True, is_system=False).count())
         response = self.client.post(url, {"name": "People"})
         self.assertFormError(
-            response,
-            "form",
+            response.context["form"],
             "name",
             "This workspace has reached its limit of 10 groups. You must delete existing ones before you can create new ones.",
         )
@@ -1263,13 +1266,13 @@ class ContactGroupCRUDLTest(TembaTest, CRUDLTestMixin):
         response = self.client.post(
             reverse("contacts.contactgroup_create"), dict(name="First Group", group_query="firsts")
         )
-        self.assertFormError(response, "form", "name", "Already used by another group.")
+        self.assertFormError(response.context["form"], "name", "Already used by another group.")
 
         # try to create another group with same name, not dynamic, same thing
         response = self.client.post(
             reverse("contacts.contactgroup_create"), dict(name="First Group", group_query="firsts")
         )
-        self.assertFormError(response, "form", "name", "Already used by another group.")
+        self.assertFormError(response.context["form"], "name", "Already used by another group.")
 
     @mock_mailroom
     def test_update(self, mr_mocks):
@@ -1287,11 +1290,11 @@ class ContactGroupCRUDLTest(TembaTest, CRUDLTestMixin):
 
         # try to update name to only whitespace
         response = self.client.post(url, dict(name="   "))
-        self.assertFormError(response, "form", "name", "This field is required.")
+        self.assertFormError(response.context["form"], "name", "This field is required.")
 
         # try to update name to contain a disallowed character
         response = self.client.post(url, dict(name='"People"'))
-        self.assertFormError(response, "form", "name", 'Cannot contain the character: "')
+        self.assertFormError(response.context["form"], "name", 'Cannot contain the character: "')
 
         # update with valid name (that will be trimmed)
         response = self.client.post(url, dict(name="new name   "))
@@ -1309,16 +1312,18 @@ class ContactGroupCRUDLTest(TembaTest, CRUDLTestMixin):
         # update both name and query, form should fail, because query is not parsable
         mr_mocks.error("error at !", code="unexpected_token", extra={"token": "!"})
         response = self.client.post(url, dict(name="Frank", query="(!))!)"))
-        self.assertFormError(response, "form", "query", "Invalid query syntax at '!'")
+        self.assertFormError(response.context["form"], "query", "Invalid query syntax at '!'")
 
         # try to update a group with an invalid query
         mr_mocks.error("error at >", code="unexpected_token", extra={"token": ">"})
         response = self.client.post(url, dict(name="Frank", query="name <> some_name"))
-        self.assertFormError(response, "form", "query", "Invalid query syntax at '>'")
+        self.assertFormError(response.context["form"], "query", "Invalid query syntax at '>'")
 
         # dependent on id
         response = self.client.post(url, dict(name="Frank", query="id = 123"))
-        self.assertFormError(response, "form", "query", 'You cannot create a smart group based on "id" or "group".')
+        self.assertFormError(
+            response.context["form"], "query", 'You cannot create a smart group based on "id" or "group".'
+        )
 
         response = self.client.post(url, dict(name="Frank", query='twitter = "hola"'))
 
@@ -1333,7 +1338,9 @@ class ContactGroupCRUDLTest(TembaTest, CRUDLTestMixin):
 
         # and check we can't change the query while that is the case
         response = self.client.post(url, dict(name="Frank", query='twitter = "hello"'))
-        self.assertFormError(response, "form", "query", "You cannot update the query of a group that is evaluating.")
+        self.assertFormError(
+            response.context["form"], "query", "You cannot update the query of a group that is evaluating."
+        )
 
         # but can change the name
         response = self.client.post(url, dict(name="Frank2", query='twitter = "hola"'))
@@ -1575,7 +1582,7 @@ class ContactTest(TembaTest, CRUDLTestMixin):
         response = self.client.post(
             reverse("contacts.contact_create"), data=dict(name="Ben Haggerty", urn__tel__0="+250781111111")
         )
-        self.assertFormError(response, "form", "urn__tel__0", "Used by another contact")
+        self.assertFormError(response.context["form"], "urn__tel__0", "Used by another contact")
 
         # now repost with a unique phone number
         response = self.client.post(
@@ -1593,8 +1600,10 @@ class ContactTest(TembaTest, CRUDLTestMixin):
         self.assertEqual("Ben Haggerty", Contact.from_urn(self.org, "tel:+250788888888").name)
 
         # check we display error for invalid input
-        response = self.client.post(reverse("contacts.contact_create"), data=dict(name="Ben Haggerty", urn__tel__0="="))
-        self.assertFormError(response, "form", "urn__tel__0", "Invalid input")
+        response = self.client.post(
+            reverse("contacts.contact_create"), data=dict(name="Ben Haggerty", urn__tel__0="=")
+        )
+        self.assertFormError(response.context["form"], "urn__tel__0", "Invalid input")
 
     @patch("temba.mailroom.client.MailroomClient.contact_modify")
     def test_block_and_stop(self, mock_contact_modify):
@@ -1991,7 +2000,9 @@ class ContactTest(TembaTest, CRUDLTestMixin):
 
         with self.assertNumQueries(0):
             self.assertEqual(["twitter:blow80", "tel:+250781111111"], [u.urn for u in self.joe.get_urns()])
-            self.assertEqual(["twitter:blow80", "tel:+250781111111"], [u.urn for u in getattr(self.joe, "_urns_cache")])
+            self.assertEqual(
+                ["twitter:blow80", "tel:+250781111111"], [u.urn for u in getattr(self.joe, "_urns_cache")]
+            )
             self.assertEqual(["tel:+250782222222"], [u.urn for u in self.frank.get_urns()])
             self.assertEqual([], [u.urn for u in self.billy.get_urns()])
 
@@ -2173,7 +2184,7 @@ class ContactTest(TembaTest, CRUDLTestMixin):
         self.frank.stop(self.admin)
 
         # lookup by contact uuids
-        self.assertEqual(omnibox_request("c=%s,%s" % (self.joe.uuid, self.frank.uuid)), [])
+        self.assertEqual(omnibox_request(f"c={self.joe.uuid},{self.frank.uuid}"), [])
 
     def test_history(self):
         url = reverse("contacts.contact_history", args=[self.joe.uuid])
@@ -2300,7 +2311,9 @@ class ContactTest(TembaTest, CRUDLTestMixin):
 
         # set an output URL on our session so we fetch from there
         s = FlowSession.objects.get(contact=self.joe)
-        FlowSession.objects.filter(id=s.id).update(output_url="https://temba-sessions.s3.aws.amazon.com/c/session.json")
+        FlowSession.objects.filter(id=s.id).update(
+            output_url="https://temba-sessions.s3.aws.amazon.com/c/session.json"
+        )
         self.mock_s3.objects[("temba-sessions", "c/session.json")] = io.StringIO(json.dumps(s.output))
 
         # fetch our contact history
@@ -2380,7 +2393,7 @@ class ContactTest(TembaTest, CRUDLTestMixin):
         assertHistoryEvent(history, 1, "call_started", status="E", status_display="Errored (No Answer)")
 
         recent_start = datetime_to_timestamp(timezone.now() - timedelta(days=1))
-        response = self.fetch_protected(url + "?limit=100&after=%s" % recent_start, self.admin)
+        response = self.fetch_protected(url + f"?limit=100&after={recent_start}", self.admin)
 
         # with our recent flag on, should not see the older messages
         events = response.json()["events"]
@@ -2667,7 +2680,9 @@ class ContactTest(TembaTest, CRUDLTestMixin):
             ),
         )
 
-        self.assertFormError(response, "form", None, "An error occurred updating your contact. Please try again later.")
+        self.assertFormError(
+            response.context["form"], None, "An error occurred updating your contact. Please try again later."
+        )
 
     def test_update(self):
         # if new values don't differ from current values.. no modifications
@@ -2838,7 +2853,9 @@ class ContactTest(TembaTest, CRUDLTestMixin):
 
         # clear our previous fields
         self.set_contact_field(self.joe, "dog", "")
-        self.assertEqual(self.joe.fields, {cat_uuid: {"text": "Rwanda > Kigali City", "state": "Rwanda > Kigali City"}})
+        self.assertEqual(
+            self.joe.fields, {cat_uuid: {"text": "Rwanda > Kigali City", "state": "Rwanda > Kigali City"}}
+        )
         self.joe.refresh_from_db()
 
         self.set_contact_field(self.joe, "cat", "")
@@ -3481,7 +3498,7 @@ class ContactFieldTest(TembaTest):
         # export a specified group of contacts (only Ben and Adam are in the group)
         with self.assertNumQueries(40):
             self.assertExcelSheet(
-                request_export("?g=%s" % group.uuid)[0],
+                request_export(f"?g={group.uuid}")[0],
                 [
                     [
                         "Contact UUID",
@@ -3538,13 +3555,13 @@ class ContactFieldTest(TembaTest):
                 tz=self.org.timezone,
             )
 
-        assertImportExportedFile("?g=%s" % group.uuid)
+        assertImportExportedFile(f"?g={group.uuid}")
 
         contact5 = self.create_contact("George", urns=["tel:+1234567777"], status=Contact.STATUS_STOPPED)
 
         # export a specified status group of contacts (Stopped)
         self.assertExcelSheet(
-            request_export("?g=%s" % self.org.groups.get(name="Stopped").uuid)[0],
+            request_export(f"?g={self.org.groups.get(name='Stopped').uuid}")[0],
             [
                 [
                     "Contact UUID",
@@ -3667,7 +3684,7 @@ class ContactFieldTest(TembaTest):
         with ESMockWithScroll(data=mock_es_data):
             with self.assertNumQueries(41):
                 self.assertExcelSheet(
-                    request_export("?g=%s&s=Hagg" % group.uuid)[0],
+                    request_export(f"?g={group.uuid}&s=Hagg")[0],
                     [
                         [
                             "Contact UUID",
@@ -3707,7 +3724,7 @@ class ContactFieldTest(TembaTest):
                     tz=self.org.timezone,
                 )
 
-            assertImportExportedFile("?g=%s&s=Hagg" % group.uuid)
+            assertImportExportedFile(f"?g={group.uuid}&s=Hagg")
 
         # now try with an anonymous org
         with self.anonymous(self.org):
@@ -3823,7 +3840,7 @@ class ContactFieldTest(TembaTest):
         )
 
         self.assertEqual(
-            ContactListView.prepare_sort_field_struct(sort_on="{}".format(str(self.contactfield_1.uuid))),
+            ContactListView.prepare_sort_field_struct(sort_on=f"{str(self.contactfield_1.uuid)}"),
             (
                 str(self.contactfield_1.uuid),
                 "asc",
@@ -3837,7 +3854,7 @@ class ContactFieldTest(TembaTest):
         )
 
         self.assertEqual(
-            ContactListView.prepare_sort_field_struct(sort_on="-{}".format(str(self.contactfield_1.uuid))),
+            ContactListView.prepare_sort_field_struct(sort_on=f"-{str(self.contactfield_1.uuid)}"),
             (
                 str(self.contactfield_1.uuid),
                 "desc",
@@ -3851,7 +3868,7 @@ class ContactFieldTest(TembaTest):
         )
 
         self.assertEqual(
-            ContactListView.prepare_sort_field_struct(sort_on="-{}".format(str(self.contactfield_1.uuid))),
+            ContactListView.prepare_sort_field_struct(sort_on=f"-{str(self.contactfield_1.uuid)}"),
             (
                 str(self.contactfield_1.uuid),
                 "desc",
@@ -3865,7 +3882,7 @@ class ContactFieldTest(TembaTest):
         )
 
         self.assertEqual(
-            ContactListView.prepare_sort_field_struct(sort_on="-{}".format(str(ward.uuid))),
+            ContactListView.prepare_sort_field_struct(sort_on=f"-{str(ward.uuid)}"),
             (
                 str(ward.uuid),
                 "desc",
@@ -3879,7 +3896,7 @@ class ContactFieldTest(TembaTest):
         )
 
         self.assertEqual(
-            ContactListView.prepare_sort_field_struct(sort_on="-{}".format(str(district.uuid))),
+            ContactListView.prepare_sort_field_struct(sort_on=f"-{str(district.uuid)}"),
             (
                 str(district.uuid),
                 "desc",
@@ -3893,7 +3910,7 @@ class ContactFieldTest(TembaTest):
         )
 
         self.assertEqual(
-            ContactListView.prepare_sort_field_struct(sort_on="{}".format(str(state.uuid))),
+            ContactListView.prepare_sort_field_struct(sort_on=f"{str(state.uuid)}"),
             (
                 str(state.uuid),
                 "asc",
@@ -3928,25 +3945,25 @@ class ContactFieldTest(TembaTest):
         mr_mocks.contact_search("", contacts=[self.joe])
         mr_mocks.contact_search("Joe", contacts=[self.joe])
 
-        response = self.client.get("%s?sort_on=%s" % (url, str(self.contactfield_1.key)))
+        response = self.client.get(f"{url}?sort_on={self.contactfield_1.key!s}")
 
         self.assertEqual(response.context["sort_field"], str(self.contactfield_1.key))
         self.assertEqual(response.context["sort_direction"], "asc")
         self.assertNotIn("search", response.context)
 
-        response = self.client.get("%s?sort_on=-%s" % (url, str(self.contactfield_1.key)))
+        response = self.client.get(f"{url}?sort_on=-{self.contactfield_1.key!s}")
 
         self.assertEqual(response.context["sort_field"], str(self.contactfield_1.key))
         self.assertEqual(response.context["sort_direction"], "desc")
         self.assertNotIn("search", response.context)
 
-        response = self.client.get("%s?sort_on=%s" % (url, "created_on"))
+        response = self.client.get(f"{url}?sort_on=created_on")
 
         self.assertEqual(response.context["sort_field"], "created_on")
         self.assertEqual(response.context["sort_direction"], "asc")
         self.assertNotIn("search", response.context)
 
-        response = self.client.get("%s?sort_on=-%s&search=Joe" % (url, "created_on"))
+        response = self.client.get(f"{url}?sort_on=-created_on&search=Joe")
 
         self.assertEqual(response.context["sort_field"], "created_on")
         self.assertEqual(response.context["sort_direction"], "desc")
@@ -4499,7 +4516,7 @@ class URNTest(TembaTest):
 class ContactImportTest(TembaTest):
     def test_parse_errors(self):
         # try to open an import that is completely empty
-        with self.assertRaisesRegexp(ValidationError, "Import file appears to be empty."):
+        with self.assertRaisesRegex(ValidationError, "Import file appears to be empty."):
             ContactImport.try_to_parse(self.org, io.BytesIO(b""), "foo.csv")
 
         def try_to_parse(name):
@@ -4509,12 +4526,12 @@ class ContactImportTest(TembaTest):
 
         # try to open an import that exceeds the record limit
         with patch("temba.contacts.models.ContactImport.MAX_RECORDS", 2):
-            with self.assertRaisesRegexp(ValidationError, r"Import files can contain a maximum of 2 records\."):
+            with self.assertRaisesRegex(ValidationError, r"Import files can contain a maximum of 2 records\."):
                 try_to_parse("simple.xlsx")
 
         with patch("pyexcel.iget_array") as mock_iget_array:
             mock_iget_array.side_effect = xlrd.XLRDError("error")
-            with self.assertRaisesRegexp(
+            with self.assertRaisesRegex(
                 ValidationError, r"Import file appears to be corrupted. Please save again in Excel and try again."
             ):
                 try_to_parse("simple.csv")
@@ -5100,11 +5117,11 @@ class ContactImportCRUDLTest(TembaTest, CRUDLTestMixin):
 
         # try posting with nothing
         response = self.client.post(create_url, {})
-        self.assertFormError(response, "form", "file", "This field is required.")
+        self.assertFormError(response.context["form"], "file", "This field is required.")
 
         # try uploading an empty CSV file
         response = self.client.post(create_url, {"file": self.upload("media/test_imports/empty.csv")})
-        self.assertFormError(response, "form", "file", "Import file doesn't contain any records.")
+        self.assertFormError(response.context["form"], "file", "Import file doesn't contain any records.")
 
         # try uploading a valid XLSX file
         response = self.client.post(create_url, {"file": self.upload("media/test_imports/simple.xlsx")})
@@ -5113,7 +5130,7 @@ class ContactImportCRUDLTest(TembaTest, CRUDLTestMixin):
         imp = ContactImport.objects.get()
         self.assertEqual(self.org, imp.org)
         self.assertEqual(3, imp.num_records)
-        self.assertRegexpMatches(imp.file.name, rf"test_orgs/{self.org.id}/contact_imports/[\w-]{{36}}.xlsx$")
+        self.assertRegex(imp.file.name, rf"test_orgs/{self.org.id}/contact_imports/[\w-]{{36}}.xlsx$")
         self.assertEqual("simple.xlsx", imp.original_filename)
         self.assertIsNone(imp.started_on)
         self.assertIsNone(imp.group)
@@ -5153,22 +5170,24 @@ class ContactImportCRUDLTest(TembaTest, CRUDLTestMixin):
 
         # try creating new group but not providing a name
         response = self.client.post(preview_url, {"add_to_group": True, "group_mode": "N", "new_group_name": "  "})
-        self.assertFormError(response, "form", "new_group_name", "Required.")
+        self.assertFormError(response.context["form"], "new_group_name", "Required.")
 
         # try creating new group but providing an invalid name
         response = self.client.post(preview_url, {"add_to_group": True, "group_mode": "N", "new_group_name": '"Foo"'})
-        self.assertFormError(response, "form", "new_group_name", "Invalid group name.")
+        self.assertFormError(response.context["form"], "new_group_name", "Invalid group name.")
 
         # try creating new group but providing a name of an existing group
-        response = self.client.post(preview_url, {"add_to_group": True, "group_mode": "N", "new_group_name": "testERs"})
-        self.assertFormError(response, "form", "new_group_name", "Already exists.")
+        response = self.client.post(
+            preview_url, {"add_to_group": True, "group_mode": "N", "new_group_name": "testERs"}
+        )
+        self.assertFormError(response.context["form"], "new_group_name", "Already exists.")
 
         # try creating new group when we've already reached our group limit
         with override_settings(ORG_LIMIT_DEFAULTS={"groups": 2}):
             response = self.client.post(
                 preview_url, {"add_to_group": True, "group_mode": "N", "new_group_name": "Import"}
             )
-            self.assertFormError(response, "form", None, "This workspace has reached its limit of 2 groups.")
+            self.assertFormError(response.context["form"], None, "This workspace has reached its limit of 2 groups.")
 
         # finally create new group...
         response = self.client.post(preview_url, {"add_to_group": True, "group_mode": "N", "new_group_name": "Import"})
@@ -5209,7 +5228,7 @@ class ContactImportCRUDLTest(TembaTest, CRUDLTestMixin):
 
         # try submitting without group
         response = self.client.post(preview_url, {"add_to_group": True, "group_mode": "E", "existing_group": ""})
-        self.assertFormError(response, "form", "existing_group", "Required.")
+        self.assertFormError(response.context["form"], "existing_group", "Required.")
 
         # finally try with actual group...
         response = self.client.post(
@@ -5259,7 +5278,7 @@ class ContactImportCRUDLTest(TembaTest, CRUDLTestMixin):
             },
         )
         self.assertEqual(1, len(response.context["form"].errors))
-        self.assertFormError(response, "form", None, "Field name for 'Field:Sheep' matches an existing field.")
+        self.assertFormError(response.context["form"], None, "Field name for 'Field:Sheep' matches an existing field.")
 
         # if including a new fields, can't repeat names
         response = self.client.post(
@@ -5275,7 +5294,7 @@ class ContactImportCRUDLTest(TembaTest, CRUDLTestMixin):
             },
         )
         self.assertEqual(1, len(response.context["form"].errors))
-        self.assertFormError(response, "form", None, "Field name 'goats' is repeated.")
+        self.assertFormError(response.context["form"], None, "Field name 'goats' is repeated.")
 
         # if including a new field, name can't be invalid
         response = self.client.post(
@@ -5291,7 +5310,9 @@ class ContactImportCRUDLTest(TembaTest, CRUDLTestMixin):
             },
         )
         self.assertEqual(1, len(response.context["form"].errors))
-        self.assertFormError(response, "form", None, "Field name for 'Field:Sheep' is invalid or a reserved word.")
+        self.assertFormError(
+            response.context["form"], None, "Field name for 'Field:Sheep' is invalid or a reserved word."
+        )
 
         # or empty
         response = self.client.post(
@@ -5307,7 +5328,7 @@ class ContactImportCRUDLTest(TembaTest, CRUDLTestMixin):
             },
         )
         self.assertEqual(1, len(response.context["form"].errors))
-        self.assertFormError(response, "form", None, "Field name for 'Field:Sheep' can't be empty.")
+        self.assertFormError(response.context["form"], None, "Field name for 'Field:Sheep' can't be empty.")
 
         # unless you're ignoring it
         response = self.client.post(

@@ -4,7 +4,6 @@ import tempfile
 from unittest.mock import Mock, mock_open, patch
 
 import responses
-
 from django.core.management import call_command
 from django.test.utils import captured_stdout
 from django.urls import reverse
@@ -725,5 +724,5 @@ class DownloadGeoJsonTest(TembaTest):
         call_command("download_geojson", "12345", "--dir", destination_dir)
         self.assertFalse(os.path.exists(bad_path))
         self.assertTrue(os.path.exists(good_path))
-        with open(good_path, "r") as fp:
+        with open(good_path) as fp:
             self.assertEqual(fp.read(), "the-relation-json")

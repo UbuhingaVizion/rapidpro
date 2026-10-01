@@ -2,9 +2,8 @@ import logging
 from functools import wraps
 
 from celery import shared_task
-from django_redis import get_redis_connection
-
 from django.utils import timezone
+from django_redis import get_redis_connection
 
 from . import analytics, json
 

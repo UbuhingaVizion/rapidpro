@@ -8,8 +8,6 @@ from fnmatch import fnmatch
 from urllib.parse import unquote, urlparse
 
 import iso8601
-from xlsxlite.writer import XLSXBook
-
 from django.conf import settings
 from django.contrib.auth.models import User
 from django.contrib.postgres.fields import ArrayField
@@ -20,6 +18,7 @@ from django.db.models import Prefetch, Q, Sum
 from django.db.models.functions import Lower
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
+from xlsxlite.writer import XLSXBook
 
 from temba import mailroom
 from temba.assets.models import register_asset_store
@@ -518,7 +517,9 @@ class Msg(models.Model):
     text = models.TextField()
     attachments = ArrayField(models.URLField(max_length=Attachment.MAX_LEN), null=True)
     quick_replies = ArrayField(models.CharField(max_length=64), null=True)
-    optin = models.ForeignKey("msgs.OptIn", on_delete=models.DO_NOTHING, null=True, db_index=False, db_constraint=False)
+    optin = models.ForeignKey(
+        "msgs.OptIn", on_delete=models.DO_NOTHING, null=True, db_index=False, db_constraint=False
+    )
     locale = models.CharField(max_length=6, null=True)  # eng, eng-US, por-BR, und etc
 
     created_on = models.DateTimeField(db_index=True)
@@ -768,9 +769,7 @@ class BroadcastMsgCount(SquashableModel):
         )
         INSERT INTO %(table)s("broadcast_id", "count", "is_squashed")
         VALUES (%%s, GREATEST(0, (SELECT SUM("count") FROM deleted)), TRUE);
-        """ % {
-            "table": cls._meta.db_table
-        }
+        """ % {"table": cls._meta.db_table}
 
         return sql, (distinct_set.broadcast_id,) * 2
 
@@ -896,9 +895,7 @@ class SystemLabelCount(SquashableModel):
         )
         INSERT INTO %(table)s("org_id", "label_type", "count", "is_squashed")
         VALUES (%%s, %%s, GREATEST(0, (SELECT SUM("count") FROM deleted)), TRUE);
-        """ % {
-            "table": cls._meta.db_table
-        }
+        """ % {"table": cls._meta.db_table}
 
         return sql, (distinct_set.org_id, distinct_set.label_type) * 2
 
@@ -1016,9 +1013,7 @@ class LabelCount(SquashableModel):
             )
             INSERT INTO %(table)s("label_id", "is_archived", "count", "is_squashed")
             VALUES (%%s, %%s, GREATEST(0, (SELECT SUM("count") FROM deleted)), TRUE);
-            """ % {
-            "table": cls._meta.db_table
-        }
+            """ % {"table": cls._meta.db_table}
 
         return sql, (distinct_set.label_id, distinct_set.is_archived) * 2
 
@@ -1202,7 +1197,7 @@ class ExportMessagesTask(BaseItemWithContactExport):
         if last_created_on:
             messages = messages.filter(created_on__gt=last_created_on)
 
-        all_message_ids = array(str("l"), messages.values_list("id", flat=True))
+        all_message_ids = array("l", messages.values_list("id", flat=True))
 
         for msg_batch in MsgIterator(
             all_message_ids,

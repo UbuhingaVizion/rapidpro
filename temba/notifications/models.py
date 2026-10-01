@@ -196,7 +196,9 @@ class Notification(models.Model):
         ExportTicketsTask, null=True, on_delete=models.PROTECT, related_name="notifications"
     )
 
-    contact_import = models.ForeignKey(ContactImport, null=True, on_delete=models.PROTECT, related_name="notifications")
+    contact_import = models.ForeignKey(
+        ContactImport, null=True, on_delete=models.PROTECT, related_name="notifications"
+    )
 
     incident = models.ForeignKey(Incident, null=True, on_delete=models.PROTECT, related_name="notifications")
 
@@ -233,7 +235,9 @@ class Notification(models.Model):
 
     @classmethod
     def mark_seen(cls, org, notification_type: str, *, scope: str, user):
-        notifications = cls.objects.filter(org_id=org.id, notification_type=notification_type, user=user, is_seen=False)
+        notifications = cls.objects.filter(
+            org_id=org.id, notification_type=notification_type, user=user, is_seen=False
+        )
 
         if scope is not None:
             notifications = notifications.filter(scope=scope)
@@ -304,9 +308,7 @@ class NotificationCount(SquashableModel):
             )
             INSERT INTO %(table)s("org_id", "user_id", "count", "is_squashed")
             VALUES (%%s, %%s, GREATEST(0, (SELECT SUM("count") FROM deleted)), TRUE);
-            """ % {
-            "table": cls._meta.db_table
-        }
+            """ % {"table": cls._meta.db_table}
 
         return sql, (distinct_set.org_id, distinct_set.user_id) * 2
 

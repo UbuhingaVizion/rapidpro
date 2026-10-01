@@ -45,9 +45,9 @@ def format_number(val):
 def sizeof_fmt(num, suffix="b"):
     for unit in ["", "K", "M", "G", "T", "P", "E", "Z"]:
         if abs(num) < 1024.0:
-            return "%3.1f %s%s" % (num, unit, suffix)
+            return f"{num:3.1f} {unit}{suffix}"
         num /= 1024.0
-    return "%.1f %s%s" % (num, "Y", suffix)
+    return f"{num:.1f} Y{suffix}"
 
 
 def chunk_list(iterable, size):

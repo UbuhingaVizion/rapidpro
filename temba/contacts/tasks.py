@@ -1,9 +1,9 @@
 import logging
-from datetime import timedelta, timezone as tzone
+from datetime import timedelta
+from datetime import timezone as tzone
 
 import iso8601
 from celery import shared_task
-
 from django.conf import settings
 from django.contrib.auth.models import User
 from django.utils import timezone

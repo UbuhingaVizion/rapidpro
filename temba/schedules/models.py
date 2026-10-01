@@ -1,9 +1,9 @@
 import calendar
 import logging
-from datetime import time, timedelta, timezone as tzone
+from datetime import time, timedelta
+from datetime import timezone as tzone
 
 from dateutil.relativedelta import relativedelta
-
 from django.contrib.humanize.templatetags.humanize import ordinal
 from django.db import models
 from django.db.models import Index, Q

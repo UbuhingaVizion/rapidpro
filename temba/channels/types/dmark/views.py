@@ -1,8 +1,7 @@
 import requests
-from smartmin.views import SmartFormView
-
 from django import forms
 from django.utils.translation import gettext_lazy as _
+from smartmin.views import SmartFormView
 
 from ...models import Channel
 from ...views import ClaimViewMixin
@@ -47,7 +46,7 @@ class ClaimView(ClaimViewMixin, SmartFormView):
             self.request.user,
             data["country"],
             self.channel_type,
-            name="DMark Mobile: %s" % data["shortcode"],
+            name=f"DMark Mobile: {data['shortcode']}",
             address=data["shortcode"],
             config=config,
         )

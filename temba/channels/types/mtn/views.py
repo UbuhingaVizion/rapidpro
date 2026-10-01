@@ -1,7 +1,6 @@
-from smartmin.views import SmartFormView
-
 from django import forms
 from django.utils.translation import gettext_lazy as _
+from smartmin.views import SmartFormView
 
 from temba.utils.fields import SelectWidget
 
@@ -53,4 +52,4 @@ class ClaimView(ClaimViewMixin, SmartFormView):
             schemes=("tel",),
         )
 
-        return super(ClaimView, self).form_valid(form)
+        return super().form_valid(form)

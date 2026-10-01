@@ -1,12 +1,12 @@
-from datetime import date, datetime, timedelta, timezone as tzone
+from datetime import date, datetime, timedelta
+from datetime import timezone as tzone
 from unittest.mock import patch
-
-from openpyxl import load_workbook
 
 from django.conf import settings
 from django.test.utils import override_settings
 from django.urls import reverse
 from django.utils import timezone
+from openpyxl import load_workbook
 
 from temba.contacts.models import Contact, ContactField, ContactURN
 from temba.tests import CRUDLTestMixin, TembaTest, matchers, mock_mailroom
@@ -114,7 +114,9 @@ class TicketTest(TembaTest):
             self.assertEqual(sum(assignee_closed.values()), TicketCount.get_all(org, Ticket.STATUS_CLOSED))
 
             self.assertEqual(topic_open, TicketCount.get_by_topics(org, list(org.topics.all()), Ticket.STATUS_OPEN))
-            self.assertEqual(topic_closed, TicketCount.get_by_topics(org, list(org.topics.all()), Ticket.STATUS_CLOSED))
+            self.assertEqual(
+                topic_closed, TicketCount.get_by_topics(org, list(org.topics.all()), Ticket.STATUS_CLOSED)
+            )
 
             self.assertEqual(contacts, {c: Contact.objects.get(id=c.id).ticket_count for c in contacts})
 
@@ -245,7 +247,9 @@ class TopicCRUDLTest(TembaTest, CRUDLTestMixin):
 
     def test_update(self):
         system_topic = Topic.objects.filter(org=self.org, is_system=True).first()
-        user_topic = Topic.objects.create(org=self.org, name="Hot Topic", created_by=self.admin, modified_by=self.admin)
+        user_topic = Topic.objects.create(
+            org=self.org, name="Hot Topic", created_by=self.admin, modified_by=self.admin
+        )
 
         # can't edit a system topic
         update_url = reverse("tickets.topic_update", args=[system_topic.uuid])
@@ -323,7 +327,7 @@ class TicketCRUDLTest(TembaTest, CRUDLTestMixin):
         response = self.client.get(
             list_url,
             content_type="application/json",
-            HTTP_TEMBA_REFERER_PATH=f"/tickets/mine/open/{ticket.uuid}",
+            headers={"temba-referer-path": f"/tickets/mine/open/{ticket.uuid}"},
         )
 
         self.assertEqual(("tickets", "mine", "open", str(ticket.uuid)), response.context["temba_referer"])
@@ -350,7 +354,9 @@ class TicketCRUDLTest(TembaTest, CRUDLTestMixin):
             update_url, allow_viewers=False, allow_editors=True, allow_agents=True, form_fields=["topic", "body"]
         )
 
-        user_topic = Topic.objects.create(org=self.org, name="Hot Topic", created_by=self.admin, modified_by=self.admin)
+        user_topic = Topic.objects.create(
+            org=self.org, name="Hot Topic", created_by=self.admin, modified_by=self.admin
+        )
 
         # edit successfully
         self.assertUpdateSubmit(update_url, {"topic": user_topic.id, "body": "This is silly"}, success_status=302)
@@ -374,7 +380,9 @@ class TicketCRUDLTest(TembaTest, CRUDLTestMixin):
     def test_folder(self, mr_mocks):
         self.login(self.admin)
 
-        user_topic = Topic.objects.create(org=self.org, name="Hot Topic", created_by=self.admin, modified_by=self.admin)
+        user_topic = Topic.objects.create(
+            org=self.org, name="Hot Topic", created_by=self.admin, modified_by=self.admin
+        )
 
         contact1 = self.create_contact("Joe", phone="123", last_seen_on=timezone.now())
         contact2 = self.create_contact("Frank", phone="124", last_seen_on=timezone.now())
@@ -742,16 +750,16 @@ class TicketCRUDLTest(TembaTest, CRUDLTestMixin):
 
         # try to submit without specifying dates (UI doesn't actually allow this)
         response = self.client.post(export_url, {})
-        self.assertFormError(response, "form", "start_date", "This field is required.")
-        self.assertFormError(response, "form", "end_date", "This field is required.")
+        self.assertFormError(response.context["form"], "start_date", "This field is required.")
+        self.assertFormError(response.context["form"], "end_date", "This field is required.")
 
         # try to submit with start date in future
         response = self.client.post(export_url, {"start_date": "2200-01-01", "end_date": "2022-09-28"})
-        self.assertFormError(response, "form", None, "Start date can't be in the future.")
+        self.assertFormError(response.context["form"], None, "Start date can't be in the future.")
 
         # try to submit with start date > end date
         response = self.client.post(export_url, {"start_date": "2022-09-01", "end_date": "2022-03-01"})
-        self.assertFormError(response, "form", None, "End date can't be before start date.")
+        self.assertFormError(response.context["form"], None, "End date can't be before start date.")
 
         # check requesting export for last 90 days
         with self.mockReadOnly(assert_models={Ticket, ContactURN}):
@@ -981,8 +989,8 @@ class TicketCRUDLTest(TembaTest, CRUDLTestMixin):
                 "with_groups": [cg.id for cg in too_many_groups],
             },
         )
-        self.assertFormError(response, "form", "with_fields", "You can only include up to 10 fields.")
-        self.assertFormError(response, "form", "with_groups", "You can only include up to 10 groups.")
+        self.assertFormError(response.context["form"], "with_fields", "You can only include up to 10 fields.")
+        self.assertFormError(response.context["form"], "with_groups", "You can only include up to 10 groups.")
 
     def _request_export(self, start_date: date, end_date: date, with_fields=(), with_groups=()):
         export_url = reverse("tickets.ticket_export")

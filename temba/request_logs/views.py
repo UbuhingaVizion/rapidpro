@@ -1,8 +1,7 @@
-from smartmin.views import SmartCRUDL, SmartListView, SmartReadView, smart_url
-
 from django.shortcuts import get_object_or_404
 from django.utils.functional import cached_property
 from django.utils.translation import gettext_lazy as _
+from smartmin.views import SmartCRUDL, SmartListView, SmartReadView, smart_url
 
 from temba.classifiers.models import Classifier
 from temba.orgs.views import OrgObjPermsMixin, OrgPermsMixin
@@ -25,7 +24,7 @@ class BaseObjLogsView(SpaMixin, OrgObjPermsMixin, SmartListView):
 
     @classmethod
     def derive_url_pattern(cls, path, action):
-        return r"^%s/%s/(?P<uuid>[^/]+)/$" % (path, action)
+        return rf"^{path}/{action}/(?P<uuid>[^/]+)/$"
 
     def get_object_org(self):
         return self.source.org

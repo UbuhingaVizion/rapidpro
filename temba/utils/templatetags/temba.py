@@ -1,14 +1,15 @@
 import json
-from datetime import timedelta, timezone as tzone
+from datetime import timedelta
+from datetime import timezone as tzone
 
 import iso8601
-
 from django.template.defaultfilters import register
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.html import escapejs
 from django.utils.safestring import mark_safe
-from django.utils.translation import gettext, gettext_lazy as _, ngettext_lazy
+from django.utils.translation import gettext, ngettext_lazy
+from django.utils.translation import gettext_lazy as _
 
 from temba.campaigns.models import Campaign, CampaignEvent
 from temba.contacts.models import ContactGroup
@@ -143,7 +144,7 @@ def to_json(value):
 
     https://stackoverflow.com/a/14290542
     """
-    if type(value) != str:
+    if type(value) is not str:
         raise ValueError(f"Expected str got {type(value)} for to_json")
 
     escaped_output = escapejs(value)

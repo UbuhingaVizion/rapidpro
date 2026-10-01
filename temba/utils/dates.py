@@ -1,5 +1,6 @@
 import calendar
-from datetime import date, datetime, time, timedelta, timezone as tzone
+from datetime import date, datetime, time, timedelta
+from datetime import timezone as tzone
 
 from django.utils import timezone
 
@@ -15,7 +16,7 @@ def datetime_to_str(date_obj, format, tz):
     if not date_obj:
         return None
 
-    if type(date_obj) == date:
+    if type(date_obj) is date:
         date_obj = datetime.combine(date_obj, time(0, 0, 0)).replace(tzinfo=tz)
 
     if isinstance(date_obj, datetime):

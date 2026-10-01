@@ -1,10 +1,9 @@
-from smartmin.models import SmartModel
-
 from django.contrib.postgres.fields import ArrayField
 from django.core.exceptions import ValidationError
 from django.db import models
 from django.db.models import Case, Q, When
 from django.utils.translation import gettext_lazy as _
+from smartmin.models import SmartModel
 
 from temba.channels.models import Channel
 from temba.contacts.models import Contact, ContactGroup
@@ -135,7 +134,9 @@ class Trigger(SmartModel):
         assert flow.flow_type != Flow.TYPE_SURVEY, "can't create triggers for surveyor flows"
         assert trigger_type != cls.TYPE_KEYWORD or (keywords and match_type), "keywords required for keyword triggers"
         assert trigger_type != cls.TYPE_SCHEDULE or schedule, "schedule must be provided for scheduled triggers"
-        assert trigger_type == cls.TYPE_SCHEDULE or not contacts, "contacts can only be provided for scheduled triggers"
+        assert trigger_type == cls.TYPE_SCHEDULE or not contacts, (
+            "contacts can only be provided for scheduled triggers"
+        )
 
         trigger = cls.objects.create(
             org=org,

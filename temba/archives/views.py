@@ -1,8 +1,7 @@
 from gettext import gettext as _
 
-from smartmin.views import SmartCRUDL, SmartListView, SmartReadView
-
 from django.http import HttpResponseRedirect
+from smartmin.views import SmartCRUDL, SmartListView, SmartReadView
 
 from temba.orgs.views import OrgObjPermsMixin, OrgPermsMixin
 from temba.utils.views import SpaMixin
@@ -40,7 +39,7 @@ class ArchiveCRUDL(SmartCRUDL):
 
         @classmethod
         def derive_url_pattern(cls, path, action):
-            return r"^%s/%s/$" % (path, Archive.TYPE_FLOWRUN)
+            return rf"^{path}/{Archive.TYPE_FLOWRUN}/$"
 
         def derive_title(self):
             return _("Run Archives")
@@ -53,7 +52,7 @@ class ArchiveCRUDL(SmartCRUDL):
 
         @classmethod
         def derive_url_pattern(cls, path, action):
-            return r"^%s/%s/$" % (path, Archive.TYPE_MSG)
+            return rf"^{path}/{Archive.TYPE_MSG}/$"
 
         def derive_title(self):
             return _("Message Archives")

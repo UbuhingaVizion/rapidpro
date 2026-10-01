@@ -6,7 +6,6 @@ from os import urandom
 
 import chardet
 import regex
-
 from django.utils.text import slugify
 
 CONTROL_CHARACTERES_REGEX = r"[\000-\010]|[\013-\014]|[\016-\037]"
@@ -88,7 +87,7 @@ def truncate(text, max_len):
     Truncates text to be less than max_len characters. If truncation is required, text ends with ...
     """
     if len(text) > max_len:
-        return "%s..." % text[: (max_len - 3)]
+        return f"{text[: max_len - 3]}..."
     else:
         return text
 

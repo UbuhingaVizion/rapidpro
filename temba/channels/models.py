@@ -8,11 +8,6 @@ from uuid import uuid4
 from xml.sax.saxutils import escape
 
 import phonenumbers
-from django_countries.fields import CountryField
-from phonenumbers import NumberParseException
-from smartmin.models import SmartModel
-from twilio.base.exceptions import TwilioRestException
-
 from django.conf import settings
 from django.contrib.postgres.fields import ArrayField
 from django.core.files.storage import storages
@@ -21,10 +16,14 @@ from django.db.models import Q, Sum
 from django.db.models.signals import pre_save
 from django.dispatch import receiver
 from django.template import Engine
-from django.urls import re_path
+from django.urls import path
 from django.utils import timezone
 from django.utils.functional import cached_property
 from django.utils.translation import gettext_lazy as _
+from django_countries.fields import CountryField
+from phonenumbers import NumberParseException
+from smartmin.models import SmartModel
+from twilio.base.exceptions import TwilioRestException
 
 from temba.orgs.models import DependencyMixin, Org
 from temba.utils import analytics, get_anonymous_user, json, on_transaction_commit, redact
@@ -164,7 +163,7 @@ class ChannelType(metaclass=ABCMeta):
         """
         claim_view_kwargs = self.claim_view_kwargs if self.claim_view_kwargs else {}
         claim_view_kwargs["channel_type"] = self
-        return re_path(r"^claim/$", self.claim_view.as_view(**claim_view_kwargs), name="claim")
+        return path("claim/", self.claim_view.as_view(**claim_view_kwargs), name="claim")
 
     def get_update_form(self):
         if self.update_form is None:
@@ -358,7 +357,7 @@ class Channel(LegacyUUIDMixin, TembaModel, DependencyMixin):
 
         if schemes:
             if channel_type.schemes and not set(channel_type.schemes).intersection(schemes):
-                raise ValueError("Channel type '%s' cannot support schemes %s" % (channel_type, schemes))
+                raise ValueError(f"Channel type '{channel_type}' cannot support schemes {schemes}")
         else:
             schemes = channel_type.schemes
 
@@ -417,7 +416,7 @@ class Channel(LegacyUUIDMixin, TembaModel, DependencyMixin):
         try:
             return TYPES[code]
         except KeyError:  # pragma: no cover
-            raise ValueError("Unrecognized channel type code: %s" % code)
+            raise ValueError(f"Unrecognized channel type code: {code}")
 
     @classmethod
     def get_types(cls):
@@ -555,13 +554,13 @@ class Channel(LegacyUUIDMixin, TembaModel, DependencyMixin):
                 pass
 
         elif URN.TWITTER_SCHEME in self.schemes:
-            return "@%s" % self.address
+            return f"@{self.address}"
 
         elif URN.FACEBOOK_SCHEME in self.schemes:
-            return "%s (%s)" % (self.config.get(Channel.CONFIG_PAGE_NAME, self.name), self.address)
+            return f"{self.config.get(Channel.CONFIG_PAGE_NAME, self.name)} ({self.address})"
 
         elif self.channel_type == "WAC":
-            return "%s (%s)" % (self.config.get("wa_number", ""), self.config.get("wa_verified_name", self.name))
+            return f"{self.config.get('wa_number', '')} ({self.config.get('wa_verified_name', self.name)})"
 
         return self.address
 
@@ -795,9 +794,7 @@ class ChannelCount(SquashableModel):
             )
             INSERT INTO %(table)s("channel_id", "count_type", "day", "count", "is_squashed")
             VALUES (%%s, %%s, %%s, GREATEST(0, (SELECT SUM("count") FROM removed)), TRUE);
-            """ % {
-                "table": cls._meta.db_table
-            }
+            """ % {"table": cls._meta.db_table}
 
             params = (distinct_set.channel_id, distinct_set.count_type, distinct_set.day) * 2
         else:
@@ -807,9 +804,7 @@ class ChannelCount(SquashableModel):
             )
             INSERT INTO %(table)s("channel_id", "count_type", "day", "count", "is_squashed")
             VALUES (%%s, %%s, NULL, GREATEST(0, (SELECT SUM("count") FROM removed)), TRUE);
-            """ % {
-                "table": cls._meta.db_table
-            }
+            """ % {"table": cls._meta.db_table}
 
             params = (distinct_set.channel_id, distinct_set.count_type) * 2
 
@@ -981,7 +976,7 @@ class ChannelLog(models.Model):
     @classmethod
     def get_logs(cls, channel, uuids: list) -> list:
         # look for logs in the database
-        logs = {l.uuid: l._get_json() for l in cls.objects.filter(channel=channel, uuid__in=uuids)}
+        logs = {log.uuid: log._get_json() for log in cls.objects.filter(channel=channel, uuid__in=uuids)}
 
         # and in storage
         for log_uuid in uuids:
@@ -996,7 +991,7 @@ class ChannelLog(models.Model):
                 except Exception:
                     logger.exception("unable to read log from storage", extra={"key": key})
 
-        return sorted(logs.values(), key=lambda l: l["created_on"])
+        return sorted(logs.values(), key=lambda log: log["created_on"])
 
     def _get_json(self):
         """

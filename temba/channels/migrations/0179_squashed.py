@@ -2,11 +2,10 @@
 
 import uuid
 
-import django_countries.fields
-
 import django.contrib.postgres.fields
 import django.db.models.deletion
 import django.utils.timezone
+import django_countries.fields
 from django.conf import settings
 from django.db import migrations, models
 

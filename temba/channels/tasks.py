@@ -1,8 +1,8 @@
 import logging
-from datetime import timedelta, timezone as tzone
+from datetime import timedelta
+from datetime import timezone as tzone
 
 from celery import shared_task
-
 from django.conf import settings
 from django.db.models import Count, Sum
 from django.utils import timezone
@@ -33,9 +33,9 @@ def check_android_channels():
 
     last_half_hour = timezone.now() - timedelta(minutes=30)
 
-    ongoing = Incident.objects.filter(incident_type=ChannelDisconnectedIncidentType.slug, ended_on=None).select_related(
-        "channel"
-    )
+    ongoing = Incident.objects.filter(
+        incident_type=ChannelDisconnectedIncidentType.slug, ended_on=None
+    ).select_related("channel")
 
     for incident in ongoing:
         # if we've seen the channel since this incident started went out, then end it

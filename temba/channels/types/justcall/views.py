@@ -1,7 +1,6 @@
-from smartmin.views import SmartFormView
-
 from django import forms
 from django.utils.translation import gettext_lazy as _
+from smartmin.views import SmartFormView
 
 from temba.channels.models import Channel
 from temba.channels.views import ALL_COUNTRIES, ClaimViewMixin
@@ -40,4 +39,4 @@ class ClaimView(ClaimViewMixin, SmartFormView):
             role=Channel.ROLE_SEND + Channel.ROLE_RECEIVE,
         )
 
-        return super(ClaimView, self).form_valid(form)
+        return super().form_valid(form)

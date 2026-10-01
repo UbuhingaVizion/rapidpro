@@ -28,7 +28,7 @@ PRETTY_TIMEZONE_CHOICES = []
 for tz in pytz.common_timezones:
     now = datetime.now(pytz.timezone(tz))
     ofs = now.strftime("%z")
-    PRETTY_TIMEZONE_CHOICES.append((int(ofs), tz, "(GMT%s) %s" % (ofs, tz)))
+    PRETTY_TIMEZONE_CHOICES.append((int(ofs), tz, f"(GMT{ofs}) {tz}"))
 
 PRETTY_TIMEZONE_CHOICES.sort()
 

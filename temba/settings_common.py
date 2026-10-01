@@ -4,7 +4,6 @@ from datetime import timedelta
 
 import iptools
 from celery.schedules import crontab
-
 from django.utils.translation import gettext_lazy as _
 
 INTERNAL_IPS = iptools.IpRangeList("127.0.0.1", "192.168.0.10", "192.168.0.0/24", "0.0.0.0")  # network block
@@ -101,7 +100,6 @@ DEFAULT_LANGUAGE = "en-us"
 SITE_ID = 1
 
 USE_I18N = True
-USE_L10N = True
 
 # -----------------------------------------------------------------------------------
 # Static Files
@@ -983,11 +981,15 @@ FACEBOOK_LOGIN_WHATSAPP_CONFIG_ID = os.environ.get("FACEBOOK_LOGIN_WHATSAPP_CONF
 FACEBOOK_LOGIN_INSTAGRAM_CONFIG_ID = os.environ.get("FACEBOOK_LOGIN_INSTAGRAM_CONFIG_ID", "")
 FACEBOOK_LOGIN_MESSENGER_CONFIG_ID = os.environ.get("FACEBOOK_LOGIN_MESSENGER_CONFIG_ID", "")
 
-WHATSAPP_ADMIN_SYSTEM_USER_ID = os.environ.get("WHATSAPP_ADMIN_SYSTEM_USER_ID", "MISSING_WHATSAPP_ADMIN_SYSTEM_USER_ID")
+WHATSAPP_ADMIN_SYSTEM_USER_ID = os.environ.get(
+    "WHATSAPP_ADMIN_SYSTEM_USER_ID", "MISSING_WHATSAPP_ADMIN_SYSTEM_USER_ID"
+)
 WHATSAPP_ADMIN_SYSTEM_USER_TOKEN = os.environ.get(
     "WHATSAPP_ADMIN_SYSTEM_USER_TOKEN", "MISSING_WHATSAPP_ADMIN_SYSTEM_USER_TOKEN"
 )
-WHATSAPP_FACEBOOK_BUSINESS_ID = os.environ.get("WHATSAPP_FACEBOOK_BUSINESS_ID", "MISSING_WHATSAPP_FACEBOOK_BUSINESS_ID")
+WHATSAPP_FACEBOOK_BUSINESS_ID = os.environ.get(
+    "WHATSAPP_FACEBOOK_BUSINESS_ID", "MISSING_WHATSAPP_FACEBOOK_BUSINESS_ID"
+)
 
 # IP Addresses
 # These are the externally accessible IP addresses of the servers running RapidPro.

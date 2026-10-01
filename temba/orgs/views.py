@@ -7,22 +7,6 @@ from urllib.parse import parse_qs, quote, quote_plus, unquote, urlparse
 
 import iso8601
 import pyotp
-from packaging.version import Version
-from smartmin.users.models import FailedLogin, PasswordHistory
-from smartmin.users.views import Login, UserUpdateForm
-from smartmin.views import (
-    SmartCreateView,
-    SmartCRUDL,
-    SmartDeleteView,
-    SmartFormView,
-    SmartListView,
-    SmartModelActionView,
-    SmartModelFormView,
-    SmartReadView,
-    SmartTemplateView,
-    SmartUpdateView,
-)
-
 from django import forms
 from django.conf import settings
 from django.contrib import messages
@@ -44,6 +28,21 @@ from django.utils.functional import cached_property
 from django.utils.text import slugify
 from django.utils.translation import gettext_lazy as _
 from django.views.decorators.csrf import csrf_exempt
+from packaging.version import Version
+from smartmin.users.models import FailedLogin, PasswordHistory
+from smartmin.users.views import Login, UserUpdateForm
+from smartmin.views import (
+    SmartCreateView,
+    SmartCRUDL,
+    SmartDeleteView,
+    SmartFormView,
+    SmartListView,
+    SmartModelActionView,
+    SmartModelFormView,
+    SmartReadView,
+    SmartTemplateView,
+    SmartUpdateView,
+)
 
 from temba.api.models import APIToken, Resthook
 from temba.campaigns.models import Campaign
@@ -52,7 +51,13 @@ from temba.formax import FormaxMixin
 from temba.orgs.tasks import send_user_verification_email
 from temba.utils import analytics, get_anonymous_user, json, languages
 from temba.utils.email import is_valid_address
-from temba.utils.fields import ArbitraryJsonChoiceField, CheckboxWidget, InputWidget, SelectMultipleWidget, SelectWidget
+from temba.utils.fields import (
+    ArbitraryJsonChoiceField,
+    CheckboxWidget,
+    InputWidget,
+    SelectMultipleWidget,
+    SelectWidget,
+)
 from temba.utils.timezones import TimeZoneFormField
 from temba.utils.views import (
     ComponentFormMixin,
@@ -186,7 +191,7 @@ class ModalMixin(SmartFormView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
 
-        if "HTTP_X_PJAX" in self.request.META and "HTTP_X_FORMAX" not in self.request.META:  # pragma: no cover
+        if "x-pjax" in self.request.headers and "x-formax" not in self.request.headers:  # pragma: no cover
             context["base_template"] = "smartmin/modal.html"
             context["is_modal"] = True
         if "success_url" in kwargs:  # pragma: no cover
@@ -225,7 +230,7 @@ class ModalMixin(SmartFormView):
 
             messages.success(self.request, self.derive_success_message())
 
-            if "HTTP_X_PJAX" not in self.request.META:
+            if "x-pjax" not in self.request.headers:
                 return HttpResponseRedirect(self.get_success_url())
             else:  # pragma: no cover
                 return self.render_modal_response(form)
@@ -405,7 +410,9 @@ class OrgGrantForm(forms.ModelForm):
         help_text=_("Your last name of the workspace administrator"),
         max_length=User._meta.get_field("last_name").max_length,
     )
-    email = forms.EmailField(help_text=_("Their email address"), max_length=User._meta.get_field("username").max_length)
+    email = forms.EmailField(
+        help_text=_("Their email address"), max_length=User._meta.get_field("username").max_length
+    )
     timezone = TimeZoneFormField(help_text=_("The timezone for the workspace"))
     password = forms.CharField(
         widget=forms.PasswordInput,
@@ -626,7 +633,7 @@ class InferOrgMixin:
 
     @classmethod
     def derive_url_pattern(cls, path, action):
-        return r"^%s/%s/$" % (path, action)
+        return rf"^{path}/{action}/$"
 
     def get_object(self, *args, **kwargs):
         return self.request.org
@@ -639,7 +646,7 @@ class InferUserMixin:
 
     @classmethod
     def derive_url_pattern(cls, path, action):
-        return r"^%s/%s/$" % (path, action)
+        return rf"^{path}/{action}/$"
 
     def get_object(self, *args, **kwargs):
         return self.request.user
@@ -914,7 +921,7 @@ class UserCRUDL(SmartCRUDL):
     class VerifyEmail(NoNavMixin, SmartReadView):
         @classmethod
         def derive_url_pattern(cls, path, action):
-            return r"^%s/%s/(?P<secret>\w+)/$" % (path, action)
+            return rf"^{path}/{action}/(?P<secret>\w+)/$"
 
         def get_object(self, *args, **kwargs):
             return self.request.user
@@ -1213,7 +1220,7 @@ class InvitationMixin:
 
     @classmethod
     def derive_url_pattern(cls, path, action):
-        return r"^%s/%s/(?P<secret>\w+)/$" % (path, action)
+        return rf"^{path}/{action}/(?P<secret>\w+)/$"
 
     def pre_process(self, request, *args, **kwargs):
         if not self.invitation:
@@ -1267,7 +1274,7 @@ class OrgCRUDL(SmartCRUDL):
     class Menu(MenuMixin, InferOrgMixin, SmartTemplateView):
         @classmethod
         def derive_url_pattern(cls, path, action):
-            return r"^%s/%s/((?P<submenu>[A-z]+)/)?$" % (path, action)
+            return rf"^{path}/{action}/((?P<submenu>[A-z]+)/)?$"
 
         def has_permission(self, request, *args, **kwargs):
             if self.request.user.is_staff:
@@ -1543,7 +1550,7 @@ class OrgCRUDL(SmartCRUDL):
 
             export = org.export_definitions(f"https://{org.get_brand_domain()}", components)
             response = JsonResponse(export, json_dumps_params=dict(indent=2))
-            response["Content-Disposition"] = "attachment; filename=%s.json" % slugify(org.name)
+            response["Content-Disposition"] = f"attachment; filename={slugify(org.name)}.json"
             return response
 
         def get_context_data(self, **kwargs):
@@ -1812,7 +1819,7 @@ class OrgCRUDL(SmartCRUDL):
             menu.new_group()
             menu.add_url_post(
                 _("Service"),
-                f'{reverse("orgs.org_service")}?other_org={obj.id}&next={reverse("msgs.msg_inbox", args=[])}',
+                f"{reverse('orgs.org_service')}?other_org={obj.id}&next={reverse('msgs.msg_inbox', args=[])}",
             )
 
         def get_context_data(self, **kwargs):
@@ -2226,7 +2233,7 @@ class OrgCRUDL(SmartCRUDL):
 
         def get_success_url(self):  # pragma: needs cover
             org_id = self.request.GET.get("org")
-            return "%s?org=%s" % (reverse("orgs.org_manage_accounts_sub_org"), org_id)
+            return f"{reverse('orgs.org_manage_accounts_sub_org')}?org={org_id}"
 
     class Service(StaffOnlyMixin, SmartFormView):
         class ServiceForm(forms.Form):
@@ -2345,7 +2352,7 @@ class OrgCRUDL(SmartCRUDL):
                 as_child=form.cleaned_data.get("type", default_type) == form.TYPE_CHILD,
             )
 
-            if "HTTP_X_PJAX" not in self.request.META:
+            if "x-pjax" not in self.request.headers:
                 return HttpResponseRedirect(self.get_success_url())
             else:  # pragma: no cover
                 success_url = self.get_success_url()
@@ -2652,9 +2659,9 @@ class OrgCRUDL(SmartCRUDL):
 
         def get_template_names(self):
             if (
-                "android" in self.request.META.get("HTTP_X_REQUESTED_WITH", "")
+                "android" in self.request.headers.get("x-requested-with", "")
                 or "mobile" in self.request.GET
-                or "Android" in self.request.META.get("HTTP_USER_AGENT", "")
+                or "Android" in self.request.headers.get("user-agent", "")
             ):
                 return ["orgs/org_surveyor_mobile.html"]
             else:
@@ -2690,7 +2697,7 @@ class OrgCRUDL(SmartCRUDL):
         submit_button_name = _("Save")
 
         def get_success_url(self):
-            return "%s?start" % reverse("public.public_welcome")
+            return f"{reverse('public.public_welcome')}?start"
 
         def pre_process(self, request, *args, **kwargs):
             # if our brand doesn't allow signups, then redirect to the homepage
@@ -2980,7 +2987,7 @@ class OrgCRUDL(SmartCRUDL):
             return context
 
         def get(self, request, *args, **kwargs):
-            if self.request.META.get("HTTP_X_REQUESTED_WITH") == "XMLHttpRequest":
+            if self.request.headers.get("x-requested-with") == "XMLHttpRequest":
                 initial = self.request.GET.get("initial", "").split(",")
                 matches = []
 
@@ -3012,7 +3019,7 @@ class OrgCRUDL(SmartCRUDL):
         def has_permission(self, request, *args, **kwargs):
             perm = "orgs.org_country"
 
-            if self.request.META.get("HTTP_X_REQUESTED_WITH") == "XMLHttpRequest" and self.request.method == "GET":
+            if self.request.headers.get("x-requested-with") == "XMLHttpRequest" and self.request.method == "GET":
                 perm = "orgs.org_languages"
 
             return self.request.user.has_perm(perm) or self.has_org_perm(perm)
@@ -3041,7 +3048,9 @@ class OrgImportCRUDL(SmartCRUDL):
                     raise ValidationError(_("This file is not a valid flow definition file."))
 
                 if Version(str(json_data.get("version", 0))) < Version(Org.EARLIEST_IMPORT_VERSION):
-                    raise ValidationError(_("This file is no longer valid. Please export a new version and try again."))
+                    raise ValidationError(
+                        _("This file is no longer valid. Please export a new version and try again.")
+                    )
 
                 return self.cleaned_data["file"]
 

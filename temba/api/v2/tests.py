@@ -1,15 +1,13 @@
 import base64
 import time
 from collections import OrderedDict
-from datetime import datetime, timezone as tzone
+from datetime import datetime
+from datetime import timezone as tzone
 from decimal import Decimal
 from unittest.mock import call, patch
 from urllib.parse import quote_plus
 
 import iso8601
-from rest_framework import serializers
-from rest_framework.test import APIClient
-
 from django.conf import settings
 from django.contrib.auth.models import Group
 from django.contrib.gis.geos import GEOSGeometry
@@ -17,6 +15,8 @@ from django.core.cache import cache
 from django.test import override_settings
 from django.urls import reverse
 from django.utils import timezone
+from rest_framework import serializers
+from rest_framework.test import APIClient
 
 from temba.api.models import APIToken, Resthook, WebHookEvent
 from temba.archives.models import Archive
@@ -51,7 +51,7 @@ class APITest(APITestMixin, TembaTest):
 
         with open(filename, "rb") as data:
             response = self.client.post(
-                reverse("api.v2.media") + ".json", {"file": data}, HTTP_X_FORWARDED_HTTPS="https"
+                reverse("api.v2.media") + ".json", {"file": data}, headers={"x-forwarded-https": "https"}
             )
             self.assertEqual(201, response.status_code)
 
@@ -67,7 +67,9 @@ class FieldsTest(APITest):
                 with self.assertRaises(expected, msg=f"expected exception for '{submitted}'"):
                     f.run_validation(submitted)
             else:
-                self.assertEqual(f.run_validation(submitted), expected, f"to_internal_value mismatch for '{submitted}'")
+                self.assertEqual(
+                    f.run_validation(submitted), expected, f"to_internal_value mismatch for '{submitted}'"
+                )
 
         for value, expected in representations.items():
             self.assertEqual(f.to_representation(value), expected, f"to_representation mismatch for '{value}'")
@@ -425,7 +427,7 @@ class EndpointsTest(APITest):
         self.login(self.admin)
 
         response = self.client.get(
-            reverse("api.v2.fields") + ".json", content_type="application/json", HTTP_X_FORWARDED_HTTPS="https"
+            reverse("api.v2.fields") + ".json", content_type="application/json", headers={"x-forwarded-https": "https"}
         )
         self.assertContains(response, "Server Error. Site administrators have been notified.", status_code=500)
 
@@ -668,7 +670,9 @@ class EndpointsTest(APITest):
 
         # try to authenticate with invalid role
         response = self.client.post(auth_url, {"username": "admin@nyaruka.com", "password": "Qwerty123", "role": "X"})
-        self.assertFormError(response, "form", "role", "Select a valid choice. X is not one of the available choices.")
+        self.assertFormError(
+            response.context["form"], "role", "Select a valid choice. X is not one of the available choices."
+        )
 
         # authenticate an admin as an admin
         response = self.client.post(auth_url, {"username": "admin@nyaruka.com", "password": "Qwerty123", "role": "A"})
@@ -878,7 +882,9 @@ class EndpointsTest(APITest):
         )
 
         self.assertGet(endpoint_url + "?after=2017-05-01", [self.editor], results=[archive4, archive3, archive2])
-        self.assertGet(endpoint_url + "?after=2017-05-01&archive_type=run", [self.editor], results=[archive4, archive3])
+        self.assertGet(
+            endpoint_url + "?after=2017-05-01&archive_type=run", [self.editor], results=[archive4, archive3]
+        )
 
         # unknown archive type
         self.assertGet(endpoint_url + "?archive_type=invalid", [self.editor], results=[])
@@ -1049,7 +1055,9 @@ class EndpointsTest(APITest):
 
         bcast1 = Broadcast.create(self.org, self.admin, {"eng": {"text": "Hello 1"}}, urns=["twitter:franky"])
         bcast2 = Broadcast.create(self.org, self.admin, {"eng": {"text": "Hello 2"}}, contacts=[self.joe])
-        bcast3 = Broadcast.create(self.org, self.admin, {"eng": {"text": "Hello 3"}}, contacts=[self.frank], status="S")
+        bcast3 = Broadcast.create(
+            self.org, self.admin, {"eng": {"text": "Hello 3"}}, contacts=[self.frank], status="S"
+        )
         bcast4 = Broadcast.create(
             self.org,
             self.admin,
@@ -1363,7 +1371,10 @@ class EndpointsTest(APITest):
 
         # can't update campaign in other org
         self.assertPost(
-            endpoint_url + f"?uuid={spam.uuid}", self.editor, {"name": "Won't work", "group": spammers.uuid}, status=404
+            endpoint_url + f"?uuid={spam.uuid}",
+            self.editor,
+            {"name": "Won't work", "group": spammers.uuid},
+            status=404,
         )
 
         # can't update deleted campaign
@@ -2321,7 +2332,7 @@ class EndpointsTest(APITest):
             endpoint_url + f"?uuid={jean.uuid}",
             self.editor,
             {"groups": [dyn_group.uuid]},
-            errors={"groups": "Contact group must not be query based: %s" % dyn_group.uuid},
+            errors={"groups": f"Contact group must not be query based: {dyn_group.uuid}"},
         )
 
         # try to give a contact more than 100 URNs
@@ -2652,7 +2663,7 @@ class EndpointsTest(APITest):
                 "action": "add",
                 "group": "Testers",
             },
-            errors={"contacts": "No such object: %s" % contact5.uuid},
+            errors={"contacts": f"No such object: {contact5.uuid}"},
         )
 
         # try adding a blocked contact to a group
@@ -2664,7 +2675,7 @@ class EndpointsTest(APITest):
                 "action": "add",
                 "group": "Testers",
             },
-            errors={"non_field_errors": "Non-active contacts cannot be added to groups: %s" % contact4.uuid},
+            errors={"non_field_errors": f"Non-active contacts cannot be added to groups: {contact4.uuid}"},
         )
 
         # add valid contacts to the group by name
@@ -2722,7 +2733,10 @@ class EndpointsTest(APITest):
 
         # and remove contact 3 from group by its UUID
         self.assertPost(
-            endpoint_url, self.admin, {"contacts": [contact3.uuid], "action": "remove", "group": group.uuid}, status=204
+            endpoint_url,
+            self.admin,
+            {"contacts": [contact3.uuid], "action": "remove", "group": group.uuid},
+            status=204,
         )
         self.assertEqual(set(group.contacts.all()), {contact1})
 
@@ -3886,7 +3900,9 @@ class EndpointsTest(APITest):
         )
 
         # update label by UUID
-        response = self.assertPost(endpoint_url + f"?uuid={interesting.uuid}", self.admin, {"name": "More Interesting"})
+        response = self.assertPost(
+            endpoint_url + f"?uuid={interesting.uuid}", self.admin, {"name": "More Interesting"}
+        )
         interesting.refresh_from_db()
         self.assertEqual(interesting.name, "More Interesting")
 
@@ -3927,10 +3943,10 @@ class EndpointsTest(APITest):
         def upload(user, filename: str):
             self.login(user)
             with open(filename, "rb") as data:
-                return self.client.post(endpoint_url, {"file": data}, HTTP_X_FORWARDED_HTTPS="https")
+                return self.client.post(endpoint_url, {"file": data}, headers={"x-forwarded-https": "https"})
 
         self.login(self.admin)
-        response = self.client.post(endpoint_url, {}, HTTP_X_FORWARDED_HTTPS="https")
+        response = self.client.post(endpoint_url, {}, headers={"x-forwarded-https": "https"})
         self.assertResponseError(response, "file", "No file was submitted.")
 
         response = upload(self.agent, f"{settings.MEDIA_ROOT}/test_imports/simple.xls")
@@ -4549,7 +4565,9 @@ class EndpointsTest(APITest):
 
         # can request without path data
         response = self.assertGet(
-            endpoint_url + "?paths=false", [self.editor], results=[joe_run3, joe_run2, frank_run2, frank_run1, joe_run1]
+            endpoint_url + "?paths=false",
+            [self.editor],
+            results=[joe_run3, joe_run2, frank_run2, frank_run1, joe_run1],
         )
         resp_json = response.json()
         self.assertEqual(
@@ -4626,7 +4644,9 @@ class EndpointsTest(APITest):
 
         # filter by id and uuid
         self.assertGet(endpoint_url + f"?uuid={frank_run2.uuid}&id={joe_run1.id}", [self.admin], results=[])
-        self.assertGet(endpoint_url + f"?uuid={frank_run2.uuid}&id={frank_run2.id}", [self.admin], results=[frank_run2])
+        self.assertGet(
+            endpoint_url + f"?uuid={frank_run2.uuid}&id={frank_run2.id}", [self.admin], results=[frank_run2]
+        )
 
         # filter by flow
         self.assertGet(
@@ -4652,7 +4672,9 @@ class EndpointsTest(APITest):
         )
 
         # filter by contact
-        self.assertGet(endpoint_url + f"?contact={self.joe.uuid}", [self.admin], results=[joe_run3, joe_run2, joe_run1])
+        self.assertGet(
+            endpoint_url + f"?contact={self.joe.uuid}", [self.admin], results=[joe_run3, joe_run2, joe_run1]
+        )
 
         # filter by invalid contact
         self.assertGet(endpoint_url + "?contact=invalid", [self.admin], results=[])
@@ -5368,7 +5390,9 @@ class EndpointsTest(APITest):
         self.assertPost(endpoint_url, self.editor, {"name": "Bugs"}, status=201)
 
         # try to create a topic with invalid name
-        self.assertPost(endpoint_url, self.editor, {"name": '"Hi"'}, errors={"name": 'Cannot contain the character: "'})
+        self.assertPost(
+            endpoint_url, self.editor, {"name": '"Hi"'}, errors={"name": 'Cannot contain the character: "'}
+        )
 
         # try to create a topic with name that's too long
         self.assertPost(
