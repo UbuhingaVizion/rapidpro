@@ -1,5 +1,4 @@
 import requests
-
 from django.forms import ValidationError
 from django.urls import reverse
 from django.utils.translation import gettext_lazy as _
@@ -25,9 +24,9 @@ class ZenviaWhatsAppType(ChannelType):
     courier_url = r"^zvw/(?P<uuid>[a-z0-9\-]+)/(?P<action>receive|status)$"
     schemes = [URN.WHATSAPP_SCHEME]
 
-    claim_blurb = _("If you have a %(link)s number, you can connect it to communicate with your WhatsApp contacts.") % {
-        "link": '<a target="_blank" href="https://www.zenvia.com/">Zenvia WhatsApp</a>'
-    }
+    claim_blurb = _(
+        "If you have a %(link)s number, you can connect it to communicate with your WhatsApp contacts."
+    ) % {"link": '<a target="_blank" href="https://www.zenvia.com/">Zenvia WhatsApp</a>'}
     claim_view = ClaimView
 
     def update_webhook(self, channel, url, event_type):

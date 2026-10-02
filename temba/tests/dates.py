@@ -2,7 +2,6 @@ import datetime
 
 import iso8601
 import regex
-
 from django.utils import timezone
 
 from temba.orgs.models import Org

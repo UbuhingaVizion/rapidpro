@@ -1,11 +1,10 @@
 import os
 
-from storages.backends.s3boto3 import S3Boto3Storage
-
 from django.conf import settings
 from django.core.files.storage import default_storage
 from django.urls import reverse
 from django.utils.text import slugify
+from storages.backends.s3boto3 import S3Boto3Storage
 
 ASSET_STORES_BY_KEY = {}
 ASSET_STORES_BY_MODEL = {}
@@ -99,7 +98,7 @@ class BaseAssetStore:
         Saves a file asset
         """
         if extension not in self.extensions:  # pragma: needs cover
-            raise ValueError("Extension %s not supported by handler" % extension)
+            raise ValueError(f"Extension {extension} not supported by handler")
 
         asset = self.derive_asset(pk)
 
@@ -126,11 +125,11 @@ class BaseAssetStore:
         directory = os.path.join(settings.STORAGE_ROOT_DIR, str(org.pk), self.directory)
 
         if extension:
-            return "%s/%s.%s" % (directory, base_name, extension)
+            return f"{directory}/{base_name}.{extension}"
 
         # no explicit extension so look for one with an existing file
         for ext in extension or self.extensions:
-            path = "%s/%s.%s" % (directory, base_name, ext)
+            path = f"{directory}/{base_name}.{ext}"
             if default_storage.exists(path):
                 return path
 

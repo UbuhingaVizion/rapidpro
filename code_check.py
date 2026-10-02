@@ -2,10 +2,12 @@
 
 import argparse
 import subprocess
+import sys
 
 import colorama
 
 parser = argparse.ArgumentParser(description="Code checks")
+parser.add_argument("--skip-lint", action="store_true")
 parser.add_argument("--debug", action="store_true")
 args = parser.parse_args()
 
@@ -33,16 +35,14 @@ if __name__ == "__main__":
     colorama.init()
 
     status("Make any missing migrations")
-    cmd("python manage.py makemigrations")
+    cmd(f'"{sys.executable}" manage.py makemigrations')
 
-    status("Running isort")
-    cmd("isort temba")
+    if not args.skip_lint:
+        status("Running ruff lint")
+        cmd(f'"{sys.executable}" -m ruff check --fix temba')
 
-    status("Running black")
-    cmd("black temba")
-
-    status("Running ruff")
-    cmd("ruff temba")
+        status("Running ruff format")
+        cmd(f'"{sys.executable}" -m ruff format temba')
 
     # if any code changes were made, exit with error
     if cmd("git diff temba locale"):

@@ -1,0 +1,13 @@
+.git
+.venv
+__pycache__
+*.pyc
+node_modules
+media
+staticfiles
+.coverage
+coverage.xml
+htmlcov
+.tox
+.ruff_cache
+_storage

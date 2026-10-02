@@ -1,3 +1,4 @@
+import datetime as dt
 from datetime import datetime, timedelta
 from unittest.mock import patch
 
@@ -21,10 +22,10 @@ class CallTest(TembaTest):
             contact=contact,
             contact_urn=contact.get_urn(),
             status=Call.STATUS_IN_PROGRESS,
-            started_on=datetime(2022, 9, 20, 13, 46, 30, 0, timezone.utc),
+            started_on=datetime(2022, 9, 20, 13, 46, 30, 0, dt.timezone.utc),
         )
 
-        with patch("django.utils.timezone.now", return_value=datetime(2022, 9, 20, 13, 46, 50, 0, timezone.utc)):
+        with patch("django.utils.timezone.now", return_value=datetime(2022, 9, 20, 13, 46, 50, 0, dt.timezone.utc)):
             self.assertEqual(timedelta(seconds=20), call.get_duration())  # calculated
             self.assertEqual("In Progress", call.status_display)
 

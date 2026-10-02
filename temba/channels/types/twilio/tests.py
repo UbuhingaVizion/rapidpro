@@ -1,8 +1,7 @@
 from unittest.mock import patch
 
-from twilio.base.exceptions import TwilioRestException
-
 from django.urls import reverse
+from twilio.base.exceptions import TwilioRestException
 
 from temba.channels.models import Channel
 from temba.contacts.models import URN
@@ -57,14 +56,14 @@ class TwilioTypeTest(TembaTest):
             mock_get_twilio_client.return_value = None
 
             response = self.client.get(claim_twilio)
-            self.assertRedirects(response, f'{reverse("channels.types.twilio.connect")}?claim_type=twilio')
+            self.assertRedirects(response, f"{reverse('channels.types.twilio.connect')}?claim_type=twilio")
 
             mock_get_twilio_client.side_effect = TwilioRestException(
                 401, "http://twilio", msg="Authentication Failure", code=20003
             )
 
             response = self.client.get(claim_twilio)
-            self.assertRedirects(response, f'{reverse("channels.types.twilio.connect")}?claim_type=twilio')
+            self.assertRedirects(response, f"{reverse('channels.types.twilio.connect')}?claim_type=twilio")
 
         with patch("temba.tests.twilio.MockTwilioClient.MockAccounts.get") as mock_get:
             mock_get.return_value = MockTwilioClient.MockAccount("Trial")
@@ -166,7 +165,9 @@ class TwilioTypeTest(TembaTest):
 
                 # claim it
                 response = self.client.post(claim_twilio, dict(country="US", phone_number="12062345678"))
-                self.assertFormError(response, "form", None, "This channel is already connected in this workspace.")
+                self.assertFormError(
+                    response.context["form"], None, "This channel is already connected in this workspace."
+                )
 
                 # make sure the schemes do not overlap, having a WA channel with the same number
                 channel = Channel.objects.get(channel_type="T", org=self.org)
@@ -198,7 +199,9 @@ class TwilioTypeTest(TembaTest):
 
         # voice only number
         with patch("temba.tests.twilio.MockTwilioClient.MockPhoneNumbers.stream") as mock_numbers:
-            mock_numbers.return_value = iter([MockTwilioClient.MockPhoneNumber("+554139087835", sms=False, voice=True)])
+            mock_numbers.return_value = iter(
+                [MockTwilioClient.MockPhoneNumber("+554139087835", sms=False, voice=True)]
+            )
 
             with patch("temba.tests.twilio.MockTwilioClient.MockShortCodes.stream") as mock_short_codes:
                 mock_short_codes.return_value = iter([])
@@ -305,7 +308,9 @@ class TwilioTypeTest(TembaTest):
             mock_numbers.side_effect = None
             self.client.post(reverse("channels.channel_delete", args=[twilio_channel.uuid]))
             self.assertIsNone(self.org.channels.filter(is_active=True).first())
-            self.assertEqual(mock_numbers.call_args_list[-1][1], dict(voice_application_sid="", sms_application_sid=""))
+            self.assertEqual(
+                mock_numbers.call_args_list[-1][1], dict(voice_application_sid="", sms_application_sid="")
+            )
 
     @patch("temba.channels.types.twilio.views.TwilioClient", MockTwilioClient)
     @patch("temba.channels.types.twilio.type.TwilioClient", MockTwilioClient)
@@ -346,7 +351,7 @@ class TwilioTypeTest(TembaTest):
             mock_check_credentials.return_value = False
 
             response = self.client.post(update_url, post_data)
-            self.assertFormError(response, "form", None, "Credentials don't appear to be valid.")
+            self.assertFormError(response.context["form"], None, "Credentials don't appear to be valid.")
 
         # staff users see extra log policy field
         self.login(self.customer_support, choose_org=self.org)
@@ -412,7 +417,7 @@ class TwilioTypeTest(TembaTest):
             # try posting without an account token
             post_data = {"account_sid": "AccountSid"}
             response = self.client.post(connect_url, post_data)
-            self.assertFormError(response, "form", "account_token", "This field is required.")
+            self.assertFormError(response.context["form"], "account_token", "This field is required.")
 
             # now add the account token and try again
             post_data["account_token"] = "AccountToken"
@@ -451,12 +456,12 @@ class TwilioTypeTest(TembaTest):
                     self.assertEqual(self.client.session[TwilioType.SESSION_AUTH_TOKEN], "PrimaryAccountToken")
 
                     response = self.client.post(
-                        f'{reverse("channels.types.twilio.connect")}?claim_type=twilio', post_data, follow=True
+                        f"{reverse('channels.types.twilio.connect')}?claim_type=twilio", post_data, follow=True
                     )
                     self.assertEqual(response.request["PATH_INFO"], reverse("channels.types.twilio.claim"))
 
                     response = self.client.post(
-                        f'{reverse("channels.types.twilio.connect")}?claim_type=twilio_messaging_service',
+                        f"{reverse('channels.types.twilio.connect')}?claim_type=twilio_messaging_service",
                         post_data,
                         follow=True,
                     )
@@ -465,13 +470,13 @@ class TwilioTypeTest(TembaTest):
                     )
 
                     response = self.client.post(
-                        f'{reverse("channels.types.twilio.connect")}?claim_type=twilio_whatsapp',
+                        f"{reverse('channels.types.twilio.connect')}?claim_type=twilio_whatsapp",
                         post_data,
                         follow=True,
                     )
                     self.assertEqual(response.request["PATH_INFO"], reverse("channels.types.twilio_whatsapp.claim"))
 
                     response = self.client.post(
-                        f'{reverse("channels.types.twilio.connect")}?claim_type=unknown', post_data, follow=True
+                        f"{reverse('channels.types.twilio.connect')}?claim_type=unknown", post_data, follow=True
                     )
                     self.assertEqual(response.request["PATH_INFO"], reverse("channels.channel_claim"))

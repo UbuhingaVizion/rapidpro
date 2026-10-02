@@ -10,12 +10,11 @@ import zoneinfo
 from collections import defaultdict
 from datetime import timedelta
 
-from django_redis import get_redis_connection
-
 from django.contrib.auth.models import Group
 from django.core.management import BaseCommand, CommandError
 from django.db import connection
 from django.utils import timezone
+from django_redis import get_redis_connection
 
 from temba.archives.models import Archive
 from temba.campaigns.models import Campaign, CampaignEvent
@@ -161,7 +160,7 @@ class Command(BaseCommand):
         self.handle_generate(kwargs["num_orgs"], kwargs["num_contacts"], kwargs["seed"], kwargs["password"])
 
         time_taken = time.time() - start
-        self._log("Completed in %d secs, peak memory usage: %d MiB\n" % (int(time_taken), int(self.peak_memory())))
+        self._log(f"Completed in {int(time_taken)} secs, peak memory usage: {int(self.peak_memory())} MiB\n")
 
     def handle_generate(self, num_orgs, num_contacts, seed, password):
         """
@@ -229,7 +228,7 @@ class Command(BaseCommand):
         """
         Loads admin boundary records from the given dump of that table
         """
-        self._log("Loading locations from %s... " % path)
+        self._log(f"Loading locations from {path}... ")
 
         with open(path, "rb") as f:
             try:
@@ -267,7 +266,7 @@ class Command(BaseCommand):
         """
         self._log("Creating %d orgs... " % num_total)
 
-        org_names = ["%s %s" % (o1, o2) for o2 in ORG_NAMES[1] for o1 in ORG_NAMES[0]]
+        org_names = [f"{o1} {o2}" for o2 in ORG_NAMES[1] for o1 in ORG_NAMES[0]]
         self.random.shuffle(org_names)
 
         orgs = []
@@ -523,7 +522,7 @@ class Command(BaseCommand):
         for org in orgs:
             user = org.cache["users"][0]
             for f in FLOWS:
-                with open("media/test_flows/" + f, "r") as flow_file:
+                with open("media/test_flows/" + f) as flow_file:
                     org.import_app(json.load(flow_file), user)
 
         self._log(self.style.SUCCESS("OK") + "\n")
@@ -592,7 +591,7 @@ class Command(BaseCommand):
                 """
             )
 
-        names = [("%s %s" % (c1, c2)).strip() for c2 in CONTACT_NAMES[1] for c1 in CONTACT_NAMES[0]]
+        names = [f"{c1} {c2}".strip() for c2 in CONTACT_NAMES[1] for c1 in CONTACT_NAMES[0]]
         names = [n if n else None for n in names]
 
         batch_num = 1

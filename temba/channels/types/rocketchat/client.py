@@ -1,7 +1,6 @@
 import requests
-from requests.exceptions import Timeout
-
 from django.utils.translation import gettext_lazy as _
+from requests.exceptions import Timeout
 
 from temba.utils import json
 

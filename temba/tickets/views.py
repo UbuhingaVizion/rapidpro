@@ -1,7 +1,5 @@
 from datetime import timedelta
 
-from smartmin.views import SmartCRUDL, SmartListView, SmartTemplateView, SmartUpdateView
-
 from django import forms
 from django.conf import settings
 from django.contrib import messages
@@ -11,6 +9,7 @@ from django.urls import reverse
 from django.utils import timezone
 from django.utils.functional import cached_property
 from django.utils.translation import gettext_lazy as _
+from smartmin.views import SmartCRUDL, SmartListView, SmartTemplateView, SmartUpdateView
 
 from temba.msgs.models import Msg
 from temba.notifications.views import NotificationTargetMixin
@@ -176,7 +175,7 @@ class TicketCRUDL(SmartCRUDL):
 
         def build_content_menu(self, menu):
             # we only support dynamic content menus
-            if "HTTP_TEMBA_CONTENT_MENU" not in self.request.META:
+            if "temba-content-menu" not in self.request.headers:
                 return
 
             uuid = self.kwargs.get("uuid")
@@ -278,7 +277,7 @@ class TicketCRUDL(SmartCRUDL):
 
         def build_content_menu(self, menu):
             # we only support dynamic content menus
-            if "HTTP_TEMBA_CONTENT_MENU" not in self.request.META:
+            if "temba-content-menu" not in self.request.headers:
                 return
 
             if (
@@ -353,9 +352,12 @@ class TicketCRUDL(SmartCRUDL):
 
             # get the last message for each contact that these tickets belong to
             contact_ids = {t.contact_id for t in tickets}
-            last_msg_ids = Msg.objects.filter(contact_id__in=contact_ids).values("contact").annotate(last_msg=Max("id"))
+            last_msg_ids = (
+                Msg.objects.filter(contact_id__in=contact_ids).values("contact").annotate(last_msg=Max("id"))
+            )
             last_msgs = Msg.objects.filter(id__in=[m["last_msg"] for m in last_msg_ids]).select_related(
-                "created_by", "broadcast__created_by"  # TODO remove broadcast__created_by once msgs have created_by
+                "created_by",
+                "broadcast__created_by",  # TODO remove broadcast__created_by once msgs have created_by
             )
 
             context["last_msgs"] = {m.contact: m for m in last_msgs}

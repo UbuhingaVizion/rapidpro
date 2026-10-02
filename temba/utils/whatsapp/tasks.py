@@ -5,9 +5,8 @@ from collections import defaultdict
 
 import requests
 from celery import shared_task
-from django_redis import get_redis_connection
-
 from django.utils import timezone
+from django_redis import get_redis_connection
 
 from temba.channels.models import Channel
 from temba.contacts.models import URN, Contact, ContactURN
@@ -59,11 +58,11 @@ def refresh_whatsapp_contacts(channel_id):
                 time.sleep(10)
 
             # build a list of the fully qualified numbers we have
-            contacts = ["+%s" % u.path for u in urn_batch]
+            contacts = [f"+{u.path}" for u in urn_batch]
             payload = {"blocking": "wait", "contacts": contacts}
 
             # go fetch our contacts
-            headers = {"Authorization": "Bearer %s" % channel.config[Channel.CONFIG_AUTH_TOKEN]}
+            headers = {"Authorization": f"Bearer {channel.config[Channel.CONFIG_AUTH_TOKEN]}"}
             url = channel.config[Channel.CONFIG_BASE_URL] + "/v1/contacts"
 
             start = timezone.now()

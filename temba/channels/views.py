@@ -7,17 +7,6 @@ import nexmo
 import phonenumbers
 import requests
 import twilio.base.exceptions
-from smartmin.views import (
-    SmartCRUDL,
-    SmartFormView,
-    SmartListView,
-    SmartModelActionView,
-    SmartReadView,
-    SmartTemplateView,
-    SmartUpdateView,
-)
-from twilio.base.exceptions import TwilioRestException
-
 from django import forms
 from django.conf import settings
 from django.contrib import messages
@@ -30,6 +19,16 @@ from django.urls import reverse
 from django.utils import timezone
 from django.utils.functional import cached_property
 from django.utils.translation import gettext_lazy as _
+from smartmin.views import (
+    SmartCRUDL,
+    SmartFormView,
+    SmartListView,
+    SmartModelActionView,
+    SmartReadView,
+    SmartTemplateView,
+    SmartUpdateView,
+)
+from twilio.base.exceptions import TwilioRestException
 
 from temba.contacts.models import URN
 from temba.ivr.models import Call
@@ -107,7 +106,7 @@ class ClaimViewMixin(ChannelTypeMixin, OrgPermsMixin, ComponentFormMixin):
         return (
             [self.template_name]
             if self.template_name
-            else ["channels/types/%s/claim.html" % self.channel_type.slug, "channels/channel_claim_form.html"]
+            else [f"channels/types/{self.channel_type.slug}/claim.html", "channels/channel_claim_form.html"]
         )
 
     def derive_title(self):
@@ -371,7 +370,7 @@ class BaseClaimNumberMixin(ClaimViewMixin):
             self.claim_number(self.request.user, data["phone_number"], data["country"], role)
             self.remove_api_credentials_from_session()
 
-            return HttpResponseRedirect("%s?success" % reverse("public.public_welcome"))
+            return HttpResponseRedirect(f"{reverse('public.public_welcome')}?success")
 
         except (
             nexmo.AuthenticationError,
@@ -713,7 +712,9 @@ class ChannelCRUDL(SmartCRUDL):
             except TwilioRestException as e:
                 messages.error(
                     request,
-                    _(f"Twilio reported an error removing your channel (error code {e.code}). Please try again later."),
+                    _(
+                        f"Twilio reported an error removing your channel (error code {e.code}). Please try again later."
+                    ),
                 )
 
                 response = HttpResponse()
@@ -840,7 +841,7 @@ class ChannelCRUDL(SmartCRUDL):
             try:
                 return (
                     Engine.get_default()
-                    .get_template("channels/types/%s/config.html" % channel.type.slug)
+                    .get_template(f"channels/types/{channel.type.slug}/config.html")
                     .render(context=Context(channel.type.get_config_ui_context(channel)))
                 )
             except TemplateDoesNotExist:
@@ -909,7 +910,7 @@ class ChannelLogCRUDL(SmartCRUDL):
 
         @classmethod
         def derive_url_pattern(cls, path, action):
-            return r"^%s/(?P<channel_uuid>[^/]+)/$" % path
+            return rf"^{path}/(?P<channel_uuid>[^/]+)/$"
 
         @cached_property
         def channel(self):
@@ -954,7 +955,7 @@ class ChannelLogCRUDL(SmartCRUDL):
 
         @classmethod
         def derive_url_pattern(cls, path, action):
-            return r"^(?P<channel_uuid>[0-9a-f-]+)/%s/%s/(?P<owner_id>\d+)/$" % (path, action)
+            return rf"^(?P<channel_uuid>[0-9a-f-]+)/{path}/{action}/(?P<owner_id>\d+)/$"
 
         def derive_menu_path(self):
             return f"/settings/channels/{self.owner.channel.uuid}"
@@ -972,7 +973,9 @@ class ChannelLogCRUDL(SmartCRUDL):
             logs = []
             for log in self.owner.get_logs():
                 logs.append(
-                    ChannelLog.display(log, anonymize=anonymize, channel=self.owner.channel, urn=self.owner.contact_urn)
+                    ChannelLog.display(
+                        log, anonymize=anonymize, channel=self.owner.channel, urn=self.owner.contact_urn
+                    )
                 )
 
             context["logs"] = logs

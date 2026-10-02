@@ -4,17 +4,6 @@ from datetime import timedelta
 from urllib.parse import quote_plus
 
 import iso8601
-from smartmin.views import (
-    SmartCreateView,
-    SmartCRUDL,
-    SmartFormView,
-    SmartListView,
-    SmartReadView,
-    SmartTemplateView,
-    SmartUpdateView,
-    SmartView,
-)
-
 from django import forms
 from django.conf import settings
 from django.contrib import messages
@@ -30,6 +19,16 @@ from django.utils.functional import cached_property
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils.translation import gettext_lazy as _
 from django.views import View
+from smartmin.views import (
+    SmartCreateView,
+    SmartCRUDL,
+    SmartFormView,
+    SmartListView,
+    SmartReadView,
+    SmartTemplateView,
+    SmartUpdateView,
+    SmartView,
+)
 
 from temba.archives.models import Archive
 from temba.channels.models import Channel
@@ -239,7 +238,7 @@ class ContactListView(SpaMixin, OrgPermsMixin, BulkActionMixin, SmartListView):
                 {
                     "field_type": "field",
                     "sort_direction": sort_direction,
-                    "field_path": "fields.{}".format(field_leaf),
+                    "field_path": f"fields.{field_leaf}",
                     "field_uuid": str(contact_sort_field["uuid"]),
                 },
             )
@@ -466,7 +465,7 @@ class ExportForm(Form):
         )
 
         self.fields["group_memberships"].help_text = _(
-            "Include group membership only for these groups. " "(Leave blank to ignore group memberships)."
+            "Include group membership only for these groups. (Leave blank to ignore group memberships)."
         )
 
 
@@ -647,7 +646,7 @@ class ContactCRUDL(SmartCRUDL):
                         self.request,
                         _("Export complete, you can find it here: %s (production users will get an email)") % dl_url,
                     )
-            if "HTTP_X_PJAX" not in self.request.META:
+            if "x-pjax" not in self.request.headers:
                 return HttpResponseRedirect(redirect or reverse("contacts.contact_list"))
             else:  # pragma: no cover
                 response = self.render_to_response(
@@ -987,7 +986,9 @@ class ContactCRUDL(SmartCRUDL):
             if self.has_org_perm("contacts.contact_export"):
                 menu.add_modax(_("Export"), "export-contacts", self.derive_export_url(), title=_("Export Contacts"))
 
-            menu.add_modax(_("Usages"), "group-usages", reverse("contacts.contactgroup_usages", args=[self.group.uuid]))
+            menu.add_modax(
+                _("Usages"), "group-usages", reverse("contacts.contactgroup_usages", args=[self.group.uuid])
+            )
 
             if not self.group.is_system and self.has_org_perm("contacts.contactgroup_delete"):
                 menu.add_modax(
@@ -1014,7 +1015,7 @@ class ContactCRUDL(SmartCRUDL):
 
         @classmethod
         def derive_url_pattern(cls, path, action):
-            return r"^%s/%s/(?P<group>[^/]+)/$" % (path, action)
+            return rf"^{path}/{action}/(?P<group>[^/]+)/$"
 
         def get_object_org(self):
             return self.group.org
@@ -1377,7 +1378,7 @@ class ContactFieldForm(forms.ModelForm):
 class FieldLookupMixin:
     @classmethod
     def derive_url_pattern(cls, path, action):
-        return r"^%s/%s/(?P<key>[^/]+)/$" % (path, action)
+        return rf"^{path}/{action}/(?P<key>[^/]+)/$"
 
     def has_permission(self, request, *args, **kwargs):
         object = self.get_object()
@@ -1660,7 +1661,9 @@ class ContactImportCRUDL(SmartCRUDL):
                     if mapping["type"] == "new_field" and data["include"]:
                         field_name = data["name"]
                         if not field_name:
-                            raise ValidationError(_("Field name for '%(header)s' can't be empty.") % {"header": header})
+                            raise ValidationError(
+                                _("Field name for '%(header)s' can't be empty.") % {"header": header}
+                            )
                         else:
                             field_key = ContactField.make_key(field_name)
                             if field_key in existing_field_keys:

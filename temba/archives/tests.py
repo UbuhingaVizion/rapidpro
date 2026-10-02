@@ -2,7 +2,8 @@ import base64
 import gzip
 import hashlib
 import io
-from datetime import date, datetime, timezone as tzone
+from datetime import date, datetime
+from datetime import timezone as tzone
 from unittest.mock import call, patch
 
 from django.urls import reverse

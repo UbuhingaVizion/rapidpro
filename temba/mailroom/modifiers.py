@@ -1,5 +1,4 @@
 from dataclasses import dataclass, field
-from typing import Optional
 
 
 @dataclass(frozen=True)
@@ -73,7 +72,7 @@ class Ticket(Modifier):
     type: str = field(default="ticket", init=False)
     topic: TopicRef
     body: str
-    assignee: Optional[UserRef]
+    assignee: UserRef | None
 
 
 @dataclass(frozen=True)

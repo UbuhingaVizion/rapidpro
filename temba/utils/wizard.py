@@ -1,8 +1,7 @@
-from formtools.wizard.views import SessionWizardView
-from smartmin.views import SmartView, derive_single_object_url_pattern, smart_url
-
 from django.core.exceptions import ImproperlyConfigured
 from django.views.generic.detail import SingleObjectMixin
+from formtools.wizard.views import SessionWizardView
+from smartmin.views import SmartView, derive_single_object_url_pattern, smart_url
 
 
 class SmartWizardView(SmartView, SessionWizardView):

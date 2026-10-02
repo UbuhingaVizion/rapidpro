@@ -1,0 +1,22 @@
+repos:
+  - repo: https://github.com/adamchainz/django-upgrade
+    rev: 1.32.0
+    hooks:
+      - id: django-upgrade
+        args: [--target-version, "4.2"]
+  - repo: https://github.com/asottile/pyupgrade
+    rev: v3.21.2
+    hooks:
+      - id: pyupgrade
+        # --keep-percent-format protects gettext msgids, e.g. _("... %s" % x),
+        # which must not be rewritten to f-strings. See AGENTS.md.
+        args: [--py312-plus, --keep-percent-format]
+  # NOTE: flynt is intentionally omitted. It rewrites gettext calls such as
+  # _("... %s" % x) into _("... {x}") which changes extracted msgids and breaks
+  # translations. See AGENTS.md.
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.6
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format

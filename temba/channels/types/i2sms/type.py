@@ -18,9 +18,9 @@ class I2SMSType(ChannelType):
     courier_url = r"^i2/(?P<uuid>[a-z0-9\-]+)/(?P<action>receive)$"
     schemes = [URN.TEL_SCHEME]
 
-    claim_blurb = _("If you have a long number or short code with %(link)s you can connect it in a few easy steps.") % {
-        "link": '<a target="_blank" href="https://www.i2sms.com/">I2SMS</a>'
-    }
+    claim_blurb = _(
+        "If you have a long number or short code with %(link)s you can connect it in a few easy steps."
+    ) % {"link": '<a target="_blank" href="https://www.i2sms.com/">I2SMS</a>'}
     claim_view = ClaimView
 
     config_ui = ConfigUI(

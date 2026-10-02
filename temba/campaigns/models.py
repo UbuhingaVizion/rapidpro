@@ -1,9 +1,9 @@
-from smartmin.models import SmartModel
-
 from django.db import models
 from django.db.models import Q
 from django.utils import timezone
-from django.utils.translation import gettext_lazy as _, ngettext
+from django.utils.translation import gettext_lazy as _
+from django.utils.translation import ngettext
+from smartmin.models import SmartModel
 
 from temba import mailroom
 from temba.contacts.models import Contact, ContactField, ContactGroup
@@ -202,7 +202,9 @@ class Campaign(TembaModel):
                 "event_type": event.event_type,
                 "delivery_hour": event.delivery_hour,
                 "message": event.message,
-                "relative_to": dict(label=event.relative_to.name, key=event.relative_to.key),  # TODO should be key/name
+                "relative_to": dict(
+                    label=event.relative_to.name, key=event.relative_to.key
+                ),  # TODO should be key/name
                 "start_mode": event.start_mode,
             }
 
@@ -375,7 +377,7 @@ class CampaignEvent(TembaUUIDMixin, SmartModel):
                 period = "p.m."
                 if i > 12:
                     hour -= 12
-            hours.append((i, "at %s:00 %s" % (hour, period)))
+            hours.append((i, f"at {hour}:00 {period}"))
         return hours
 
     @property

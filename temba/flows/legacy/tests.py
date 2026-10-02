@@ -619,7 +619,9 @@ class FlowMigrationTest(TembaTest):
             version_number=1,
         )
 
-        FlowRevision.objects.create(flow=flow, definition=definition, spec_version=1, revision=1, created_by=self.admin)
+        FlowRevision.objects.create(
+            flow=flow, definition=definition, spec_version=1, revision=1, created_by=self.admin
+        )
 
         new_definition = migrate_to_version_11_1(definition, flow=flow)
 
@@ -895,7 +897,9 @@ class FlowMigrationTest(TembaTest):
             flow_json["action_sets"][0]["actions"][0]["msg"]["eng"], "Hi @(UPPER(contact.name)). Today is @(date.now)"
         )
         self.assertEqual(flow_json["action_sets"][1]["actions"][0]["groups"][0], "@flow.response_1.category")
-        self.assertEqual(flow_json["action_sets"][1]["actions"][1]["msg"]["eng"], "Was @(PROPER(LOWER(contact.name))).")
+        self.assertEqual(
+            flow_json["action_sets"][1]["actions"][1]["msg"]["eng"], "Was @(PROPER(LOWER(contact.name)))."
+        )
         self.assertEqual(flow_json["action_sets"][1]["actions"][1]["variables"][0]["id"], "@flow.response_1.category")
         self.assertEqual(
             flow_json["rule_sets"][0]["webhook"], "http://example.com/query.php?contact=@(UPPER(contact.name))"
@@ -944,7 +948,9 @@ class FlowMigrationTest(TembaTest):
         # now we should have a language
         self.assertEqual("base", definition.get("base_language", None))
         self.assertEqual("Yes", definition["rule_sets"][0]["rules"][0]["category"]["base"])
-        self.assertEqual("Press one, two, or three. Thanks.", definition["action_sets"][0]["actions"][0]["msg"]["base"])
+        self.assertEqual(
+            "Press one, two, or three. Thanks.", definition["action_sets"][0]["actions"][0]["msg"]["base"]
+        )
         self.assertEqual("/recording.mp3", definition["action_sets"][0]["actions"][0]["recording"]["base"])
 
         # now try one that doesn't have a recording set
@@ -1042,8 +1048,8 @@ class FlowMigrationTest(TembaTest):
         # at the time of this fix
         for v in ("4", "5", "6", "7", "8", "9", "10"):
             error = 'Failure migrating group names "%s" forward from v%s'
-            flow = self.get_flow("favorites_bad_group_name_v%s" % v)
-            self.assertIsNotNone(flow, "Failure importing favorites from v%s" % v)
+            flow = self.get_flow(f"favorites_bad_group_name_v{v}")
+            self.assertIsNotNone(flow, f"Failure importing favorites from v{v}")
             self.assertTrue(ContactGroup.objects.filter(name="Contacts < 25").exists(), error % ("< 25", v))
             self.assertTrue(ContactGroup.objects.filter(name="Contacts > 100").exists(), error % ("> 100", v))
 

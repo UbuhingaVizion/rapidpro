@@ -1,13 +1,12 @@
 from random import randint
 
 import requests
-from smartmin.views import SmartFormView, SmartModelActionView, SmartTemplateView
-
 from django import forms
 from django.conf import settings
 from django.http import HttpResponseRedirect, JsonResponse
 from django.urls import reverse
 from django.utils.translation import gettext_lazy as _
+from smartmin.views import SmartFormView, SmartModelActionView, SmartTemplateView
 
 from temba.channels.views import ChannelTypeMixin
 from temba.orgs.views import ModalMixin, OrgObjPermsMixin, OrgPermsMixin
@@ -338,7 +337,8 @@ class VerifyCode(ChannelTypeMixin, ModalMixin, ContentMenuMixin, OrgObjPermsMixi
 
         if resp.status_code != 200:  # pragma: no cover
             raise forms.ValidationError(
-                _("Unable to register phone %s with ID %s from WABA with ID %s") % (wa_number, channel.address, waba_id)
+                _("Unable to register phone %s with ID %s from WABA with ID %s")
+                % (wa_number, channel.address, waba_id)
             )
 
 
@@ -368,7 +368,9 @@ class Connect(ChannelTypeMixin, OrgPermsMixin, SmartFormView):
                             'Missing permission, we need all the following permissions "business_management", "whatsapp_business_management", "whatsapp_business_messaging"'
                         )
             except Exception:
-                raise forms.ValidationError(_("Sorry account could not be connected. Please try again"), code="invalid")
+                raise forms.ValidationError(
+                    _("Sorry account could not be connected. Please try again"), code="invalid"
+                )
 
             return self.cleaned_data
 

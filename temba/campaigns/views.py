@@ -1,3 +1,9 @@
+from django import forms
+from django.contrib import messages
+from django.core.exceptions import ValidationError
+from django.http import Http404, HttpResponseRedirect
+from django.urls import reverse
+from django.utils.translation import gettext_lazy as _
 from smartmin.views import (
     SmartCreateView,
     SmartCRUDL,
@@ -7,13 +13,6 @@ from smartmin.views import (
     SmartTemplateView,
     SmartUpdateView,
 )
-
-from django import forms
-from django.contrib import messages
-from django.core.exceptions import ValidationError
-from django.http import Http404, HttpResponseRedirect
-from django.urls import reverse
-from django.utils.translation import gettext_lazy as _
 
 from temba.contacts.models import ContactField, ContactGroup
 from temba.flows.models import Flow
@@ -379,7 +378,9 @@ class CampaignEventForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
 
         relative_to = self.fields["relative_to"]
-        relative_to.queryset = org.fields.filter(is_active=True, value_type=ContactField.TYPE_DATETIME).order_by("name")
+        relative_to.queryset = org.fields.filter(is_active=True, value_type=ContactField.TYPE_DATETIME).order_by(
+            "name"
+        )
 
         flow = self.fields["flow_to_start"]
         flow.queryset = org.flows.filter(
@@ -486,7 +487,7 @@ class CampaignEventCRUDL(SmartCRUDL):
     class Read(SpaMixin, OrgObjPermsMixin, ContentMenuMixin, SmartReadView):
         @classmethod
         def derive_url_pattern(cls, path, action):
-            return r"^%s/%s/(?P<campaign_uuid>[0-9a-f-]+)/(?P<pk>\d+)/$" % (path, action)
+            return rf"^{path}/{action}/(?P<campaign_uuid>[0-9a-f-]+)/(?P<pk>\d+)/$"
 
         def derive_title(self):
             return _("Event History")

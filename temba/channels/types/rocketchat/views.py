@@ -1,12 +1,11 @@
 import re
 from urllib.parse import urlparse
 
-from smartmin.views import SmartFormView
-
 from django import forms
 from django.contrib import messages
 from django.urls import reverse
 from django.utils.translation import gettext_lazy as _
+from smartmin.views import SmartFormView
 
 from temba.utils.fields import ExternalURLField
 from temba.utils.text import generate_secret, truncate
@@ -33,7 +32,9 @@ class ClaimView(ClaimViewMixin, SmartFormView):
             label=_("URL"),
             widget=forms.URLInput(
                 attrs={
-                    "placeholder": _("Ex.: https://my.rocket.chat/api/apps/public/51c5cebe-b8e4-48ae-89d3-2b7746019cc4")
+                    "placeholder": _(
+                        "Ex.: https://my.rocket.chat/api/apps/public/51c5cebe-b8e4-48ae-89d3-2b7746019cc4"
+                    )
                 }
             ),
             help_text=_("URL of the Rocket.Chat Channel app"),

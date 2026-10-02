@@ -1,7 +1,6 @@
-from smartmin.views import SmartFormView
-
 from django import forms
 from django.utils.translation import gettext_lazy as _
+from smartmin.views import SmartFormView
 
 from temba.contacts.models import URN
 
@@ -43,7 +42,7 @@ class ClaimView(ClaimViewMixin, SmartFormView):
             self.request.user,
             data["country"],
             self.channel_type,
-            name="WhatsApp: %s" % data["address"],
+            name=f"WhatsApp: {data['address']}",
             address=data["address"],
             config=config,
             tps=45,

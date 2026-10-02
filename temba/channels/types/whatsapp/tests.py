@@ -1,10 +1,9 @@
 import json
 from unittest.mock import call, patch
 
-from requests import RequestException
-
 from django.test import override_settings
 from django.urls import reverse
+from requests import RequestException
 
 from temba.request_logs.models import HTTPLog
 from temba.templates.models import TemplateTranslation
@@ -301,9 +300,9 @@ class WhatsAppTypeTest(TembaTest):
 
                 post_data = response.context["form"].initial
                 post_data["number"] = "1234"
-                post_data[
-                    "verified_name"
-                ] = "Long WABA name foobar foobar foobar foobar foobar foobar foobar foobar foobar foobar foobar foobar foobar foobar foobar foobar foobar foobar foobar foobar"
+                post_data["verified_name"] = (
+                    "Long WABA name foobar foobar foobar foobar foobar foobar foobar foobar foobar foobar foobar foobar foobar foobar foobar foobar foobar foobar foobar foobar"
+                )
                 post_data["phone_number_id"] = "123123123"
                 post_data["waba_id"] = "111111111111111"
                 post_data["business_id"] = "2222222222222"
@@ -385,7 +384,9 @@ class WhatsAppTypeTest(TembaTest):
                 self.assertEqual(200, response.status_code)
 
                 self.assertEqual("https://graph.facebook.com/v18.0/123123123/register", wa_cloud_post.call_args[0][0])
-                self.assertEqual({"messaging_product": "whatsapp", "pin": "111111"}, wa_cloud_post.call_args[1]["data"])
+                self.assertEqual(
+                    {"messaging_product": "whatsapp", "pin": "111111"}, wa_cloud_post.call_args[1]["data"]
+                )
 
                 response = self.client.get(reverse("channels.types.whatsapp.verify_code", args=(channel.uuid,)))
                 self.assertEqual(f"/settings/channels/{channel.uuid}", response.context[TEMBA_MENU_SELECTION])

@@ -1,4 +1,5 @@
-from datetime import date, datetime, timezone as tzone
+from datetime import date, datetime
+from datetime import timezone as tzone
 
 from django.core import mail
 from django.test import override_settings
@@ -51,7 +52,7 @@ class IncidentTest(TembaTest):
 
         incident = Incident.objects.get()
         self.assertEqual("org:flagged", incident.incident_type)
-        self.assertEqual({self.admin}, set(n.user for n in incident.notifications.all()))
+        self.assertEqual({self.admin}, {n.user for n in incident.notifications.all()})
 
         self.assertEqual(
             {"type": "org:flagged", "started_on": matchers.ISODate(), "ended_on": None}, incident.as_json()
@@ -68,7 +69,7 @@ class IncidentTest(TembaTest):
 
         incident = Incident.objects.get()
         self.assertEqual("org:suspended", incident.incident_type)
-        self.assertEqual({self.admin}, set(n.user for n in incident.notifications.all()))
+        self.assertEqual({self.admin}, {n.user for n in incident.notifications.all()})
 
         self.assertEqual(
             {"type": "org:suspended", "started_on": matchers.ISODate(), "ended_on": None}, incident.as_json()

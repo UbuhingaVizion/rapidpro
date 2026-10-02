@@ -1,4 +1,5 @@
 import base64
+import datetime as dt
 import hashlib
 import hmac
 import io
@@ -6,8 +7,6 @@ import time
 from datetime import date, datetime, timedelta
 from unittest.mock import patch
 from urllib.parse import quote
-
-from smartmin.tests import SmartminTest
 
 from django.conf import settings
 from django.contrib.auth.models import Group
@@ -17,6 +16,7 @@ from django.test.utils import override_settings
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.encoding import force_bytes
+from smartmin.tests import SmartminTest
 
 from temba.contacts.models import URN, Contact, ContactGroup, ContactURN
 from temba.msgs.models import Msg
@@ -80,7 +80,7 @@ class ChannelTest(TembaTest, CRUDLTestMixin):
         org = org or self.org
         user = user or self.user
 
-        group = ContactGroup.get_or_create(org, user, "Numbers: %s" % ",".join(numbers))
+        group = ContactGroup.get_or_create(org, user, f"Numbers: {','.join(numbers)}")
 
         contacts = []
         for number in numbers:
@@ -109,7 +109,7 @@ class ChannelTest(TembaTest, CRUDLTestMixin):
             if cmd["cmd"] == cmd_name:
                 return
 
-        raise Exception("Did not find '%s' cmd in response: '%s'" % (cmd_name, response.content))
+        raise Exception(f"Did not find '{cmd_name}' cmd in response: '{response.content}'")
 
     def test_deactivate(self):
         self.login(self.admin)
@@ -344,7 +344,7 @@ class ChannelTest(TembaTest, CRUDLTestMixin):
         self.assertReadFetch(chart_url, allow_viewers=True, allow_editors=True)
 
         # create some test messages
-        test_date = datetime(2020, 1, 20, 0, 0, 0, 0, timezone.utc)
+        test_date = datetime(2020, 1, 20, 0, 0, 0, 0, dt.timezone.utc)
         test_date - timedelta(hours=2)
         bob = self.create_contact("Bob", phone="+250785551212")
         joe = self.create_contact("Joe", phone="+2501234567890")
@@ -406,7 +406,7 @@ class ChannelTest(TembaTest, CRUDLTestMixin):
         response = self.fetch_protected(tel_channel_read_url, self.admin)
         self.assertContains(response, self.tel_channel.name)
 
-        test_date = datetime(2020, 1, 20, 0, 0, 0, 0, timezone.utc)
+        test_date = datetime(2020, 1, 20, 0, 0, 0, 0, dt.timezone.utc)
         two_hours_ago = test_date - timedelta(hours=2)
         # make sure our channel is old enough to trigger alerts
         self.tel_channel.created_on = two_hours_ago
@@ -482,13 +482,13 @@ class ChannelTest(TembaTest, CRUDLTestMixin):
     def test_invalid(self):
         # Must be POST
         response = self.client.get(
-            "%s?signature=sig&ts=123" % (reverse("sync", args=[100])), content_type="application/json"
+            f"{reverse('sync', args=[100])}?signature=sig&ts=123", content_type="application/json"
         )
         self.assertEqual(500, response.status_code)
 
         # Unknown channel
         response = self.client.post(
-            "%s?signature=sig&ts=123" % (reverse("sync", args=[999])), content_type="application/json"
+            f"{reverse('sync', args=[999])}?signature=sig&ts=123", content_type="application/json"
         )
         self.assertEqual(200, response.status_code)
         self.assertEqual("rel", response.json()["cmds"][0]["cmd"])
@@ -735,7 +735,9 @@ class ChannelTest(TembaTest, CRUDLTestMixin):
         msg6 = self.send_message(["250788382382"], "from when?")
 
         # an incoming message that should not be included even if it is still pending
-        incoming_message = self.create_incoming_msg(contact, "hey", channel=self.tel_channel, status=Msg.STATUS_PENDING)
+        incoming_message = self.create_incoming_msg(
+            contact, "hey", channel=self.tel_channel, status=Msg.STATUS_PENDING
+        )
 
         # Check our sync point has all three messages queued for delivery
         response = self.sync(self.tel_channel, cmds=[])
@@ -1231,11 +1233,13 @@ class ChannelCountTest(TembaTest):
         self.assertEqual(0, ChannelCount.objects.count())
 
         # create some messages...
-        self.create_incoming_msg(contact, "A", created_on=datetime(2023, 5, 31, 13, 0, 30, 0, timezone.utc))
-        self.create_incoming_msg(contact, "B", created_on=datetime(2023, 6, 1, 13, 0, 30, 0, timezone.utc))
-        self.create_incoming_msg(contact, "C", created_on=datetime(2023, 6, 1, 13, 0, 30, 0, timezone.utc))
-        self.create_incoming_msg(contact, "D", created_on=datetime(2023, 6, 1, 13, 0, 30, 0, timezone.utc), voice=True)
-        self.create_outgoing_msg(contact, "E", created_on=datetime(2023, 6, 1, 13, 0, 30, 0, timezone.utc))
+        self.create_incoming_msg(contact, "A", created_on=datetime(2023, 5, 31, 13, 0, 30, 0, dt.timezone.utc))
+        self.create_incoming_msg(contact, "B", created_on=datetime(2023, 6, 1, 13, 0, 30, 0, dt.timezone.utc))
+        self.create_incoming_msg(contact, "C", created_on=datetime(2023, 6, 1, 13, 0, 30, 0, dt.timezone.utc))
+        self.create_incoming_msg(
+            contact, "D", created_on=datetime(2023, 6, 1, 13, 0, 30, 0, dt.timezone.utc), voice=True
+        )
+        self.create_outgoing_msg(contact, "E", created_on=datetime(2023, 6, 1, 13, 0, 30, 0, dt.timezone.utc))
 
         # and 3 in bulk
         Msg.objects.bulk_create(
@@ -1247,7 +1251,7 @@ class ChannelCountTest(TembaTest):
                     text="F",
                     direction="O",
                     msg_type="T",
-                    created_on=datetime(2023, 6, 1, 13, 0, 30, 0, timezone.utc),
+                    created_on=datetime(2023, 6, 1, 13, 0, 30, 0, dt.timezone.utc),
                 ),
                 Msg(
                     org=self.org,
@@ -1256,7 +1260,7 @@ class ChannelCountTest(TembaTest):
                     text="G",
                     direction="O",
                     msg_type="T",
-                    created_on=datetime(2023, 6, 1, 13, 0, 30, 0, timezone.utc),
+                    created_on=datetime(2023, 6, 1, 13, 0, 30, 0, dt.timezone.utc),
                 ),
                 Msg(
                     org=self.org,
@@ -1265,7 +1269,7 @@ class ChannelCountTest(TembaTest):
                     text="H",
                     direction="O",
                     msg_type="V",
-                    created_on=datetime(2023, 6, 1, 13, 0, 30, 0, timezone.utc),
+                    created_on=datetime(2023, 6, 1, 13, 0, 30, 0, dt.timezone.utc),
                 ),
             ]
         )
@@ -2209,7 +2213,7 @@ class FacebookWhitelistTest(TembaTest, CRUDLTestMixin):
         with patch("requests.post") as mock:
             mock.return_value = MockResponse(400, '{"error": { "message": "FB Error" } }')
             response = self.client.post(whitelist_url, dict(whitelisted_domain="https://foo.bar"))
-            self.assertFormError(response, "form", None, "FB Error")
+            self.assertFormError(response.context["form"], None, "FB Error")
 
         with patch("requests.post") as mock:
             mock.return_value = MockResponse(200, '{ "ok": "true" }')

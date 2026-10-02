@@ -1,5 +1,4 @@
 import requests
-
 from django.forms import ValidationError
 from django.urls import re_path, reverse
 from django.utils import timezone
@@ -65,7 +64,7 @@ class Dialog360Type(ChannelType):
         if Channel.CONFIG_AUTH_TOKEN not in channel.config:  # pragma: no cover
             return [], False
 
-        templates_url = "%s/v1/configs/templates" % channel.config.get(Channel.CONFIG_BASE_URL, "")
+        templates_url = f"{channel.config.get(Channel.CONFIG_BASE_URL, '')}/v1/configs/templates"
         start = timezone.now()
 
         try:

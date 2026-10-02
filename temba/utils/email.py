@@ -2,7 +2,8 @@ import re
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
-from django.core.mail import EmailMultiAlternatives, get_connection as get_smtp_connection, send_mail
+from django.core.mail import EmailMultiAlternatives, send_mail
+from django.core.mail import get_connection as get_smtp_connection
 from django.core.validators import EmailValidator
 from django.template import loader
 from django.utils import timezone
@@ -21,6 +22,17 @@ class TembaEmailValidator(EmailValidator):
         r"(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+(?:[A-Z]{2,63}|[A-Z0-9-]{2,}(?<!-))\Z",
         re.IGNORECASE,
     )
+
+    def validate_domain_part(self, domain_part):
+        if super().validate_domain_part(domain_part):
+            return True
+
+        # Django dropped its IDN (punycode) fallback; retry with an ASCII-encoded domain so internationalized
+        # addresses like test@example.परीक्षा remain valid
+        try:
+            return super().validate_domain_part(domain_part.encode("idna").decode("ascii"))
+        except UnicodeError:
+            return False
 
 
 temba_validate_email = TembaEmailValidator()

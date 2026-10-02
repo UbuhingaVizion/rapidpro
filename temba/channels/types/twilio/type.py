@@ -1,8 +1,7 @@
+from django.urls import path
+from django.utils.translation import gettext_lazy as _
 from twilio.base.exceptions import TwilioRestException
 from twilio.rest import Client as TwilioClient
-
-from django.urls import re_path
-from django.utils.translation import gettext_lazy as _
 
 from temba.contacts.models import URN
 from temba.utils.timezones import timezone_to_country_code
@@ -81,8 +80,8 @@ class TwilioType(ChannelType):
     def get_urls(self):
         return [
             self.get_claim_url(),
-            re_path(r"^search$", SearchView.as_view(channel_type=self), name="search"),
-            re_path(r"^connect$", Connect.as_view(channel_type=self), name="connect"),
+            path("search", SearchView.as_view(channel_type=self), name="search"),
+            path("connect", Connect.as_view(channel_type=self), name="connect"),
         ]
 
     def get_error_ref_url(self, channel, code: str) -> str:

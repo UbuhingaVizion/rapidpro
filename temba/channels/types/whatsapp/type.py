@@ -1,8 +1,7 @@
 import requests
-
 from django.conf import settings
 from django.forms import ValidationError
-from django.urls import re_path
+from django.urls import path, re_path
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
@@ -43,14 +42,14 @@ class WhatsAppType(ChannelType):
     def get_urls(self):
         return [
             self.get_claim_url(),
-            re_path(r"^clear_session_token$", ClearSessionToken.as_view(channel_type=self), name="clear_session_token"),
+            path("clear_session_token", ClearSessionToken.as_view(channel_type=self), name="clear_session_token"),
             re_path(r"^(?P<uuid>[a-z0-9\-]+)/templates$", TemplatesView.as_view(channel_type=self), name="templates"),
             re_path(r"^(?P<uuid>[a-z0-9\-]+)/sync_logs$", SyncLogsView.as_view(channel_type=self), name="sync_logs"),
             re_path(
                 r"^(?P<uuid>[a-z0-9\-]+)/request_code$", RequestCode.as_view(channel_type=self), name="request_code"
             ),
             re_path(r"^(?P<uuid>[a-z0-9\-]+)/verify_code$", VerifyCode.as_view(channel_type=self), name="verify_code"),
-            re_path(r"^connect$", Connect.as_view(channel_type=self), name="connect"),
+            path("connect", Connect.as_view(channel_type=self), name="connect"),
         ]
 
     def activate(self, channel):

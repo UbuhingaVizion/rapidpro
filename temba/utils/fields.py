@@ -170,7 +170,7 @@ class SelectWidget(forms.Select):
 
         # django doen't include attrs if inherits is false, this doesn't seem right
         # so we'll include them ourselves
-        index = str(index) if subindex is None else "%s_%s" % (index, subindex)
+        index = str(index) if subindex is None else f"{index}_{subindex}"
         option_attrs = self.build_attrs(self.attrs, attrs) if self.option_inherits_attrs else attrs
 
         if "id" in option_attrs:

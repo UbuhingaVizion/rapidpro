@@ -131,11 +131,11 @@ class APITestMixin:
             if num_queries:
                 with self.assertNumQueries(num_queries):
                     response = self.client.get(
-                        endpoint_url, content_type="application/json", HTTP_X_FORWARDED_HTTPS="https"
+                        endpoint_url, content_type="application/json", headers={"x-forwarded-https": "https"}
                     )
             else:
                 response = self.client.get(
-                    endpoint_url, content_type="application/json", HTTP_X_FORWARDED_HTTPS="https"
+                    endpoint_url, content_type="application/json", headers={"x-forwarded-https": "https"}
                 )
 
         response.json()  # this will fail if our response isn't valid json
@@ -147,7 +147,9 @@ class APITestMixin:
         if user:
             self.login(user)
 
-        return self.client.delete(endpoint_url, content_type="application/json", HTTP_X_FORWARDED_HTTPS="https")
+        return self.client.delete(
+            endpoint_url, content_type="application/json", headers={"x-forwarded-https": "https"}
+        )
 
     def _postJSON(self, endpoint_url: str, user, data: dict, **kwargs):
         self.client.logout()

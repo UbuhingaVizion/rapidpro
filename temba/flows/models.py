@@ -1,13 +1,10 @@
 import logging
 from array import array
 from collections import defaultdict
-from datetime import datetime, timezone as tzone
+from datetime import datetime
+from datetime import timezone as tzone
 
 import iso8601
-from django_redis import get_redis_connection
-from packaging.version import Version
-from xlsxlite.writer import XLSXBook
-
 from django.conf import settings
 from django.contrib.postgres.fields import ArrayField
 from django.core.files.temp import NamedTemporaryFile
@@ -16,6 +13,9 @@ from django.db.models import Max, Prefetch, Q, Sum
 from django.db.models.functions import Lower, TruncDate
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
+from django_redis import get_redis_connection
+from packaging.version import Version
+from xlsxlite.writer import XLSXBook
 
 from temba import mailroom
 from temba.assets.models import register_asset_store
@@ -236,7 +236,7 @@ class Flow(LegacyUUIDMixin, TembaModel, DependencyMixin):
         """
         Creates a special 'single message' flow
         """
-        name = "Single Message (%s)" % str(uuid4())
+        name = f"Single Message ({uuid4()!s})"
         flow = Flow.create(org, user, name, flow_type=Flow.TYPE_BACKGROUND, is_system=True)
         flow.update_single_message_flow(user, message, base_language)
         return flow
@@ -1244,7 +1244,9 @@ class FlowRun(models.Model):
             ),
             models.Index(name="flowruns_api_by_org", fields=("org", "-modified_on", "-id")),
             models.Index(
-                name="flowruns_api_responded_by_org", fields=("org", "-modified_on", "-id"), condition=Q(responded=True)
+                name="flowruns_api_responded_by_org",
+                fields=("org", "-modified_on", "-id"),
+                condition=Q(responded=True),
             ),
             # for finding and messaging all contacts at a given node
             models.Index(
@@ -1456,9 +1458,7 @@ class FlowCategoryCount(SquashableModel):
         )
         INSERT INTO %(table)s("flow_id", "node_uuid", "result_key", "result_name", "category_name", "count", "is_squashed")
         VALUES (%%s, %%s, %%s, %%s, %%s, GREATEST(0, (SELECT SUM("count") FROM removed)), TRUE);
-        """ % {
-            "table": cls._meta.db_table
-        }
+        """ % {"table": cls._meta.db_table}
 
         params = (
             distinct_set.flow_id,
@@ -1470,7 +1470,7 @@ class FlowCategoryCount(SquashableModel):
         return sql, params
 
     def __str__(self):
-        return "%s: %s" % (self.category_name, self.count)
+        return f"{self.category_name}: {self.count}"
 
     class Meta:
         indexes = [
@@ -1511,9 +1511,7 @@ class FlowPathCount(SquashableModel):
         )
         INSERT INTO %(table)s("flow_id", "from_uuid", "to_uuid", "period", "count", "is_squashed")
         VALUES (%%s, %%s, %%s, date_trunc('hour', %%s), GREATEST(0, (SELECT SUM("count") FROM removed)), TRUE);
-        """ % {
-            "table": cls._meta.db_table
-        }
+        """ % {"table": cls._meta.db_table}
 
         params = (distinct_set.flow_id, distinct_set.from_uuid, distinct_set.to_uuid, distinct_set.period) * 2
         return sql, params
@@ -1522,7 +1520,7 @@ class FlowPathCount(SquashableModel):
     def get_totals(cls, flow):
         counts = cls.objects.filter(flow=flow)
         totals = list(counts.values_list("from_uuid", "to_uuid").annotate(replies=Sum("count")))
-        return {"%s:%s" % (t[0], t[1]): t[2] for t in totals}
+        return {f"{t[0]}:{t[1]}": t[2] for t in totals}
 
     class Meta:
         indexes = [
@@ -1557,9 +1555,7 @@ class FlowNodeCount(SquashableModel):
         )
         INSERT INTO %(table)s("flow_id", "node_uuid", "count", "is_squashed")
         VALUES (%%s, %%s, GREATEST(0, (SELECT SUM("count") FROM removed)), TRUE);
-        """ % {
-            "table": cls._meta.db_table
-        }
+        """ % {"table": cls._meta.db_table}
 
         return sql, (distinct_set.node_uuid, distinct_set.flow_id, distinct_set.node_uuid)
 
@@ -1767,7 +1763,7 @@ class ExportFlowResultsTask(BaseItemWithContactExport):
         )
         if responded_only:
             runs = runs.filter(responded=True)
-        run_ids = array(str("l"), runs.values_list("id", flat=True))
+        run_ids = array("l", runs.values_list("id", flat=True))
 
         logger.info(
             f"Results export #{self.id} for org #{self.org.id}: found {len(run_ids)} runs in database to export"
@@ -2037,9 +2033,7 @@ class FlowStartCount(SquashableModel):
         )
         INSERT INTO %(table)s("start_id", "count", "is_squashed")
         VALUES (%%s, GREATEST(0, (SELECT SUM("count") FROM deleted)), TRUE);
-        """ % {
-            "table": cls._meta.db_table
-        }
+        """ % {"table": cls._meta.db_table}
 
         return sql, (distinct_set.start_id,) * 2
 

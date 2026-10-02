@@ -236,7 +236,9 @@ class Migration(migrations.Migration):
                 check=models.Q(
                     (
                         "identity",
-                        django.db.models.functions.text.Concat(models.F("scheme"), models.Value(":"), models.F("path")),
+                        django.db.models.functions.text.Concat(
+                            models.F("scheme"), models.Value(":"), models.F("path")
+                        ),
                     )
                 ),
                 name="identity_matches_scheme_and_path",

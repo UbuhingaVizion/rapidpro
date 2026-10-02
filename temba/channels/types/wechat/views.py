@@ -1,7 +1,6 @@
-from smartmin.views import SmartFormView
-
 from django import forms
 from django.utils.translation import gettext_lazy as _
+from smartmin.views import SmartFormView
 
 from ...models import Channel
 from ...views import ClaimViewMixin
@@ -26,4 +25,4 @@ class ClaimView(ClaimViewMixin, SmartFormView):
             self.request.org, self.request.user, None, self.channel_type, name="", address="", config=config
         )
 
-        return super(ClaimView, self).form_valid(form)
+        return super().form_valid(form)

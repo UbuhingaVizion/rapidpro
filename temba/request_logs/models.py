@@ -1,7 +1,6 @@
 import logging
 
 import requests
-
 from django.db import models
 from django.db.models import Index, Q
 from django.utils import timezone
@@ -67,7 +66,9 @@ class HTTPLog(models.Model):
     classifier = models.ForeignKey(
         Classifier, related_name="http_logs", on_delete=models.PROTECT, db_index=False, null=True
     )
-    airtime_transfer = models.ForeignKey(AirtimeTransfer, related_name="http_logs", on_delete=models.PROTECT, null=True)
+    airtime_transfer = models.ForeignKey(
+        AirtimeTransfer, related_name="http_logs", on_delete=models.PROTECT, null=True
+    )
     channel = models.ForeignKey(Channel, related_name="http_logs", on_delete=models.PROTECT, null=True)
 
     @classmethod

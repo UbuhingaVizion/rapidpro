@@ -42,7 +42,7 @@ def _replace_filter_style(text):
         expression = match.group(1)
         new_style = _convert_filter_style(expression)
         if "|" in expression:
-            new_style = "(%s)" % new_style  # add enclosing parentheses
+            new_style = f"({new_style})"  # add enclosing parentheses
         return "@" + new_style
 
     context_keys_joined_pattern = r"[\|\w]*|".join(ALLOWED_TOP_LEVELS)
@@ -197,12 +197,12 @@ def _convert_equals_style(expression):
         filter_style = match.group(2)
         return _convert_filter_style(filter_style)
 
-    pattern = r'(")?@((%s)[\.\w\|]*)(\1)?' % "|".join(ALLOWED_TOP_LEVELS)
+    pattern = rf"(\")?@(({'|'.join(ALLOWED_TOP_LEVELS)})[\.\w\|]*)(\1)?"
 
     rexp = regex.compile(pattern, flags=regex.MULTILINE | regex.UNICODE | regex.V0)
     expression = rexp.sub(replace_embedded_filter_style, expression)
 
     if not expression.startswith("("):
-        expression = "(%s)" % expression
+        expression = f"({expression})"
 
     return expression

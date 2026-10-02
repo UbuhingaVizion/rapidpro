@@ -3,17 +3,6 @@ from datetime import datetime, timedelta
 from urllib.parse import urlencode
 
 import regex
-from packaging.version import Version
-from smartmin.views import (
-    SmartCreateView,
-    SmartCRUDL,
-    SmartDeleteView,
-    SmartListView,
-    SmartReadView,
-    SmartTemplateView,
-    SmartUpdateView,
-)
-
 from django import forms
 from django.conf import settings
 from django.contrib import messages
@@ -25,9 +14,20 @@ from django.http import Http404, HttpResponse, HttpResponseRedirect, JsonRespons
 from django.urls import reverse
 from django.utils.encoding import force_str
 from django.utils.functional import cached_property
-from django.utils.translation import gettext_lazy as _, ngettext_lazy as _p
+from django.utils.translation import gettext_lazy as _
+from django.utils.translation import ngettext_lazy as _p
 from django.views.decorators.csrf import csrf_exempt
 from django.views.generic import FormView
+from packaging.version import Version
+from smartmin.views import (
+    SmartCreateView,
+    SmartCRUDL,
+    SmartDeleteView,
+    SmartListView,
+    SmartReadView,
+    SmartTemplateView,
+    SmartUpdateView,
+)
 
 from temba import mailroom
 from temba.channels.models import Channel
@@ -146,7 +146,7 @@ class PartialTemplate(SmartTemplateView):  # pragma: no cover
         return
 
     def get_template_names(self):
-        return "partials/%s.html" % self.template
+        return f"partials/{self.template}.html"
 
 
 class FlowSessionCRUDL(SmartCRUDL):
@@ -220,7 +220,7 @@ class FlowCRUDL(SmartCRUDL):
     class Menu(MenuMixin, SmartTemplateView):
         @classmethod
         def derive_url_pattern(cls, path, action):
-            return r"^%s/%s/((?P<submenu>[A-z]+)/)?$" % (path, action)
+            return rf"^{path}/{action}/((?P<submenu>[A-z]+)/)?$"
 
         def derive_menu(self):
             labels = FlowLabel.objects.filter(org=self.request.org).order_by(Lower("name"))
@@ -236,7 +236,7 @@ class FlowCRUDL(SmartCRUDL):
             )
 
             if self.has_org_perm("globals.global_list"):
-                menu.append(self.create_divider()),
+                (menu.append(self.create_divider()),)
                 menu.append(self.create_menu_item(name=_("Globals"), icon="global", href="globals.global_list"))
 
             label_items = []
@@ -261,7 +261,9 @@ class FlowCRUDL(SmartCRUDL):
 
             if self.has_org_perm("flows.flowstart_list"):
                 history_items.append(
-                    self.create_menu_item(menu_id="starts", name=_("Flow Starts"), href=reverse("flows.flowstart_list"))
+                    self.create_menu_item(
+                        menu_id="starts", name=_("Flow Starts"), href=reverse("flows.flowstart_list")
+                    )
                 )
 
             if history_items:
@@ -303,7 +305,7 @@ class FlowCRUDL(SmartCRUDL):
 
         @classmethod
         def derive_url_pattern(cls, path, action):
-            return r"^%s/%s/(?P<uuid>[0-9a-f-]+)/((?P<revision_id>\d+)/)?$" % (path, action)
+            return rf"^{path}/{action}/(?P<uuid>[0-9a-f-]+)/((?P<revision_id>\d+)/)?$"
 
         def get(self, request, *args, **kwargs):
             flow = self.get_object()
@@ -854,7 +856,7 @@ class FlowCRUDL(SmartCRUDL):
 
         @classmethod
         def derive_url_pattern(cls, path, action):
-            return r"^%s/%s/(?P<label_uuid>[0-9a-f-]+)/$" % (path, action)
+            return rf"^{path}/{action}/(?P<label_uuid>[0-9a-f-]+)/$"
 
         def derive_title(self, *args, **kwargs):
             return self.label.name
@@ -1038,7 +1040,7 @@ class FlowCRUDL(SmartCRUDL):
             download_url = reverse("flows.flow_download_translation") + "?" + urlencode(params, doseq=True)
 
             # if this is an XHR request, we need to return a structured response that it can parse
-            if "HTTP_X_PJAX" in self.request.META:
+            if "x-pjax" in self.request.headers:
                 response = self.render_modal_response(form)
                 response["Temba-Success"] = download_url
                 return response
@@ -1477,7 +1479,7 @@ class FlowCRUDL(SmartCRUDL):
             try:
                 json_dict = json.loads(request.body)
             except Exception as e:  # pragma: needs cover
-                return JsonResponse(dict(status="error", description="Error parsing JSON: %s" % str(e)), status=400)
+                return JsonResponse(dict(status="error", description=f"Error parsing JSON: {e!s}"), status=400)
 
             if not settings.MAILROOM_URL:  # pragma: no cover
                 return JsonResponse(
@@ -1625,7 +1627,9 @@ class FlowCRUDL(SmartCRUDL):
                             _(f"The message template {ref['name']} does not exist on your account and cannot be sent.")
                         )
                     elif not template.is_approved():
-                        warnings.append(_(f"Your message template {template.name} is not approved and cannot be sent."))
+                        warnings.append(
+                            _(f"Your message template {template.name} is not approved and cannot be sent.")
+                        )
             return warnings
 
         def has_facebook_topic(self, flow):

@@ -2,7 +2,8 @@ import base64
 import hashlib
 import hmac
 import time
-from datetime import datetime, timedelta, timezone as tzone
+from datetime import datetime, timedelta
+from datetime import timezone as tzone
 
 from django.http import HttpResponse, JsonResponse
 from django.utils import timezone
@@ -75,7 +76,7 @@ def sync(request, channel_id):
 
     if request_signature != signature:
         return JsonResponse(
-            {"error_id": 1, "error": "Invalid signature: '%(request)s'" % {"request": request_signature}, "cmds": []},
+            {"error_id": 1, "error": f"Invalid signature: '{request_signature}'", "cmds": []},
             status=401,
         )
 

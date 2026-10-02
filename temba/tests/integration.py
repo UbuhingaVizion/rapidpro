@@ -3,7 +3,6 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from threading import Thread
 
 import requests
-
 from django.utils import timezone
 
 from temba.channels.models import Channel

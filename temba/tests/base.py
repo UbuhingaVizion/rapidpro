@@ -6,9 +6,6 @@ from pathlib import Path
 from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
-from django_redis import get_redis_connection
-from smartmin.tests import SmartminTest
-
 from django.conf import settings
 from django.contrib.auth.models import Group
 from django.core import mail
@@ -17,6 +14,8 @@ from django.db import connection
 from django.db.migrations.executor import MigrationExecutor
 from django.test import override_settings
 from django.utils import timezone
+from django_redis import get_redis_connection
+from smartmin.tests import SmartminTest
 
 from temba.archives.models import Archive
 from temba.channels.models import Channel, ChannelEvent, ChannelLog
@@ -149,7 +148,7 @@ class TembaTest(SmartminTest):
         """
         If a test has written files to storage, it should remove them by calling this
         """
-        shutil.rmtree("%s/%s" % (settings.MEDIA_ROOT, settings.STORAGE_ROOT_DIR), ignore_errors=True)
+        shutil.rmtree(f"{settings.MEDIA_ROOT}/{settings.STORAGE_ROOT_DIR}", ignore_errors=True)
 
     def login(self, user, update_last_auth_on: bool = True, choose_org=None):
         self.assertTrue(
@@ -170,13 +169,13 @@ class TembaTest(SmartminTest):
         self.org.import_app(data, self.admin, site=site)
 
     def get_import_json(self, filename, substitutions=None):
-        handle = open("%s/test_flows/%s.json" % (settings.MEDIA_ROOT, filename), "r+")
+        handle = open(f"{settings.MEDIA_ROOT}/test_flows/{filename}.json", "r+")
         data = handle.read()
         handle.close()
 
         if substitutions:
             for k, v in substitutions.items():
-                print('Replacing "%s" with "%s"' % (k, v))
+                print(f'Replacing "{k}" with "{v}"')
                 data = data.replace(k, str(v))
 
         return json.loads(data)
@@ -452,7 +451,7 @@ class TembaTest(SmartminTest):
             metadata=metadata,
             next_attempt=next_attempt,
             failed_reason=failed_reason,
-            log_uuids=[l.uuid for l in logs or []],
+            log_uuids=[log.uuid for log in logs or []],
         )
 
     def create_translations(self, text="", attachments=[], lang="und", optin=None):
@@ -796,7 +795,7 @@ class TembaTest(SmartminTest):
 
             actual.append(val)
 
-        self.assertEqual(expected, actual, f"mismatch in row {row_num+1}")
+        self.assertEqual(expected, actual, f"mismatch in row {row_num + 1}")
 
     def assertExcelSheet(self, sheet, rows, tz=None):
         """
@@ -902,9 +901,9 @@ class MigrationTest(TembaTest):
     migrate_to = None
 
     def setUp(self):
-        assert (
-            self.migrate_from and self.migrate_to
-        ), "TestCase '{}' must define migrate_from and migrate_to properties".format(type(self).__name__)
+        assert self.migrate_from and self.migrate_to, (
+            f"TestCase '{type(self).__name__}' must define migrate_from and migrate_to properties"
+        )
 
         # set up our temba test
         super().setUp()

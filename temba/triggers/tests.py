@@ -1,4 +1,5 @@
-from datetime import datetime, timezone as tzone
+from datetime import datetime
+from datetime import timezone as tzone
 from unittest.mock import patch
 
 from django.contrib.auth.models import Group
@@ -302,7 +303,9 @@ class TriggerTest(TembaTest):
         )
 
         # no flow
-        self.assert_import_error({"trigger_type": "M", "keywords": ["test"], "groups": []}, "Field 'flow' is required.")
+        self.assert_import_error(
+            {"trigger_type": "M", "keywords": ["test"], "groups": []}, "Field 'flow' is required."
+        )
 
         # keyword with no keywords
         self.assert_import_error(
@@ -871,7 +874,9 @@ class TriggerCRUDLTest(TembaTest, CRUDLTestMixin):
         self.assertEqual([channel2, channel1], list(response.context["form"].fields["channel"].queryset))
 
         # which flow field is required depends on the action selected
-        self.assertCreateSubmit(create_url, {"action": "answer"}, form_errors={"voice_flow": "This field is required."})
+        self.assertCreateSubmit(
+            create_url, {"action": "answer"}, form_errors={"voice_flow": "This field is required."}
+        )
         self.assertCreateSubmit(create_url, {"action": "hangup"}, form_errors={"msg_flow": "This field is required."})
 
         self.assertCreateSubmit(
@@ -1124,7 +1129,9 @@ class TriggerCRUDLTest(TembaTest, CRUDLTestMixin):
         self.assertCreateSubmit(
             create_url,
             {"flow": flow2.id, "channel": self.channel.id},
-            new_obj_query=Trigger.objects.filter(trigger_type=Trigger.TYPE_CATCH_ALL, flow=flow2, channel=self.channel),
+            new_obj_query=Trigger.objects.filter(
+                trigger_type=Trigger.TYPE_CATCH_ALL, flow=flow2, channel=self.channel
+            ),
             success_status=200,
         )
 
@@ -1670,7 +1677,8 @@ class TriggerCRUDLTest(TembaTest, CRUDLTestMixin):
         trigger.save(update_fields=("is_archived",))
 
         response = self.client.post(
-            reverse("triggers.trigger_create_keyword"), data={"keywords": ["start"], "flow": flow.id, "match_type": "F"}
+            reverse("triggers.trigger_create_keyword"),
+            data={"keywords": ["start"], "flow": flow.id, "match_type": "F"},
         )
         self.assertEqual(Trigger.objects.filter(keywords=["start"]).count(), 2)
         self.assertEqual(1, Trigger.objects.filter(keywords=["start"], is_archived=False).count())
@@ -1845,5 +1853,7 @@ class TriggerCRUDLTest(TembaTest, CRUDLTestMixin):
             messages_url + "?search=TEST", allow_viewers=True, allow_editors=True, context_objects=[trigger1]
         )
 
-        self.assertListFetch(referral_url, allow_viewers=True, allow_editors=True, context_objects=[trigger4, trigger3])
+        self.assertListFetch(
+            referral_url, allow_viewers=True, allow_editors=True, context_objects=[trigger4, trigger3]
+        )
         self.assertListFetch(tickets_url, allow_viewers=True, allow_editors=True, context_objects=[])

@@ -73,12 +73,13 @@
       {% include "components-head.html" %}
     {% endif %}
     {% block favico %}
-      <link type="image/ico" rel="shortcut icon" href="{{ STATIC_URL }}images/favicon.ico">
+      <link type="image/ico" rel="shortcut icon" href="{{ STATIC_URL }}{{ branding.logos.favico }}">
     {% endblock favico %}
     {% block styles %}
       <link rel="stylesheet"
             href="https://fonts.googleapis.com/css?family=Roboto+Mono:300|Roboto:200,300,400,500">
       {% compress css %}
+        <link rel="stylesheet" href="{{ STATIC_URL }}brands/rapidpro/font/style.css" type="text/css">
         <link rel="stylesheet" href="{{ STATIC_URL }}less/style.less" type="text/less">
         <link rel="stylesheet" href="{{ STATIC_URL }}css/tailwind.css" type="text/css">
         <link rel="stylesheet" href="{{ STATIC_URL }}less/refresh.less" type="text/less">

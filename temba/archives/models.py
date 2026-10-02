@@ -8,7 +8,6 @@ from gettext import gettext as _
 from urllib.parse import urlparse
 
 from dateutil.relativedelta import relativedelta
-
 from django.core.files.storage import storages
 from django.db import models
 from django.db.models import Q
@@ -17,7 +16,9 @@ from django.utils import timezone
 from temba.utils import json, s3, sizeof_fmt
 from temba.utils.s3 import EventStreamReader
 
-KEY_PATTERN = re.compile(r"^(?P<org>\d+)/(?P<type>run|message)_(?P<period>(D|M)\d+)_(?P<hash>[0-9a-f]{32})\.jsonl\.gz$")
+KEY_PATTERN = re.compile(
+    r"^(?P<org>\d+)/(?P<type>run|message)_(?P<period>(D|M)\d+)_(?P<hash>[0-9a-f]{32})\.jsonl\.gz$"
+)
 
 
 class Archive(models.Model):
@@ -167,8 +168,7 @@ class Archive(models.Model):
 
         def generator():
             for archive in archives:
-                for record in archive.iter_records(where=where):
-                    yield record
+                yield from archive.iter_records(where=where)
 
         return generator()
 
@@ -191,8 +191,7 @@ class Archive(models.Model):
             )
 
             def generator():
-                for record in EventStreamReader(response["Payload"]):
-                    yield record
+                yield from EventStreamReader(response["Payload"])
 
             return generator()
 

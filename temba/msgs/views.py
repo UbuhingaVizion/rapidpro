@@ -2,17 +2,6 @@ from datetime import timedelta
 from functools import cached_property
 from urllib.parse import quote_plus
 
-from smartmin.views import (
-    SmartCreateView,
-    SmartCRUDL,
-    SmartDeleteView,
-    SmartFormView,
-    SmartListView,
-    SmartReadView,
-    SmartTemplateView,
-    SmartUpdateView,
-)
-
 from django import forms
 from django.conf import settings
 from django.contrib import messages
@@ -24,6 +13,16 @@ from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils.translation import gettext_lazy as _
 from django.views.generic import RedirectView
+from smartmin.views import (
+    SmartCreateView,
+    SmartCRUDL,
+    SmartDeleteView,
+    SmartFormView,
+    SmartListView,
+    SmartReadView,
+    SmartTemplateView,
+    SmartUpdateView,
+)
 
 from temba import mailroom
 from temba.archives.models import Archive
@@ -111,7 +110,7 @@ class MsgListView(ContentMenuMixin, BulkActionMixin, SystemLabelView):
         redirect = quote_plus(self.request.get_full_path())
         label = self.derive_label()
         label_id = label.uuid if isinstance(label, Label) else label
-        return "%s?l=%s&redirect=%s" % (reverse("msgs.msg_export"), label_id, redirect)
+        return f"{reverse('msgs.msg_export')}?l={label_id}&redirect={redirect}"
 
     def get_queryset(self, **kwargs):
         qs = super().get_queryset(**kwargs)
@@ -812,7 +811,7 @@ class MsgCRUDL(SmartCRUDL):
                 if not getattr(settings, "CELERY_TASK_ALWAYS_EAGER", False):  # pragma: needs cover
                     messages.info(
                         self.request,
-                        _("We are preparing your export. We will e-mail you at %s when " "it is ready.")
+                        _("We are preparing your export. We will e-mail you at %s when it is ready.")
                         % self.request.user.username,
                     )
 
@@ -820,7 +819,7 @@ class MsgCRUDL(SmartCRUDL):
                     dl_url = reverse("assets.download", kwargs=dict(type="message_export", pk=export.pk))
                     messages.info(
                         self.request,
-                        _("Export complete, you can find it here: %s (production users " "will get an email)") % dl_url,
+                        _("Export complete, you can find it here: %s (production users will get an email)") % dl_url,
                     )
 
             messages.success(self.request, self.derive_success_message())
@@ -834,7 +833,7 @@ class MsgCRUDL(SmartCRUDL):
 
         @classmethod
         def derive_url_pattern(cls, path, action):
-            return r"^%s/inbox/$" % (path)
+            return rf"^{path}/inbox/$"
 
     class Inbox(MsgListView):
         title = _("Inbox Messages")
@@ -846,7 +845,7 @@ class MsgCRUDL(SmartCRUDL):
 
         @classmethod
         def derive_url_pattern(cls, path, action):
-            return r"^%s/$" % (path)
+            return rf"^{path}/$"
 
         def get_queryset(self, **kwargs):
             qs = super().get_queryset(**kwargs)
@@ -941,7 +940,9 @@ class MsgCRUDL(SmartCRUDL):
                 )
 
             if self.has_org_perm("msgs.msg_export"):
-                menu.add_modax(_("Download"), "export-messages", self.derive_export_url(), title=_("Download Messages"))
+                menu.add_modax(
+                    _("Download"), "export-messages", self.derive_export_url(), title=_("Download Messages")
+                )
 
             menu.add_modax(_("Usages"), "label-usages", reverse("msgs.label_usages", args=[self.label.uuid]))
 
@@ -955,7 +956,7 @@ class MsgCRUDL(SmartCRUDL):
 
         @classmethod
         def derive_url_pattern(cls, path, action):
-            return r"^%s/%s/(?P<label_uuid>[^/]+)/$" % (path, action)
+            return rf"^{path}/{action}/(?P<label_uuid>[^/]+)/$"
 
         @cached_property
         def label(self):

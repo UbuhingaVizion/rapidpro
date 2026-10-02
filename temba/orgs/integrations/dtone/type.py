@@ -1,4 +1,4 @@
-from django.urls import re_path, reverse
+from django.urls import path, reverse
 from django.utils.translation import gettext_lazy as _
 
 from ...models import IntegrationType
@@ -40,4 +40,4 @@ class DTOneType(IntegrationType):
             formax.add_section(self.slug, account_url, icon=self.icon, action="redirect", nobutton=True)
 
     def get_urls(self):
-        return [re_path(r"^account$", AccountView.as_view(integration_type=self), name="account")]
+        return [path("account", AccountView.as_view(integration_type=self), name="account")]

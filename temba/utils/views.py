@@ -3,7 +3,6 @@ import re
 from urllib.parse import quote, urlencode
 
 import requests
-
 from django import forms
 from django.conf import settings
 from django.db import transaction
@@ -43,14 +42,14 @@ class SpaMixin(View):
 
     @cached_property
     def spa_path(self) -> tuple:
-        return tuple(s for s in self.request.META.get("HTTP_TEMBA_PATH", "").split("/") if s)
+        return tuple(s for s in self.request.headers.get("temba-path", "").split("/") if s)
 
     @cached_property
     def spa_referrer_path(self) -> tuple:
-        return tuple(s for s in self.request.META.get("HTTP_TEMBA_REFERER_PATH", "").split("/") if s)
+        return tuple(s for s in self.request.headers.get("temba-referer-path", "").split("/") if s)
 
     def is_content_only(self):
-        return "HTTP_TEMBA_SPA" in self.request.META
+        return "temba-spa" in self.request.headers
 
     def get_template_names(self):
         templates = super().get_template_names()
@@ -329,7 +328,7 @@ class RequireRecentAuthMixin:
     recent_auth_includes_formax = False
 
     def pre_process(self, request, *args, **kwargs):
-        is_formax = "HTTP_X_FORMAX" in request.META
+        is_formax = "x-formax" in request.headers
         if not is_formax or self.recent_auth_includes_formax:
             last_auth_on = request.user.settings.last_auth_on
             if not last_auth_on or (timezone.now() - last_auth_on).total_seconds() > self.recent_auth_seconds:
@@ -487,7 +486,7 @@ class ContentMenuMixin:
         pass
 
     def get(self, request, *args, **kwargs):
-        if "HTTP_TEMBA_CONTENT_MENU" in self.request.META:
+        if "temba-content-menu" in self.request.headers:
             return JsonResponse({"items": self._get_content_menu()})
 
         return super().get(request, *args, **kwargs)

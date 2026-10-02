@@ -1,0 +1,19 @@
+---
+
+- name: UV | Sync python environment
+  become: no
+  command: |
+    uv sync --frozen
+    chdir={{ project_path }}
+
+- name: Django | Settings symlink
+  file: |
+    state=link
+    src={{ project_path }}/temba/settings.py.dev
+    dest={{ project_path }}/temba/settings.py
+
+- name: Django | Syncdb
+  become: no
+  command: |
+    {{ project_path }}/.venv/bin/python manage.py migrate
+    chdir={{ project_path }}

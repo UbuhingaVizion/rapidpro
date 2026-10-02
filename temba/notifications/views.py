@@ -1,6 +1,5 @@
-from smartmin.views import SmartCRUDL, SmartListView
-
 from django.utils.translation import gettext_lazy as _
+from smartmin.views import SmartCRUDL, SmartListView
 
 from temba.orgs.views import OrgPermsMixin
 
