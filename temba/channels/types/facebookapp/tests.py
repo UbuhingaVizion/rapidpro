@@ -6,8 +6,10 @@ from django.urls import reverse
 from temba.tests import MockResponse, TembaTest
 from temba.triggers.models import Trigger
 from temba.utils import json
+from temba.utils.text import truncate
 
 from ...models import Channel
+from .type import FacebookAppType
 
 
 class FacebookTypeTest(TembaTest):
@@ -72,7 +74,7 @@ class FacebookTypeTest(TembaTest):
         self.assertEqual(response.request["PATH_INFO"], reverse("channels.channel_read", args=[channel.uuid]))
 
         mock_get.assert_any_call(
-            "https://graph.facebook.com/v12.0/debug_token",
+            "https://graph.facebook.com/v18.0/debug_token",
             params={"input_token": token, "access_token": "FB_APP_ID|FB_APP_SECRET"},
         )
 
@@ -87,11 +89,11 @@ class FacebookTypeTest(TembaTest):
         )
 
         mock_get.assert_any_call(
-            "https://graph.facebook.com/v12.0/098765/accounts", params={"access_token": f"long-life-user-{token}"}
+            "https://graph.facebook.com/v18.0/098765/accounts", params={"access_token": f"long-life-user-{token}"}
         )
 
         mock_post.assert_any_call(
-            "https://graph.facebook.com/v12.0/123456/subscribed_apps",
+            "https://graph.facebook.com/v18.0/123456/subscribed_apps",
             data={
                 "subscribed_fields": "messages,message_deliveries,messaging_optins,messaging_optouts,messaging_postbacks,message_reads,messaging_referrals,messaging_handovers"
             },
@@ -119,13 +121,129 @@ class FacebookTypeTest(TembaTest):
             "Sorry your Facebook channel could not be connected. Please try again",
         )
 
+    @override_settings(FACEBOOK_APPLICATION_ID="FB_APP_ID", FACEBOOK_APPLICATION_SECRET="FB_APP_SECRET")
+    @patch("requests.post")
+    @patch("requests.get")
+    def test_claim_long_name(self, mock_get, mock_post):
+        token = "x" * 200
+        long_name = "Temba" * 20
+
+        truncated_name = truncate(long_name, 64)
+
+        mock_get.side_effect = [
+            MockResponse(200, json.dumps({"data": {"user_id": "098765", "expired_at": 100}})),
+            MockResponse(200, json.dumps({"access_token": f"long-life-user-{token}"})),
+            MockResponse(
+                200,
+                json.dumps({"data": [{"name": long_name, "id": "123456", "access_token": f"page-long-life-{token}"}]}),
+            ),
+        ]
+
+        mock_post.return_value = MockResponse(200, json.dumps({"success": True}))
+
+        url = reverse("channels.types.facebookapp.claim")
+
+        self.login(self.admin)
+
+        # check that claim page URL appears on claim list page
+        response = self.client.get(reverse("channels.channel_claim"))
+        self.assertContains(response, url)
+
+        # can fetch the claim page
+        response = self.client.get(url)
+        self.assertContains(response, "Connect Facebook")
+        self.assertEqual(response.context["facebook_app_id"], "FB_APP_ID")
+        self.assertEqual(response.context["claim_url"], url)
+
+        post_data = response.context["form"].initial
+        post_data["user_access_token"] = token
+        post_data["page_id"] = "123456"
+        post_data["page_name"] = long_name
+
+        response = self.client.post(url, post_data, follow=True)
+
+        # assert our channel got created
+        channel = Channel.objects.get(address="123456", channel_type="FBA")
+        self.assertEqual(channel.config[Channel.CONFIG_AUTH_TOKEN], f"page-long-life-{token}")
+        self.assertEqual(channel.config[Channel.CONFIG_PAGE_NAME], truncated_name)
+        self.assertEqual(channel.address, "123456")
+
+    @override_settings(FACEBOOK_APPLICATION_ID="FB_APP_ID", FACEBOOK_APPLICATION_SECRET="FB_APP_SECRET")
+    @patch("requests.post")
+    @patch("requests.get")
+    def test_claim_already_connected(self, mock_get, mock_post):
+        token = "x" * 200
+        name = "Temba"
+
+        mock_get.side_effect = [
+            MockResponse(200, json.dumps({"data": {"user_id": "098765", "expired_at": 100}})),
+            MockResponse(200, json.dumps({"access_token": f"long-life-user-{token}"})),
+            MockResponse(
+                200,
+                json.dumps({"data": [{"name": name, "id": "12345", "access_token": f"page-long-life-{token}"}]}),
+            ),
+        ]
+
+        mock_post.return_value = MockResponse(200, json.dumps({"success": True}))
+
+        url = reverse("channels.types.facebookapp.claim")
+
+        self.login(self.admin)
+
+        # check that claim page URL appears on claim list page
+        response = self.client.get(reverse("channels.channel_claim"))
+        self.assertContains(response, url)
+
+        # can fetch the claim page
+        response = self.client.get(url)
+        self.assertContains(response, "Connect Facebook")
+        self.assertEqual(response.context["facebook_app_id"], "FB_APP_ID")
+        self.assertEqual(response.context["claim_url"], url)
+
+        post_data = response.context["form"].initial
+        post_data["user_access_token"] = token
+        post_data["page_id"] = "12345"
+        post_data["page_name"] = name
+
+        response = self.client.post(url, post_data, follow=True)
+        self.assertContains(response, "This channel is already connected in this workspace.")
+
+        mock_get.side_effect = [
+            MockResponse(200, json.dumps({"data": {"user_id": "098765", "expired_at": 100}})),
+            MockResponse(200, json.dumps({"access_token": f"long-life-user-{token}"})),
+            MockResponse(
+                200,
+                json.dumps({"data": [{"name": name, "id": "12345", "access_token": f"page-long-life-{token}"}]}),
+            ),
+        ]
+
+        self.login(self.admin2)
+
+        # check that claim page URL appears on claim list page
+        response = self.client.get(reverse("channels.channel_claim"))
+        self.assertContains(response, url)
+
+        # can fetch the claim page
+        response = self.client.get(url)
+        self.assertContains(response, "Connect Facebook")
+        self.assertEqual(response.context["facebook_app_id"], "FB_APP_ID")
+        self.assertEqual(response.context["claim_url"], url)
+
+        post_data = response.context["form"].initial
+        post_data["user_access_token"] = token
+        post_data["page_id"] = "12345"
+        post_data["page_name"] = name
+
+        response = self.client.post(url, post_data, follow=True)
+        self.assertContains(response, "This channel is already connected in another workspace.")
+
     @patch("requests.delete")
     def test_release(self, mock_delete):
         mock_delete.return_value = MockResponse(200, json.dumps({"success": True}))
         self.channel.release(self.admin)
 
         mock_delete.assert_called_once_with(
-            "https://graph.facebook.com/v12.0/12345/subscribed_apps", params={"access_token": "09876543"}
+            "https://graph.facebook.com/v18.0/12345/subscribed_apps", params={"access_token": "09876543"}
         )
 
     @override_settings(FACEBOOK_APPLICATION_ID="FB_APP_ID", FACEBOOK_APPLICATION_SECRET="FB_APP_SECRET")
@@ -196,11 +314,11 @@ class FacebookTypeTest(TembaTest):
             },
         )
         mock_get.assert_any_call(
-            "https://graph.facebook.com/v12.0/098765/accounts", params={"access_token": f"long-life-user-{token}"}
+            "https://graph.facebook.com/v18.0/098765/accounts", params={"access_token": f"long-life-user-{token}"}
         )
 
         mock_post.assert_any_call(
-            "https://graph.facebook.com/v12.0/12345/subscribed_apps",
+            "https://graph.facebook.com/v18.0/12345/subscribed_apps",
             data={
                 "subscribed_fields": "messages,message_deliveries,messaging_optins,messaging_optouts,messaging_postbacks,message_reads,messaging_referrals,messaging_handovers"
             },
@@ -216,7 +334,7 @@ class FacebookTypeTest(TembaTest):
             trigger = Trigger.create(self.org, self.admin, Trigger.TYPE_NEW_CONVERSATION, flow, channel=self.channel)
 
             mock_post.assert_called_once_with(
-                "https://graph.facebook.com/v12.0/me/messenger_profile",
+                "https://graph.facebook.com/v18.0/me/messenger_profile",
                 json={"get_started": {"payload": "get_started"}},
                 headers={"Content-Type": "application/json"},
                 params={"access_token": "09876543"},
@@ -229,7 +347,7 @@ class FacebookTypeTest(TembaTest):
             trigger.archive(self.admin)
 
             mock_post.assert_called_once_with(
-                "https://graph.facebook.com/v12.0/me/messenger_profile",
+                "https://graph.facebook.com/v18.0/me/messenger_profile",
                 json={"fields": ["get_started"]},
                 headers={"Content-Type": "application/json"},
                 params={"access_token": "09876543"},
@@ -242,9 +360,15 @@ class FacebookTypeTest(TembaTest):
             trigger.restore(self.admin)
 
             mock_post.assert_called_once_with(
-                "https://graph.facebook.com/v12.0/me/messenger_profile",
+                "https://graph.facebook.com/v18.0/me/messenger_profile",
                 json={"get_started": {"payload": "get_started"}},
                 headers={"Content-Type": "application/json"},
                 params={"access_token": "09876543"},
             )
             mock_post.reset_mock()
+
+    def test_get_error_ref_url(self):
+        self.assertEqual(
+            "https://developers.facebook.com/docs/messenger-platform/error-codes",
+            FacebookAppType().get_error_ref_url(None, "190"),
+        )

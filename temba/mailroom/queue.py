@@ -34,6 +34,7 @@ class BatchTask(Enum):
     POPULATE_DYNAMIC_GROUP = "populate_dynamic_group"
     SCHEDULE_CAMPAIGN_EVENT = "schedule_campaign_event"
     IMPORT_CONTACT_BATCH = "import_contact_batch"
+    INTERRUPT_CHANNEL = "interrupt_channel"
 
 
 def queue_msg_handling(msg):
@@ -43,7 +44,7 @@ def queue_msg_handling(msg):
 
     msg_task = {
         "org_id": msg.org_id,
-        "channel_id": msg.channel_id,
+        "channel_id": msg.channel.id,
         "contact_id": msg.contact_id,
         "msg_id": msg.id,
         "msg_uuid": str(msg.uuid),
@@ -84,15 +85,15 @@ def queue_broadcast(broadcast):
     """
 
     task = {
-        "translations": {lang: {"text": text} for lang, text in broadcast.text.items()},
-        "template_state": broadcast.get_template_state(),
+        "translations": broadcast.translations,
+        "template_state": "unevaluated",
         "base_language": broadcast.base_language,
-        "urns": broadcast.raw_urns or [],
+        "optin_id": broadcast.optin_id,
+        "urns": broadcast.urns or [],
         "contact_ids": list(broadcast.contacts.values_list("id", flat=True)),
         "group_ids": list(broadcast.groups.values_list("id", flat=True)),
         "broadcast_id": broadcast.id,
         "org_id": broadcast.org_id,
-        "ticket_id": broadcast.ticket_id,
         "created_by_id": broadcast.created_by_id,
     }
 
@@ -132,14 +133,12 @@ def queue_flow_start(start):
         "org_id": org_id,
         "created_by_id": start.created_by_id,
         "flow_id": start.flow_id,
-        "flow_type": start.flow.flow_type,
         "contact_ids": list(start.contacts.values_list("id", flat=True)),
         "group_ids": list(start.groups.values_list("id", flat=True)),
         "urns": start.urns or [],
         "query": start.query,
-        "restart_participants": start.restart_participants,
-        "include_active": start.include_active,
-        "extra": start.extra,
+        "exclusions": start.exclusions,
+        "params": start.params,
     }
 
     _queue_batch_task(org_id, BatchTask.START_FLOW, task, HIGH_PRIORITY)
@@ -155,24 +154,30 @@ def queue_contact_import_batch(batch):
     _queue_batch_task(batch.contact_import.org.id, BatchTask.IMPORT_CONTACT_BATCH, task, DEFAULT_PRIORITY)
 
 
-def queue_interrupt(org, *, contacts=None, channel=None, flow=None, session=None):
+def queue_interrupt_channel(org, channel):
+    """
+    Queues an interrupt channel task for handling by mailroom
+    """
+
+    task = {"channel_id": channel.id}
+
+    _queue_batch_task(org.id, BatchTask.INTERRUPT_CHANNEL, task, HIGH_PRIORITY)
+
+
+def queue_interrupt(org, *, contacts=None, flow=None, sessions=None):
     """
     Queues an interrupt task for handling by mailroom
     """
 
-    assert contacts or channel or flow or session, (
-        "must specify either a set of contacts or a channel or a flow or a session"
-    )
+    assert contacts or flow or sessions, "must specify either a set of contacts or a flow or sessions"
 
     task = {}
     if contacts:
         task["contact_ids"] = [c.id for c in contacts]
-    if channel:
-        task["channel_ids"] = [channel.id]
     if flow:
         task["flow_ids"] = [flow.id]
-    if session:
-        task["session_ids"] = [session.id]
+    if sessions:
+        task["session_ids"] = [s.id for s in sessions]
 
     _queue_batch_task(org.id, BatchTask.INTERRUPT_SESSIONS, task, HIGH_PRIORITY)
 

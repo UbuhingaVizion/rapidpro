@@ -3,6 +3,7 @@ from datetime import timedelta
 
 from celery import shared_task
 from django.utils import timezone
+from django.utils.translation import gettext_lazy as _
 
 from temba.contacts.models import URN, ContactURN, ExportContactsTask
 from temba.contacts.tasks import export_contacts_task
@@ -10,40 +11,50 @@ from temba.flows.models import ExportFlowResultsTask
 from temba.flows.tasks import export_flow_results_task
 from temba.msgs.models import ExportMessagesTask
 from temba.msgs.tasks import export_messages_task
-from temba.utils.celery import nonoverlapping_task
+from temba.utils.crons import cron_task
+from temba.utils.email import send_template_email
+from temba.utils.text import generate_secret
 
-from .models import CreditAlert, Invitation, Org, OrgActivity, TopUpCredits
+from .models import Invitation, Org, OrgImport, User, UserSettings
 
 
-@shared_task(track_started=True, name="send_invitation_email_task")
+@shared_task
+def start_org_import_task(import_id):
+    org_import = OrgImport.objects.get(id=import_id)
+    org_import.start()
+
+
+@shared_task
 def send_invitation_email_task(invitation_id):
-    invitation = Invitation.objects.get(pk=invitation_id)
+    invitation = Invitation.objects.get(id=invitation_id)
     invitation.send_email()
 
 
-@shared_task(track_started=True, name="send_alert_email_task")
-def send_alert_email_task(alert_id):
-    alert = CreditAlert.objects.get(pk=alert_id)
-    alert.send_email()
+@shared_task
+def send_user_verification_email(user_id):
+    user = User.objects.get(id=user_id)
+    if user.settings.email_status == UserSettings.STATUS_VERIFIED:
+        return
+
+    verification_secret = user.settings.email_verification_secret
+    if not verification_secret:
+        verification_secret = generate_secret(64)
+
+        user.settings.email_verification_secret = verification_secret
+        user.settings.save(update_fields=("email_verification_secret",))
+
+    org = user.get_orgs().first()
+
+    subject = _("%(name)s Email Verification") % org.branding
+    template = "orgs/email/email_verification"
+
+    context = dict(org=org, now=timezone.now(), branding=org.branding, secret=verification_secret)
+    context["subject"] = subject
+
+    send_template_email(user.email, subject, template, context, org.branding)
 
 
-@shared_task(track_started=True, name="check_credits_task")
-def check_credits_task():  # pragma: needs cover
-    CreditAlert.check_org_credits()
-
-
-@shared_task(track_started=True, name="check_topup_expiration_task")
-def check_topup_expiration_task():
-    CreditAlert.check_topup_expiration()
-
-
-@shared_task(track_started=True, name="apply_topups_task")
-def apply_topups_task(org_id):
-    org = Org.objects.get(id=org_id)
-    org.apply_topups()
-
-
-@shared_task(track_started=True, name="normalize_contact_tels_task")
+@shared_task
 def normalize_contact_tels_task(org_id):
     org = Org.objects.get(id=org_id)
 
@@ -54,12 +65,7 @@ def normalize_contact_tels_task(org_id):
             urn.ensure_number_normalization(org.default_country_code)
 
 
-@nonoverlapping_task(track_started=True, name="squash_topupcredits", lock_key="squash_topupcredits", lock_timeout=7200)
-def squash_topupcredits():
-    TopUpCredits.squash()
-
-
-@nonoverlapping_task(track_started=True, name="resume_failed_tasks", lock_key="resume_failed_tasks", lock_timeout=7200)
+@cron_task(lock_timeout=7200)
 def resume_failed_tasks():
     now = timezone.now()
     window = now - timedelta(hours=1)
@@ -83,32 +89,26 @@ def resume_failed_tasks():
         export_messages_task.delay(msg_export.pk)
 
 
-@nonoverlapping_task(track_started=True, name="update_org_activity_task")
-def update_org_activity(now=None):
-    now = now if now else timezone.now()
-    OrgActivity.update_day(now)
-
-
-@nonoverlapping_task(
-    track_started=True, name="suspend_topup_orgs_task", lock_key="suspend_topup_orgs_task", lock_timeout=7200
-)
-def suspend_topup_orgs_task():
-    # for every org on a topup plan that isn't suspended, check they have credits, if not, suspend them
-    for org in Org.objects.filter(uses_topups=True, is_active=True, is_suspended=False):
-        if org.get_credits_remaining() <= 0:
-            org.clear_credit_cache()
-            if org.get_credits_remaining() <= 0:
-                org.is_suspended = True
-                org.plan_end = timezone.now()
-                org.save(update_fields=["is_suspended", "plan_end"])
-
-
-@nonoverlapping_task(track_started=True, name="delete_orgs_task", lock_key="delete_orgs_task", lock_timeout=7200)
-def delete_orgs_task():
+@cron_task(lock_timeout=7 * 24 * 60 * 60)
+def delete_released_orgs():
     # for each org that was released over 7 days ago, delete it for real
     week_ago = timezone.now() - timedelta(days=Org.DELETE_DELAY_DAYS)
+
+    num_deleted, num_failed = 0, 0
+
     for org in Org.objects.filter(is_active=False, released_on__lt=week_ago, deleted_on=None):
+        start = timezone.now()
+
         try:
-            org.delete()
+            counts = org.delete()
         except Exception:  # pragma: no cover
-            logging.exception(f"exception while deleting {org.name}")
+            logging.exception(f"exception while deleting '{org.name}' (#{org.id})")
+            num_failed += 1
+            continue
+
+        seconds = (timezone.now() - start).total_seconds()
+        stats = " ".join([f"{k}={v}" for k, v in counts.items()])
+        logging.warning(f"successfully deleted '{org.name}' (#{org.id}) in {seconds} seconds ({stats})")
+        num_deleted += 1
+
+    return {"deleted": num_deleted, "failed": num_failed}

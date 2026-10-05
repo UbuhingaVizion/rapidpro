@@ -1,0 +1,354 @@
+{
+  "version": "13",
+  "site": "https://app.rapidpro.io",
+  "flows": [
+    {
+      "name": "Mpesa Payment",
+      "uuid": "dfaace19-701d-42f8-9bf5-e203353500fb",
+      "spec_version": "13.2.0",
+      "language": "eng",
+      "type": "messaging",
+      "nodes": [
+        {
+          "uuid": "e0553ff6-b73e-4b86-96cb-8318689b0523",
+          "actions": [
+            {
+              "uuid": "9108f6c0-1617-47da-9496-3dab019d1d1f",
+              "type": "set_run_result",
+              "name": "mpesa_code",
+              "value": "@(regex_match(input.text, \"^([A-Z0-9]{10})\", 1))",
+              "category": "All"
+            }
+          ],
+          "exits": [
+            {
+              "uuid": "94739daa-0826-4839-8e0f-2a7088f6308a",
+              "destination_uuid": "0869f48e-996b-4c0f-9a26-96eef6643007"
+            }
+          ]
+        },
+        {
+          "uuid": "0869f48e-996b-4c0f-9a26-96eef6643007",
+          "actions": [
+            {
+              "uuid": "b01ac971-65cd-4062-bdbe-b7526ab1a94e",
+              "type": "set_run_result",
+              "name": "amount",
+              "value": "@(replace(regex_match(input.text, \"Ksh([0-9,]+\\.[0-9]{2})\", 1), \",\", \"\"))",
+              "category": "All"
+            }
+          ],
+          "exits": [
+            {
+              "uuid": "fe35bab5-3316-4e50-96b1-9014ab868f36",
+              "destination_uuid": "1df36ff8-2da4-440e-9d97-29cec66349b9"
+            }
+          ]
+        },
+        {
+          "uuid": "1df36ff8-2da4-440e-9d97-29cec66349b9",
+          "actions": [
+            {
+              "uuid": "ab98e3d9-bbfc-4601-bf6c-6447f305069b",
+              "type": "set_run_result",
+              "name": "new_balance",
+              "value": "@(replace(regex_match(input.text, \"[Bb]alance is Ksh([0-9,]+\\.[0-9]{2})\", 1), \",\", \"\"))",
+              "category": "All"
+            }
+          ],
+          "exits": [
+            {
+              "uuid": "683f1c1c-cb71-43d0-883a-7ad3c71892fa",
+              "destination_uuid": "8c07f18d-224d-461a-a35d-3d178c9a6ef4"
+            }
+          ]
+        },
+        {
+          "uuid": "8c07f18d-224d-461a-a35d-3d178c9a6ef4",
+          "router": {
+            "type": "switch",
+            "operand": "@input.text",
+            "cases": [
+              {
+                "arguments": [
+                  "You have received"
+                ],
+                "type": "has_phrase",
+                "uuid": "ae2adac8-7e02-4801-8c51-cd0aaec37c6e",
+                "category_uuid": "f6560024-438d-4591-8d27-09567f8556a2"
+              },
+              {
+                "arguments": [
+                  "paid to"
+                ],
+                "type": "has_phrase",
+                "uuid": "a08dd27b-4116-4e4e-a5dd-214079d496d4",
+                "category_uuid": "c447f284-adfa-4a7b-838e-4da4b8839483"
+              }
+            ],
+            "categories": [
+              {
+                "name": "Received",
+                "uuid": "f6560024-438d-4591-8d27-09567f8556a2",
+                "exit_uuid": "a6a4099c-ef30-4ca7-80c6-ebe940df2460"
+              },
+              {
+                "name": "Sent",
+                "uuid": "c447f284-adfa-4a7b-838e-4da4b8839483",
+                "exit_uuid": "c3dabbfb-5dec-4ebe-8db0-84d7d3954a51"
+              },
+              {
+                "name": "Other",
+                "uuid": "0f80f5e4-bfb9-4fd0-8fa5-9898a2485804",
+                "exit_uuid": "936a8757-fb95-4d85-81b8-8b077644693e"
+              }
+            ],
+            "default_category_uuid": "0f80f5e4-bfb9-4fd0-8fa5-9898a2485804",
+            "uuid": "28ba9dac-4761-4664-8f60-cec051f45565"
+          },
+          "exits": [
+            {
+              "uuid": "a6a4099c-ef30-4ca7-80c6-ebe940df2460",
+              "destination_uuid": "892560be-3ba3-48e2-8e5a-cea12f0f4a88"
+            },
+            {
+              "uuid": "c3dabbfb-5dec-4ebe-8db0-84d7d3954a51",
+              "destination_uuid": "4144fe7f-b87e-4284-8f96-1a9517a618c3"
+            },
+            {
+              "uuid": "936a8757-fb95-4d85-81b8-8b077644693e",
+              "destination_uuid": null
+            }
+          ]
+        },
+        {
+          "uuid": "892560be-3ba3-48e2-8e5a-cea12f0f4a88",
+          "actions": [
+            {
+              "uuid": "f024778c-6b35-4d76-89ec-caae3a7c0fbf",
+              "type": "set_run_result",
+              "name": "transaction_type",
+              "value": "RECEIVED",
+              "category": "All"
+            },
+            {
+              "uuid": "1ccda256-e543-49c9-9182-60dbdf6e2246",
+              "type": "set_run_result",
+              "name": "counterparty",
+              "value": "@(trim(default(regex_match(input.text, \"from\\s+(.+?)\\s+\\d{4}\\*+\\d{3}\", 1), regex_match(input.text, \"from\\s+(.+?)\\s+on\\s+\\d+\", 1))))",
+              "category": "All"
+            },
+            {
+              "uuid": "85369b09-c6b4-4665-afbb-6ee02083c0ab",
+              "type": "set_run_result",
+              "name": "payer_masked",
+              "value": "@(regex_match(input.text, \"from\\s+.+?\\s+(\\d{3,4}\\*+\\d{3})\", 1))",
+              "category": "All"
+            }
+          ],
+          "exits": [
+            {
+              "uuid": "48a7cf4a-69b2-4c17-8874-ea91e953351f",
+              "destination_uuid": "70e1bcd7-0d37-4ea4-a2fb-156673845460"
+            }
+          ]
+        },
+        {
+          "uuid": "4144fe7f-b87e-4284-8f96-1a9517a618c3",
+          "actions": [
+            {
+              "uuid": "355868ec-be0c-4d4c-b5af-50d4ef9b9c4c",
+              "type": "set_run_result",
+              "name": "transaction_type",
+              "value": "SENT",
+              "category": "All"
+            },
+            {
+              "uuid": "b953f5bf-4861-40b7-916e-3633c93fbbaa",
+              "type": "set_run_result",
+              "name": "counterparty",
+              "value": "@(trim(regex_match(input.text, \"paid to\\s+(.+?)\\.\\s+on\\s+\\d+\", 1)))",
+              "category": "All"
+            }
+          ],
+          "exits": [
+            {
+              "uuid": "492b6bb5-ee51-4989-b1c3-796b0b998c08",
+              "destination_uuid": "4a7a2eac-5c72-41e5-aa08-adcc026f25a1"
+            }
+          ]
+        },
+        {
+          "uuid": "70e1bcd7-0d37-4ea4-a2fb-156673845460",
+          "actions": [
+            {
+              "uuid": "9cd30d9a-e0c4-4fb9-9cf6-7bd6be383f9e",
+              "type": "call_webhook",
+              "method": "POST",
+              "url": "http://host.docker.internal:5000/resolve",
+              "headers": {
+                "Content-Type": "application/json"
+              },
+              "body": "{\"masked\": \"@results.payer_masked.value\"}",
+              "result_name": "payer"
+            }
+          ],
+          "exits": [
+            {
+              "uuid": "f6007b5b-d08d-4c67-acff-3e75eb1f3b1f",
+              "destination_uuid": "4a7a2eac-5c72-41e5-aa08-adcc026f25a1"
+            }
+          ]
+        },
+        {
+          "uuid": "4a7a2eac-5c72-41e5-aa08-adcc026f25a1",
+          "actions": [
+            {
+              "uuid": "9facfa8e-3073-4e9a-9ac5-a09c10c8a018",
+              "type": "start_session",
+              "flow": {
+                "uuid": "83e93157-5e4e-422b-a257-78b40302a87c",
+                "name": "Add JengaPoints"
+              },
+              "legacy_vars": [
+                "@results.payer.extra.urn"
+              ]
+            },
+            {
+              "uuid": "ab6595c1-1ba3-40ee-81d2-97f6eaae9284",
+              "type": "send_broadcast",
+              "legacy_vars": [
+                "@results.payer.extra.urn"
+              ],
+              "text": "Asante @results.counterparty.value! We received your payment of Ksh @results.amount.value (txn @results.mpesa_code.value). JengaPoints credited."
+            }
+          ],
+          "exits": [
+            {
+              "uuid": "5b71a396-d859-490d-89f6-e5f095c1f037",
+              "destination_uuid": null
+            }
+          ]
+        }
+      ],
+      "_ui": {
+        "nodes": {
+          "e0553ff6-b73e-4b86-96cb-8318689b0523": {
+            "position": {
+              "left": 100,
+              "top": 60
+            }
+          },
+          "0869f48e-996b-4c0f-9a26-96eef6643007": {
+            "position": {
+              "left": 100,
+              "top": 200
+            }
+          },
+          "1df36ff8-2da4-440e-9d97-29cec66349b9": {
+            "position": {
+              "left": 100,
+              "top": 340
+            }
+          },
+          "8c07f18d-224d-461a-a35d-3d178c9a6ef4": {
+            "position": {
+              "left": 100,
+              "top": 480
+            }
+          },
+          "892560be-3ba3-48e2-8e5a-cea12f0f4a88": {
+            "position": {
+              "left": 0,
+              "top": 720
+            }
+          },
+          "4144fe7f-b87e-4284-8f96-1a9517a618c3": {
+            "position": {
+              "left": 280,
+              "top": 720
+            }
+          },
+          "70e1bcd7-0d37-4ea4-a2fb-156673845460": {
+            "position": {
+              "left": 0,
+              "top": 860
+            }
+          },
+          "4a7a2eac-5c72-41e5-aa08-adcc026f25a1": {
+            "position": {
+              "left": 140,
+              "top": 1000
+            }
+          }
+        }
+      },
+      "revision": 1,
+      "expire_after_minutes": 10080
+    },
+    {
+      "name": "Add JengaPoints",
+      "uuid": "83e93157-5e4e-422b-a257-78b40302a87c",
+      "spec_version": "13.2.0",
+      "language": "eng",
+      "type": "messaging",
+      "nodes": [
+        {
+          "uuid": "ddc6e7f8-a4da-42d2-a375-466356fc81b4",
+          "actions": [
+            {
+              "uuid": "84b728aa-bd6c-4af6-928a-0341bc025c69",
+              "type": "set_contact_field",
+              "field": {
+                "key": "jengapoints",
+                "name": "JengaPoints"
+              },
+              "value": "@(default(fields.jengapoints, 0) + number(default(parent.results.amount.value, 0)))"
+            }
+          ],
+          "exits": [
+            {
+              "uuid": "a349a13f-e85b-4f4f-b539-24ac04d2cfe6",
+              "destination_uuid": null
+            }
+          ]
+        }
+      ],
+      "_ui": {
+        "nodes": {
+          "ddc6e7f8-a4da-42d2-a375-466356fc81b4": {
+            "position": {
+              "left": 0,
+              "top": 0
+            }
+          }
+        }
+      },
+      "revision": 1,
+      "expire_after_minutes": 10080
+    }
+  ],
+  "campaigns": [],
+  "triggers": [
+    {
+      "trigger_type": "C",
+      "flow": {
+        "uuid": "dfaace19-701d-42f8-9bf5-e203353500fb",
+        "name": "Add JengaPoints"
+      },
+      "channel": {
+        "uuid": "4c335860-00cb-4c05-844d-836d271facf5",
+        "name": "smsgateway"
+      },
+      "groups": [
+        {
+          "uuid": "99a4a5d2-b2e0-4bb4-a19a-24462af10c01",
+          "name": "PaymentAggregators"
+        }
+      ],
+      "exclude_groups": []
+    }
+  ],
+  "fields": [],
+  "groups": []
+}

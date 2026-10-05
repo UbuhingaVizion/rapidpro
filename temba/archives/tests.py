@@ -3,9 +3,9 @@ import gzip
 import hashlib
 import io
 from datetime import date, datetime
+from datetime import timezone as tzone
 from unittest.mock import call, patch
 
-import pytz
 from django.urls import reverse
 from django.utils import timezone
 
@@ -129,19 +129,19 @@ class ArchiveTest(TembaTest):
 
         assert_records(Archive.iter_all_records(self.org, Archive.TYPE_MSG), [1, 2, 3, 4, 5, 6])
         assert_records(
-            Archive.iter_all_records(self.org, Archive.TYPE_MSG, after=datetime(2020, 7, 30, 12, 0, 0, 0, pytz.UTC)),
+            Archive.iter_all_records(self.org, Archive.TYPE_MSG, after=datetime(2020, 7, 30, 12, 0, 0, 0, tzone.utc)),
             [2, 3, 4, 5, 6],
         )
         assert_records(
-            Archive.iter_all_records(self.org, Archive.TYPE_MSG, before=datetime(2020, 8, 2, 12, 0, 0, 0, pytz.UTC)),
+            Archive.iter_all_records(self.org, Archive.TYPE_MSG, before=datetime(2020, 8, 2, 12, 0, 0, 0, tzone.utc)),
             [1, 2, 3, 4, 5],
         )
         assert_records(
             Archive.iter_all_records(
                 self.org,
                 Archive.TYPE_MSG,
-                after=datetime(2020, 7, 30, 12, 0, 0, 0, pytz.UTC),
-                before=datetime(2020, 8, 2, 12, 0, 0, 0, pytz.UTC),
+                after=datetime(2020, 7, 30, 12, 0, 0, 0, tzone.utc),
+                before=datetime(2020, 8, 2, 12, 0, 0, 0, tzone.utc),
             ),
             [2, 3, 4, 5],
         )
@@ -149,8 +149,8 @@ class ArchiveTest(TembaTest):
             Archive.iter_all_records(
                 self.org,
                 Archive.TYPE_MSG,
-                after=datetime(2020, 7, 30, 12, 0, 0, 0, pytz.UTC),
-                before=datetime(2020, 8, 2, 12, 0, 0, 0, pytz.UTC),
+                after=datetime(2020, 7, 30, 12, 0, 0, 0, tzone.utc),
+                before=datetime(2020, 8, 2, 12, 0, 0, 0, tzone.utc),
                 where={"contact__name": "Bob"},
             ),
             [4, 5],
@@ -236,15 +236,15 @@ class ArchiveCRUDLTest(TembaTest, CRUDLTestMixin):
         # create archive for other org
         self.create_archive(Archive.TYPE_MSG, "D", date(2020, 7, 31), [{"id": 1}], org=self.org2)
 
-        response = self.assertListFetch(
-            reverse("archives.archive_run"), allow_viewers=False, allow_editors=True, context_objects=[d3]
-        )
-        self.assertContains(response, "jsonl.gz")
+        runs_url = reverse("archives.archive_run")
+        msgs_url = reverse("archives.archive_message")
 
-        response = self.assertListFetch(
-            reverse("archives.archive_message"), allow_viewers=False, allow_editors=True, context_objects=[d2, m1]
-        )
-        self.assertContains(response, "jsonl.gz")
+        response = self.assertListFetch(runs_url, allow_viewers=False, allow_editors=True, context_objects=[d3])
+        self.assertContains(response, f"/archive/read/{d3.id}/")
+
+        response = self.assertListFetch(msgs_url, allow_viewers=False, allow_editors=True, context_objects=[d2, m1])
+        self.assertContains(response, f"/archive/read/{d2.id}/")
+        self.assertContains(response, f"/archive/read/{m1.id}/")
 
     def test_read(self):
         archive = self.create_archive(Archive.TYPE_MSG, "D", date(2020, 7, 31), [{"id": 1}, {"id": 2}])
@@ -259,24 +259,6 @@ class ArchiveCRUDLTest(TembaTest, CRUDLTestMixin):
         )
 
         self.assertIn(download_url, response.get("Location"))
-
-    def test_formax(self):
-        self.login(self.admin)
-        url = reverse("orgs.org_home")
-
-        response = self.client.get(url)
-        self.assertContains(response, "archives yet")
-        self.assertContains(response, reverse("archives.archive_message"))
-
-        d1 = self.create_archive(Archive.TYPE_MSG, "D", date(2020, 7, 31), [{"id": 1}, {"id": 2}, {"id": 3}])
-        self.create_archive(
-            Archive.TYPE_MSG, "M", date(2020, 7, 1), [{"id": 1}, {"id": 2}, {"id": 3}], rollup_of=(d1,)
-        )
-        self.create_archive(Archive.TYPE_MSG, "D", date(2020, 8, 1), [{"id": 4}])
-
-        response = self.client.get(url)
-        self.assertContains(response, "4 records")
-        self.assertContains(response, reverse("archives.archive_message"))
 
 
 class JSONLGZTest(TembaTest):

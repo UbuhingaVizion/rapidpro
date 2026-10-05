@@ -1,18 +1,12 @@
 import cProfile
-import logging
 import pstats
 import traceback
 from io import StringIO
 
 from django.conf import settings
-from django.http import HttpResponseRedirect
-from django.urls import reverse
 from django.utils import timezone, translation
 
-from temba.orgs.models import Org
-from temba.policies.models import Policy
-
-logger = logging.getLogger(__name__)
+from temba.orgs.models import Org, User
 
 
 class ExceptionMiddleware:
@@ -20,9 +14,7 @@ class ExceptionMiddleware:
         self.get_response = get_response
 
     def __call__(self, request):
-        response = self.get_response(request)
-
-        return response
+        return self.get_response(request)
 
     def process_exception(self, request, exception):
         if settings.DEBUG:
@@ -31,75 +23,9 @@ class ExceptionMiddleware:
         return None
 
 
-class BrandingMiddleware:
-    def __init__(self, get_response=None):
-        self.get_response = get_response
-
-    def __call__(self, request):
-        """
-        Check for any branding options based on the current host
-        """
-
-        host = "localhost"
-        try:
-            host = request.get_host()
-        except Exception as e:  # pragma: needs cover
-            logger.error(f"Could not get host: {host}, {str(e)}", exc_info=True)
-
-        request.branding = BrandingMiddleware.get_branding_for_host(host)
-
-        response = self.get_response(request)
-        return response
-
-    @classmethod
-    def get_branding_for_host(cls, host):
-        brand_key = host
-
-        # ignore subdomains
-        if len(brand_key.split(".")) > 2:  # pragma: needs cover
-            brand_key = ".".join(brand_key.split(".")[-2:])
-
-        # prune off the port
-        if ":" in brand_key:
-            brand_key = brand_key[0 : brand_key.rindex(":")]
-
-        # override with site specific branding if we have that
-        branding = settings.BRANDING.get(brand_key, None)
-
-        if branding:
-            branding["brand"] = brand_key
-
-            # derive the keys for our brand based on our aliases
-            if "aliases" in branding:
-                branding["keys"] = [brand_key] + branding["aliases"]
-            else:
-                branding["keys"] = [brand_key]
-        else:
-            # if that brand isn't configured, use the default
-            branding = settings.BRANDING.get(settings.DEFAULT_BRAND)
-
-        return branding
-
-
-class ConsentMiddleware:  # pragma: no cover
-    REQUIRES_CONSENT = ("/msg", "/contact", "/flow", "/trigger", "/org/home", "/campaign", "/channel", "/welcome")
-
-    def __init__(self, get_response=None):
-        self.get_response = get_response
-
-    def __call__(self, request):
-        if request.user and request.user.is_authenticated:
-            for path in ConsentMiddleware.REQUIRES_CONSENT:
-                if request.path.startswith(path):
-                    if Policy.get_policies_needing_consent(request.user):
-                        return HttpResponseRedirect(reverse("policies.policy_list") + "?next=" + request.path)
-        response = self.get_response(request)
-        return response
-
-
 class OrgMiddleware:
     """
-    Determines the current org for this request and sets it on the user object on the request
+    Determines the org for this request and sets it on the request. Also sets request.branding for convenience.
     """
 
     def __init__(self, get_response=None):
@@ -108,17 +34,19 @@ class OrgMiddleware:
     def __call__(self, request):
         assert hasattr(request, "user"), "must be called after django.contrib.auth.middleware.AuthenticationMiddleware"
 
-        org = self.determine_org(request)
-        request.org = org
+        request.org = self.determine_org(request)
+        if request.org:
+            # set our current role for this org
+            request.role = request.org.get_user_role(request.user)
 
-        if request.user.is_authenticated:
-            request.user.set_org(org)
+        request.branding = settings.BRAND
 
+        # continue the chain, which in the case of the API will set request.org
         response = self.get_response(request)
 
-        # set a response header to make it easier to find the current org id
-        if org:
-            response["X-Temba-Org"] = org.id
+        if request.org:
+            # set a response header to make it easier to find the current org id
+            response["X-Temba-Org"] = request.org.id
 
         return response
 
@@ -131,14 +59,14 @@ class OrgMiddleware:
         # check for value in session
         org_id = request.session.get("org_id", None)
         if org_id:
-            org = Org.objects.filter(is_active=True, id=org_id).first()
+            org = Org.objects.filter(is_active=True, id=org_id).select_related("parent").first()
 
             # only use if user actually belongs to this org
-            if org and (user.is_superuser or user.is_staff or org.has_user(user)):
+            if org and (user.is_staff or org.has_user(user)):
                 return org
 
         # otherwise if user only belongs to one org, we can use that
-        user_orgs = user.get_orgs()
+        user_orgs = User.get_orgs_for_request(request)
         if user_orgs.count() == 1:
             return user_orgs[0]
 
@@ -177,7 +105,7 @@ class LanguageMiddleware:
 
         user = request.user
 
-        if not user.is_authenticated or user.is_superuser:
+        if not user.is_authenticated:
             language = request.branding.get("language", settings.DEFAULT_LANGUAGE)
             translation.activate(language)
         else:

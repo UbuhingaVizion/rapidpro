@@ -8,6 +8,8 @@
 // main style.less file.
 //
 // *****************************************************
+@import "variables";
+@import "mixins";
 
 input {
   &#id_min_value {
@@ -164,15 +166,6 @@ td.clickable a {
 // *****************************************************
 // styles.less purge 013117
 // *****************************************************
-
-// tweak toastr
-.toast-bottom-full-width {
-  margin-bottom: 20px;
-}
-
-.toast-info {
-  background-color: rgba(0, 0, 0, 0.85);
-}
 
 // style all placeholder text
 
@@ -807,72 +800,6 @@ table.list-table {
       }
     }
   }
-
-  @media all and (max-width: 767px) {
-    text-align: right;
-    right: 25px !important;
-    margin-right:15px;
-    margin-top: -65px !important;
-    padding-bottom: 19px;
-    min-height:50px !important;
-    
-    a {
-      width: 42px !important;
-    }
-
-    .circle {
-      border-width: 2px !important;
-      width: 25px !important;
-      height: 25px !important;
-
-      div {
-        width: 13px !important;
-        height: 14px !important;
-        font-size: 14px !important;
-      }
-    }
-
-    .title {
-      display: none !important;
-    }
-
-    div {
-      // border:1px solid pink;
-      width: 15px;
-      height: 15px;
-      font-size: 15px;
-      text-align: left;
-      margin: 0;
-
-      &.more {
-        height: 0;
-        width: 0;
-        visibility: hidden;
-
-        .submenu-container {
-          text-transform: lowercase;
-          left: -20px;
-          top: 14px;
-          display: block;
-
-          .submenu {
-            .drop-shadow(0);
-
-            a {
-              height: 22px;
-              font-size: 24px;
-            }
-          }
-        }
-      }
-
-      a {
-        width: 25px;
-        height: 25px;
-        padding: 0;
-      }
-    }
-  }
 }
 
 .nav-alert {
@@ -908,17 +835,6 @@ table.list-table {
   font-size: 11px;
   font-weight: 200;
 
-  @media all and (max-width: 767px) {
-    .rounded-corners(3px);
-    margin-top: 10px;
-    right: 50px;
-    top: 25px;
-    width: 170px;
-    background: none;
-    text-align: left;
-    font-size: 12px;
-    padding: 0;
-  }
 }
 
 a.org-choose {
@@ -952,9 +868,9 @@ a.org-choose {
 .org-header {
 
   z-index: 1039;
-  margin-top:-6px;
-  margin-right:30px;
-  margin-bottom:-28px;
+  margin-top: -6px;
+  margin-right: 30px;
+  margin-bottom: -28px;
   text-align: center;
   background: rgba(0, 0, 0, .15);
   padding-top: 6px;
@@ -990,8 +906,9 @@ a.org-choose {
 
   .other-orgs {
     width: 210px;
-    position:absolute;
-    right:40px;
+    position: absolute;
+    right: 40px;
+
     .account-details {
       padding: 5px 0px;
       border-bottom: 1px solid #ccc;
@@ -1016,6 +933,7 @@ a.org-choose {
           color: @color-navbar - #222;
         }
       }
+
       overflow-x: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
@@ -1043,41 +961,6 @@ a.org-choose {
   border: 0px solid pink;
   z-index: 0;
   position: relative;
-
-  @media all and (max-width: 940px) and (min-width: 767px) {
-    min-width: 940px;
-  }
-
-  @media all and (max-width: 767px) {
-    margin-left: -20px;
-    margin-right: -20px;
-    padding-left: 20px;
-    padding-right: 20px;
-  }
-
-  #menu-right-container {
-    height: 60px;
-    // border: 1px solid purple;
-    position: absolute;
-    width: 600px;
-    right: 0px;
-
-    top: 10px;
-    right: 0px;
-    overflow-x: hidden;
-
-    #menu-right {
-      float: right;
-      border: 1px solid yellow;
-      height: 60px;
-      width: 600px;
-    }
-  }
-
-  #menu-left {
-    height: 70px;
-    border: 0px solid yellow;
-  }
 }
 
 #print-header {
@@ -1094,12 +977,6 @@ a.org-choose {
   color: #999;
   line-height: 25px;
   width: 80%;
-}
-
-.instructions {
-  @media screen {
-    display: gone;
-  }
 }
 
 // *******************************
@@ -1169,37 +1046,6 @@ input[type='text'].search-query {
   margin-top: 15px;
 }
 
-// main page header icon
-.title-icon {
-  .glyph {
-    margin-top: 22px;
-    font-size: 56px;
-    line-height: 0;
-    color: #999;
-    float: left;
-  }
-
-  .glyph.icon-bubble-notification {
-    margin-top: 35px;
-  }
-
-  +.title-text {
-    margin-left: 85px;
-  }
-}
-
-.title-text {
-  h2 {
-    margin-bottom: 0px;
-    margin-top: 0px;
-  }
-
-  h5 {
-    margin-bottom: 0px;
-    margin-top: 2px;
-  }
-}
-
 #gear-container {
 
   height: 46px;
@@ -1236,19 +1082,6 @@ input[type='text'].search-query {
   font-size: 250px;
   color: @flat-darkwhite;
   margin-top: 20px;
-
-  @media (max-width: 2000px) {
-    font-size: 180px;
-    height: 200px;
-    margin-left: 25px;
-  }
-
-  @media (max-width: 768px) {
-    font-size: 80px;
-    height: 200px;
-    margin-left: 25px;
-    display: none;
-  }
 
   &.icon-contact {
     margin-top: -30px;
@@ -1483,7 +1316,7 @@ form.smartmin-form ul.errorlist li {
     }
 
     .help-block {
-      color: @color-font-lightgrey  !important;
+      color: @color-font-lightgrey !important;
       font-size: 12px !important;
       margin: 5px 0px 10px 0px !important;
 
@@ -1744,13 +1577,6 @@ background: #624e87;
   }
 }
 
-/*.empty-list
-.icon.icon-feed
-.message
-%h2 Triggering your Flows
-.details
-*/
-
 .empty-list {
   position: relative;
 
@@ -1957,10 +1783,6 @@ input[type='radio'] {
       width: 140px;
       text-align: right;
       font-weight: 400;
-    }
-
-    .account_value {
-      margin-left: 150px;
     }
   }
 }
@@ -2266,12 +2088,6 @@ span.label a {
   right: 12px;
 }
 
-.featherlight .featherlight-image {
-  max-width: 100%;
-  max-height: 500px;
-  width: auto;
-}
-
 .image-preview {
   max-height: 200px;
 }
@@ -2480,10 +2296,6 @@ span.label a {
 [class*=" icon-"] {
   transition: transform 400ms;
   -webkit-transition: -webkit-transform 400ms;
-}
-
-img.image-full.featherlight-inner {
-  max-height: 80%;
 }
 
 // *****************************************************

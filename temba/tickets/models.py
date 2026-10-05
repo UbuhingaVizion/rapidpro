@@ -1,3 +1,4 @@
+import logging
 from abc import ABCMeta
 from datetime import date
 
@@ -6,140 +7,20 @@ from django.conf import settings
 from django.db import models
 from django.db.models import Q, Sum
 from django.db.models.functions import Lower
-from django.template import Engine
-from django.urls import re_path
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
 from temba import mailroom
+from temba.assets.models import register_asset_store
 from temba.contacts.models import Contact
 from temba.orgs.models import DependencyMixin, Org, User, UserSettings
+from temba.utils import chunk_list
 from temba.utils.dates import date_range
+from temba.utils.export import BaseExportAssetStore, BaseItemWithContactExport, MultiSheetExporter
 from temba.utils.models import DailyCountModel, DailyTimingModel, SquashableModel, TembaModel
 from temba.utils.uuid import uuid4
 
-
-class TicketerType(metaclass=ABCMeta):
-    """
-    TicketerType is our abstract base type for ticketers.
-    """
-
-    # the verbose name for this ticketer type
-    name = None
-
-    # the short code for this ticketer type (< 16 chars, lowercase)
-    slug = None
-
-    # the icon to show for this ticketer type
-    icon = "icon-channel-external"
-
-    # the blurb to show on the main connect page
-    connect_blurb = None
-
-    # the view that handles connection of a new service
-    connect_view = None
-
-    def is_available_to(self, user):
-        """
-        Determines whether this ticketer type is available to the given user
-        """
-        return True  # pragma: no cover
-
-    def get_connect_blurb(self):
-        """
-        Gets the blurb for use on the connect page
-        """
-        return Engine.get_default().from_string(str(self.connect_blurb))
-
-    def get_urls(self):
-        """
-        Returns all the URLs this ticketer exposes to Django, the URL should be relative.
-        """
-        return [self.get_connect_url()]
-
-    def get_connect_url(self):
-        """
-        Gets the URL/view configuration for this ticketer's connect page
-        """
-        return re_path(r"^connect", self.connect_view.as_view(ticketer_type=self), name="connect")
-
-
-class Ticketer(TembaModel, DependencyMixin):
-    """
-    A service that can open and close tickets
-    """
-
-    org = models.ForeignKey(Org, on_delete=models.PROTECT, related_name="ticketers")
-    ticketer_type = models.CharField(max_length=16)
-    config = models.JSONField()
-
-    @classmethod
-    def create(cls, org, user, ticketer_type: str, name: str, config: dict):
-        return cls.objects.create(
-            uuid=uuid4(),
-            ticketer_type=ticketer_type,
-            name=name,
-            config=config,
-            org=org,
-            created_by=user,
-            modified_by=user,
-        )
-
-    @classmethod
-    def create_internal_ticketer(cls, org, brand: dict):
-        """
-        Every org gets a single internal ticketer
-        """
-
-        from .types.internal import InternalType
-
-        assert not org.ticketers.filter(ticketer_type=InternalType.slug).exists(), "org already has internal tickteter"
-
-        return org.ticketers.create(
-            uuid=uuid4(),
-            ticketer_type=InternalType.slug,
-            name=f"{brand['name']} Tickets",
-            is_system=True,
-            config={},
-            created_by=org.created_by,
-            modified_by=org.created_by,
-        )
-
-    @classmethod
-    def get_types(cls):
-        """
-        Returns the possible types available for ticketers
-        """
-        from .types import TYPES
-
-        return TYPES.values()
-
-    @property
-    def type(self):
-        """
-        Returns the type instance
-        """
-        from .types import TYPES
-
-        return TYPES[self.ticketer_type]
-
-    def release(self, user):
-        """
-        Releases this, closing all associated tickets in the process
-        """
-
-        assert not (self.is_system and self.org.is_active), "can't release system ticketers"
-
-        super().release(user)
-
-        open_tickets = self.tickets.filter(status=Ticket.STATUS_OPEN)
-        if open_tickets.exists():
-            Ticket.bulk_close(self.org, user, open_tickets, force=True)
-
-        self.is_active = False
-        self.name = self._deleted_name()
-        self.modified_by = user
-        self.save(update_fields=("name", "is_active", "modified_by", "modified_on"))
+logger = logging.getLogger(__name__)
 
 
 class Topic(TembaModel, DependencyMixin):
@@ -177,6 +58,16 @@ class Topic(TembaModel, DependencyMixin):
     def create_from_import_def(cls, org, user, definition: dict):
         return cls.create(org, user, definition["name"])
 
+    def release(self, user):
+        assert not (self.is_system and self.org.is_active), "can't release system topics"
+
+        super().release(user)
+
+        self.is_active = False
+        self.name = self._deleted_name()
+        self.modified_by = user
+        self.save(update_fields=("name", "is_active", "modified_by", "modified_on"))
+
     class Meta:
         constraints = [models.UniqueConstraint("org", Lower("name"), name="unique_topic_names")]
 
@@ -196,26 +87,22 @@ class Ticket(models.Model):
     MAX_NOTE_LEN = 4096
 
     uuid = models.UUIDField(unique=True, default=uuid4)
-    org = models.ForeignKey(Org, on_delete=models.PROTECT, related_name="tickets")
-    ticketer = models.ForeignKey(Ticketer, on_delete=models.PROTECT, related_name="tickets")
-    contact = models.ForeignKey(Contact, on_delete=models.PROTECT, related_name="tickets")
+    org = models.ForeignKey(Org, on_delete=models.PROTECT, related_name="tickets", db_index=False)  # indexed below
+    contact = models.ForeignKey(Contact, on_delete=models.PROTECT, related_name="tickets", db_index=False)
 
     # ticket content
     topic = models.ForeignKey(Topic, on_delete=models.PROTECT, related_name="tickets")
     body = models.TextField()
 
-    # the external id of the ticket
-    external_id = models.CharField(null=True, max_length=255)
-
-    # any configuration attributes for this ticket
-    config = models.JSONField(null=True)
-
     # the status of this ticket and who it's currently assigned to
     status = models.CharField(max_length=1, choices=STATUS_CHOICES)
     assignee = models.ForeignKey(User, on_delete=models.PROTECT, null=True, related_name="assigned_tickets")
 
-    # when this ticket was opened, first replied to, closed, modified
     opened_on = models.DateTimeField(default=timezone.now)
+    opened_in = models.ForeignKey("flows.Flow", null=True, on_delete=models.PROTECT, related_name="opened_tickets")
+    opened_by = models.ForeignKey(User, null=True, on_delete=models.PROTECT, related_name="opened_tickets")
+
+    # when this ticket was first replied to, closed, modified
     replied_on = models.DateTimeField(null=True)
     closed_on = models.DateTimeField(null=True)
     modified_on = models.DateTimeField(default=timezone.now)
@@ -223,36 +110,36 @@ class Ticket(models.Model):
     # when this ticket last had activity which includes messages being sent and received, and is used for ordering
     last_activity_on = models.DateTimeField(default=timezone.now)
 
-    def assign(self, user: User, *, assignee: User, note: str):
-        self.bulk_assign(self.org, user, [self], assignee=assignee, note=note)
+    def assign(self, user: User, *, assignee: User):
+        self.bulk_assign(self.org, user, [self], assignee=assignee)
 
     def add_note(self, user: User, *, note: str):
         self.bulk_add_note(self.org, user, [self], note=note)
 
     @classmethod
-    def bulk_assign(cls, org, user: User, tickets: list, assignee: User, note: str = None):
-        ticket_ids = [t.id for t in tickets if t.ticketer.is_active]
+    def bulk_assign(cls, org, user: User, tickets: list, assignee: User):
+        ticket_ids = [t.id for t in tickets]
         assignee_id = assignee.id if assignee else None
-        return mailroom.get_client().ticket_assign(org.id, user.id, ticket_ids, assignee_id, note)
+        return mailroom.get_client().ticket_assign(org.id, user.id, ticket_ids, assignee_id)
 
     @classmethod
     def bulk_add_note(cls, org, user: User, tickets: list, note: str):
-        ticket_ids = [t.id for t in tickets if t.ticketer.is_active]
+        ticket_ids = [t.id for t in tickets]
         return mailroom.get_client().ticket_add_note(org.id, user.id, ticket_ids, note)
 
     @classmethod
     def bulk_change_topic(cls, org, user: User, tickets: list, topic: Topic):
-        ticket_ids = [t.id for t in tickets if t.ticketer.is_active]
+        ticket_ids = [t.id for t in tickets]
         return mailroom.get_client().ticket_change_topic(org.id, user.id, ticket_ids, topic.id)
 
     @classmethod
     def bulk_close(cls, org, user, tickets, *, force: bool = False):
-        ticket_ids = [t.id for t in tickets if t.ticketer.is_active]
+        ticket_ids = [t.id for t in tickets]
         return mailroom.get_client().ticket_close(org.id, user.id, ticket_ids, force=force)
 
     @classmethod
     def bulk_reopen(cls, org, user, tickets):
-        ticket_ids = [t.id for t in tickets if t.ticketer.is_active]
+        ticket_ids = [t.id for t in tickets]
         return mailroom.get_client().ticket_reopen(org.id, user.id, ticket_ids)
 
     @classmethod
@@ -261,7 +148,7 @@ class Ticket(models.Model):
 
     def delete(self):
         self.events.all().delete()
-        self.broadcasts.update(ticket=None)
+
         super().delete()
 
     def __str__(self):
@@ -278,15 +165,9 @@ class Ticket(models.Model):
             ),
             # used by message handling to find open tickets for contact
             models.Index(name="tickets_contact_open", fields=["contact", "-opened_on"], condition=Q(status="O")),
-            # used by ticket handlers in mailroom to find tickets from their external IDs
-            models.Index(
-                name="tickets_ticketer_external_id",
-                fields=["ticketer", "external_id"],
-                condition=Q(external_id__isnull=False),
-            ),
-            # used by API tickets endpoint
-            models.Index(name="tickets_modified_on", fields=["-modified_on"]),
-            models.Index(name="tickets_contact_modified_on", fields=["contact", "-modified_on"]),
+            # used by API tickets endpoint hence the ordering, and general fetching by org or contact
+            models.Index(name="tickets_api_by_org", fields=["org", "-modified_on", "-id"]),
+            models.Index(name="tickets_api_by_contact", fields=["contact", "-modified_on", "-id"]),
         ]
 
 
@@ -331,9 +212,10 @@ class TicketEvent(models.Model):
 
 
 class TicketFolder(metaclass=ABCMeta):
-    slug = None
+    id = None
     name = None
     icon = None
+    verbose_name = None
 
     def get_queryset(self, org, user, ordered):
         qs = Ticket.objects.filter(org=org)
@@ -344,12 +226,32 @@ class TicketFolder(metaclass=ABCMeta):
         return qs.select_related("topic", "assignee").prefetch_related("contact")
 
     @classmethod
-    def from_slug(cls, slug: str):
-        return FOLDERS[slug]
+    def from_id(cls, org, id: str):
+        folder = FOLDERS.get(id, None)
+        if not folder:
+            topic = Topic.objects.filter(org=org, uuid=id).first()
+            if topic:
+                folder = TopicFolder(topic)
+        return folder
 
     @classmethod
     def all(cls):
         return FOLDERS
+
+
+class TopicFolder(TicketFolder):
+    """
+    Tickets assigned to the current user
+    """
+
+    def __init__(self, topic: Topic):
+        self.topic = topic
+        self.id = topic.uuid
+        self.name = topic.name
+        self.is_system = topic.is_system
+
+    def get_queryset(self, org, user, ordered):
+        return super().get_queryset(org, user, ordered).filter(topic=self.topic)
 
 
 class MineFolder(TicketFolder):
@@ -357,9 +259,9 @@ class MineFolder(TicketFolder):
     Tickets assigned to the current user
     """
 
-    slug = "mine"
+    id = "mine"
     name = _("My Tickets")
-    icon = "coffee"
+    icon = "tickets_mine"
 
     def get_queryset(self, org, user, ordered):
         return super().get_queryset(org, user, ordered).filter(assignee=user)
@@ -370,9 +272,10 @@ class UnassignedFolder(TicketFolder):
     Tickets not assigned to any user
     """
 
-    slug = "unassigned"
+    id = "unassigned"
     name = _("Unassigned")
-    icon = "mail"
+    verbose_name = _("Unassigned Tickets")
+    icon = "tickets_unassigned"
 
     def get_queryset(self, org, user, ordered):
         return super().get_queryset(org, user, ordered).filter(assignee=None)
@@ -383,51 +286,41 @@ class AllFolder(TicketFolder):
     All tickets
     """
 
-    slug = "all"
+    id = "all"
     name = _("All")
-    icon = "archive"
+    verbose_name = _("All Tickets")
+    icon = "tickets_all"
 
     def get_queryset(self, org, user, ordered):
         return super().get_queryset(org, user, ordered)
 
 
-FOLDERS = {f.slug: f() for f in TicketFolder.__subclasses__()}
+FOLDERS = {f.id: f() for f in TicketFolder.__subclasses__() if f.id}
 
 
 class TicketCount(SquashableModel):
     """
-    Counts of tickets by assignment and status
+    Counts of tickets by assignment/topic and status
     """
 
-    SQUASH_OVER = ("org_id", "assignee_id", "status")
+    squash_over = ("org_id", "scope", "status")
 
     org = models.ForeignKey(Org, on_delete=models.PROTECT, related_name="ticket_counts")
-    assignee = models.ForeignKey(User, null=True, on_delete=models.PROTECT, related_name="ticket_counts")
+    scope = models.CharField(max_length=32)
     status = models.CharField(max_length=1, choices=Ticket.STATUS_CHOICES)
     count = models.IntegerField(default=0)
 
     @classmethod
     def get_squash_query(cls, distinct_set) -> tuple:
-        if distinct_set.assignee_id:
-            sql = """
-            WITH removed as (
-                DELETE FROM %(table)s WHERE "org_id" = %%s AND "assignee_id" = %%s AND "status" = %%s RETURNING "count"
-            )
-            INSERT INTO %(table)s("org_id", "assignee_id", "status", "count", "is_squashed")
-            VALUES (%%s, %%s, %%s, GREATEST(0, (SELECT SUM("count") FROM removed)), TRUE);
-            """ % {"table": cls._meta.db_table}
+        sql = """
+        WITH removed as (
+            DELETE FROM %(table)s WHERE "org_id" = %%s AND "scope" = %%s AND "status" = %%s RETURNING "count"
+        )
+        INSERT INTO %(table)s("org_id", "scope", "status", "count", "is_squashed")
+        VALUES (%%s, %%s, %%s, GREATEST(0, (SELECT SUM("count") FROM removed)), TRUE);
+        """ % {"table": cls._meta.db_table}
 
-            params = (distinct_set.org_id, distinct_set.assignee_id, distinct_set.status) * 2
-        else:
-            sql = """
-            WITH removed as (
-                DELETE FROM %(table)s WHERE "org_id" = %%s AND "assignee_id" IS NULL AND "status" = %%s RETURNING "count"
-            )
-            INSERT INTO %(table)s("org_id", "assignee_id", "status", "count", "is_squashed")
-            VALUES (%%s, NULL, %%s, GREATEST(0, (SELECT SUM("count") FROM removed)), TRUE);
-            """ % {"table": cls._meta.db_table}
-
-            params = (distinct_set.org_id, distinct_set.status) * 2
+        params = (distinct_set.org_id, distinct_set.scope, distinct_set.status) * 2
 
         return sql, params
 
@@ -436,26 +329,55 @@ class TicketCount(SquashableModel):
         """
         Gets counts for a set of assignees (None means no assignee)
         """
-        counts = cls.objects.filter(org=org, status=status)
-        counts = counts.values_list("assignee").annotate(count_sum=Sum("count"))
-        counts_by_assignee = {c[0]: c[1] for c in counts}
 
-        return {a: counts_by_assignee.get(a.id if a else None, 0) for a in assignees}
+        scopes = [cls._assignee_scope(a) for a in assignees]
+        counts = (
+            cls.objects.filter(org=org, scope__in=scopes, status=status)
+            .values_list("scope")
+            .annotate(count_sum=Sum("count"))
+        )
+        counts_by_scope = {c[0]: c[1] for c in counts}
+
+        return {a: counts_by_scope.get(cls._assignee_scope(a), 0) for a in assignees}
+
+    @classmethod
+    def get_by_topics(cls, org, topics: list, status: str) -> dict:
+        """
+        Gets counts for a set of topics
+        """
+
+        scopes = [cls._topic_scope(t) for t in topics]
+        counts = (
+            cls.objects.filter(org=org, scope__in=scopes, status=status)
+            .values_list("scope")
+            .annotate(count_sum=Sum("count"))
+        )
+        counts_by_scope = {c[0]: c[1] for c in counts}
+
+        return {t: counts_by_scope.get(cls._topic_scope(t), 0) for t in topics}
 
     @classmethod
     def get_all(cls, org, status: str) -> int:
         """
         Gets count for org and status regardless of assignee
         """
-        return cls.sum(cls.objects.filter(org=org, status=status))
+        return cls.sum(cls.objects.filter(org=org, scope__startswith="assignee:", status=status))
+
+    @staticmethod
+    def _assignee_scope(user) -> str:
+        return f"assignee:{user.id if user else 0}"
+
+    @staticmethod
+    def _topic_scope(topic) -> str:
+        return f"topic:{topic.id}"
 
     class Meta:
         indexes = [
             models.Index(fields=("org", "status")),
-            models.Index(fields=("org", "assignee", "status")),
+            models.Index(fields=("org", "scope", "status")),
             # for squashing task
             models.Index(
-                name="ticket_count_unsquashed", fields=("org", "assignee", "status"), condition=Q(is_squashed=False)
+                name="ticket_count_unsquashed", fields=("org", "scope", "status"), condition=Q(is_squashed=False)
             ),
         ]
 
@@ -607,3 +529,67 @@ def export_ticket_stats(org: Org, since: date, until: date) -> openpyxl.Workbook
         day_row += 1
 
     return workbook
+
+
+class ExportTicketsTask(BaseItemWithContactExport):
+    analytics_key = "ticket_export"
+    notification_export_type = "ticket"
+
+    @classmethod
+    def create(cls, org, user, start_date, end_date, with_fields=(), with_groups=()):
+        export = cls.objects.create(
+            org=org, start_date=start_date, end_date=end_date, created_by=user, modified_by=user
+        )
+        export.with_fields.add(*with_fields)
+        export.with_groups.add(*with_groups)
+        return export
+
+    def write_export(self):
+        headers = ["UUID", "Opened On", "Closed On", "Topic", "Assigned To"] + self._get_contact_headers()
+        start_date, end_date = self._get_date_range()
+
+        # get the ticket ids, filtered and ordered by opened on
+        ticket_ids = (
+            self.org.tickets.filter(opened_on__gte=start_date, opened_on__lte=end_date)
+            .order_by("opened_on")
+            .values_list("id", flat=True)
+        )
+
+        exporter = MultiSheetExporter("Tickets", headers, self.org.timezone)
+
+        # add tickets to the export in batches of 1k to limit memory usage
+        for batch_ids in chunk_list(ticket_ids, 1000):
+            tickets = (
+                Ticket.objects.filter(id__in=batch_ids)
+                .order_by("opened_on")
+                .prefetch_related("org", "contact", "contact__org", "contact__groups", "assignee", "topic")
+                .using("readonly")
+            )
+
+            Contact.bulk_urn_cache_initialize([t.contact for t in tickets], using="readonly")
+
+            for ticket in tickets:
+                values = [
+                    str(ticket.uuid),
+                    ticket.opened_on,
+                    ticket.closed_on,
+                    ticket.topic.name,
+                    ticket.assignee.email if ticket.assignee else None,
+                ]
+                values += self._get_contact_columns(ticket.contact)
+
+                exporter.write_row(values)
+
+            self.modified_on = timezone.now()
+            self.save(update_fields=("modified_on",))
+
+        return exporter.save_file()
+
+
+@register_asset_store
+class TicketExportAssetStore(BaseExportAssetStore):
+    model = ExportTicketsTask
+    key = "ticket_export"
+    directory = "ticket_exports"
+    permission = "tickets.ticket_export"
+    extensions = ("xlsx",)

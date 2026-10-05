@@ -1,0 +1,270 @@
+{
+  "version": "13",
+  "site": "https://app.rapidpro.io",
+  "flows": [
+    {
+      "name": "Mpesa Payment",
+      "uuid": "dfaace19-701d-42f8-9bf5-e203353500fb",
+      "spec_version": "13.2.0",
+      "language": "eng",
+      "type": "messaging",
+      "nodes": [
+        {
+          "uuid": "node-extract-tx-code",
+          "actions": [
+            {
+              "uuid": "act-set-tx-code",
+              "type": "set_run_result",
+              "name": "mpesa_code",
+              "value": "@(regex_match(input.text, \"^([A-Z0-9]{10})\", 1))",
+              "category": "All"
+            }
+          ],
+          "exits": [
+            {
+              "uuid": "exit-to-amount",
+              "destination_uuid": "node-extract-amount"
+            }
+          ]
+        },
+        {
+          "uuid": "node-extract-amount",
+          "actions": [
+            {
+              "uuid": "act-set-amount",
+              "type": "set_run_result",
+              "name": "amount",
+              "value": "@(replace(regex_match(input.text, \"Ksh([0-9,]+\\.[0-9]{2})\", 1), \",\", \"\"))",
+              "category": "All"
+            }
+          ],
+          "exits": [
+            {
+              "uuid": "exit-to-balance",
+              "destination_uuid": "node-extract-balance"
+            }
+          ]
+        },
+        {
+          "uuid": "node-extract-balance",
+          "actions": [
+            {
+              "uuid": "act-set-balance",
+              "type": "set_run_result",
+              "name": "new_balance",
+              "value": "@(replace(regex_match(input.text, \"[Bb]alance is Ksh([0-9,]+\\.[0-9]{2})\", 1), \",\", \"\"))",
+              "category": "All"
+            }
+          ],
+          "exits": [
+            {
+              "uuid": "exit-to-switch",
+              "destination_uuid": "node-check-tx-type"
+            }
+          ]
+        },
+        {
+          "uuid": "node-check-tx-type",
+          "router": {
+            "type": "switch",
+            "operand": "@input.text",
+            "cases": [
+              {
+                "arguments": ["You have received"],
+                "type": "has_phrase",
+                "uuid": "case-received",
+                "category_uuid": "cat-received"
+              },
+              {
+                "arguments": ["paid to"],
+                "type": "has_phrase",
+                "uuid": "case-sent",
+                "category_uuid": "cat-sent"
+              }
+            ],
+            "categories": [
+              {
+                "name": "Received",
+                "uuid": "cat-received",
+                "exit_uuid": "exit-cat-received"
+              },
+              {
+                "name": "Sent",
+                "uuid": "cat-sent",
+                "exit_uuid": "exit-cat-sent"
+              },
+              {
+                "name": "Other",
+                "uuid": "cat-other",
+                "exit_uuid": "exit-cat-other"
+              }
+            ],
+            "default_category_uuid": "cat-other"
+          },
+          "exits": [
+            {
+              "uuid": "exit-cat-received",
+              "destination_uuid": "node-parse-received"
+            },
+            {
+              "uuid": "exit-cat-sent",
+              "destination_uuid": "node-parse-sent"
+            },
+            {
+              "uuid": "exit-cat-other",
+              "destination_uuid": null
+            }
+          ]
+        },
+        {
+          "uuid": "node-parse-received",
+          "actions": [
+            {
+              "uuid": "act-set-type-rcv",
+              "type": "set_run_result",
+              "name": "transaction_type",
+              "value": "RECEIVED",
+              "category": "All"
+            },
+            {
+              "uuid": "act-set-sender",
+              "type": "set_run_result",
+              "name": "counterparty",
+              "value": "@(trim(default(regex_match(input.text, \"from\\s+(.+?)\\s+\\d{4}\\*+\\d{3}\", 1), regex_match(input.text, \"from\\s+(.+?)\\s+on\\s+\\d+\", 1))))",
+              "category": "All"
+            },
+            {
+              "uuid": "act-set-payer-masked",
+              "type": "set_run_result",
+              "name": "payer_masked",
+              "value": "@(regex_match(input.text, \"from\\s+.+?\\s+(\\d{3,4}\\*+\\d{3})\", 1))",
+              "category": "All"
+            }
+          ],
+          "exits": [
+            {
+              "uuid": "exit-rcv-done",
+              "destination_uuid": "node-resolve-payer"
+            }
+          ]
+        },
+        {
+          "uuid": "node-parse-sent",
+          "actions": [
+            {
+              "uuid": "act-set-type-sent",
+              "type": "set_run_result",
+              "name": "transaction_type",
+              "value": "SENT",
+              "category": "All"
+            },
+            {
+              "uuid": "act-set-recipient",
+              "type": "set_run_result",
+              "name": "counterparty",
+              "value": "@(trim(regex_match(input.text, \"paid to\\s+(.+?)\\.\\s+on\\s+\\d+\", 1)))",
+              "category": "All"
+            }
+          ],
+          "exits": [
+            {
+              "uuid": "exit-sent-done",
+              "destination_uuid": "node-send-reply"
+            }
+          ]
+        },
+        {
+          "uuid": "node-resolve-payer",
+          "actions": [
+            {
+              "uuid": "act-call-resolve",
+              "type": "call_webhook",
+              "method": "POST",
+              "url": "http://host.docker.internal:5000/resolve",
+              "headers": { "Content-Type": "application/json" },
+              "body": "{\"masked\": \"@results.payer_masked.value\"}",
+              "result_name": "payer"
+            }
+          ],
+          "exits": [
+            {
+              "uuid": "exit-resolve-done",
+              "destination_uuid": "node-send-reply"
+            }
+          ]
+        },
+        {
+          "uuid": "node-send-reply",
+          "actions": [
+            {
+              "uuid": "act-start-points",
+              "type": "start_session",
+              "flow": { "uuid": "83e93157-5e4e-422b-a257-78b40302a87c", "name": "Add JengaPoints" },
+              "legacy_vars": ["@results.payer.extra.urn"]
+            },
+            {
+              "uuid": "act-send-reply",
+              "type": "send_broadcast",
+              "legacy_vars": ["@results.payer.extra.urn"],
+              "text": "Asante @results.counterparty.value! We received your payment of Ksh @results.amount.value (txn @results.mpesa_code.value). JengaPoints credited."
+            }
+          ],
+          "exits": [
+            {
+              "uuid": "exit-reply-done",
+              "destination_uuid": null
+            }
+          ]
+        }
+      ],
+      "_ui": {
+        "nodes": {
+          "node-extract-tx-code": { "position": { "left": 100, "top": 60 } },
+          "node-extract-amount": { "position": { "left": 100, "top": 200 } },
+          "node-extract-balance": { "position": { "left": 100, "top": 340 } },
+          "node-check-tx-type": { "position": { "left": 100, "top": 480 } },
+          "node-parse-received": { "position": { "left": 0, "top": 720 } },
+          "node-parse-sent": { "position": { "left": 280, "top": 720 } },
+          "node-resolve-payer": { "position": { "left": 0, "top": 860 } },
+          "node-send-reply": { "position": { "left": 140, "top": 1000 } }
+        }
+      },
+      "revision": 1,
+      "expire_after_minutes": 10080
+    },
+    {
+      "name": "Add JengaPoints",
+      "uuid": "83e93157-5e4e-422b-a257-78b40302a87c",
+      "spec_version": "13.2.0",
+      "language": "eng",
+      "type": "messaging",
+      "nodes": [
+        {
+          "uuid": "node-add-points",
+          "actions": [
+            {
+              "uuid": "act-add-points",
+              "type": "set_contact_field",
+              "field": { "key": "jengapoints", "name": "JengaPoints" },
+              "value": "@(default(fields.jengapoints, 0) + number(default(parent.results.amount.value, 0)))"
+            }
+          ],
+          "exits": [
+            { "uuid": "exit-points-done", "destination_uuid": null }
+          ]
+        }
+      ],
+      "_ui": {
+        "nodes": {
+          "node-add-points": { "position": { "left": 0, "top": 0 } }
+        }
+      },
+      "revision": 1,
+      "expire_after_minutes": 10080
+    }
+  ],
+  "campaigns": [],
+  "triggers": [],
+  "fields": [],
+  "groups": []
+}

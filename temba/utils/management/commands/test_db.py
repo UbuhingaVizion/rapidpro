@@ -2,15 +2,14 @@ import json
 import math
 import random
 import resource
+import subprocess
 import sys
 import time
 import uuid
+import zoneinfo
 from collections import defaultdict
 from datetime import timedelta
-from subprocess import CalledProcessError, check_call
 
-import pytz
-from django.conf import settings
 from django.contrib.auth.models import Group
 from django.core.management import BaseCommand, CommandError
 from django.db import connection
@@ -25,6 +24,7 @@ from temba.flows.models import Flow
 from temba.locations.models import AdminBoundary
 from temba.msgs.models import Label
 from temba.orgs.models import Org, OrgRole, User
+from temba.templates.models import TemplateTranslation
 from temba.utils import chunk_list
 from temba.utils.dates import datetime_to_timestamp, timestamp_to_datetime
 
@@ -36,6 +36,10 @@ USER_PASSWORD = "Qwerty123"
 
 # database dump containing admin boundary records
 LOCATIONS_DUMP = "test-data/nigeria.bin"
+
+PG_CONTAINER_NAME = "textit-postgres-1"
+TEMBA_DB_NAME = "temba"
+TEMBA_DB_USER = "temba"
 
 # number of each type of archive to create
 ARCHIVES = 50
@@ -61,6 +65,8 @@ USERS = (
 )
 CHANNELS = (
     {"name": "Android", "channel_type": "A", "scheme": "tel", "address": "1234"},
+    {"name": "Facebook", "channel_type": "FBA", "scheme": "facebook", "address": "FacebookPage"},
+    {"name": "WhatsApp", "channel_type": "WAC", "scheme": "whatsapp", "address": "3456"},
     {"name": "Vonage", "channel_type": "NX", "scheme": "tel", "address": "2345"},
     {"name": "Twitter", "channel_type": "TWT", "scheme": "twitter", "address": "my_handle"},
 )
@@ -112,8 +118,20 @@ CAMPAIGNS = (
 
 # contact names are generated from these components
 CONTACT_NAMES = (
-    ("Anne", "Bob", "Cathy", "Dave", "Evan", "Freda", "George", "Hallie", "Igor"),
-    ("Jameson", "Kardashian", "Lopez", "Mooney", "Newman", "O'Shea", "Poots", "Quincy", "Roberts"),
+    ("Dražen", "Eric", "Eugene", "Evan", "Gloria", "Kellan", "Leah", "Nic", "Norbert", "Rowan", "Susan"),
+    (
+        "Alexander",
+        "Breeden",
+        "Ingabire",
+        "Lister",
+        "Kwizera",
+        "Newcomer",
+        "Odobašić",
+        "Pottier",
+        "Rwagasore",
+        "Seymour",
+        "Wheeler",
+    ),
 )
 CONTACT_LANGS = (None, "eng", "fra", "spa", "kin")
 CONTACT_HAS_TEL_PROB = 0.9  # 9/10 contacts have a phone number
@@ -173,7 +191,6 @@ class Command(BaseCommand):
 
         # create root user and a customer support user
         superuser = User.objects.create_superuser("root", "root@nyaruka.com", password)
-
         support = User.objects.create_user("support@nyaruka.com", "support@nyaruka.com", password, is_staff=True)
         support.groups.add(Group.objects.get(name="Customer Support"))
 
@@ -213,24 +230,34 @@ class Command(BaseCommand):
         """
         self._log(f"Loading locations from {path}... ")
 
-        # load dump into current db with pg_restore
-        db_config = settings.DATABASES["default"]
-        try:
-            check_call(
-                f"export PGPASSWORD={db_config['PASSWORD']} && pg_restore -h {db_config['HOST']} "
-                f"-p {db_config['PORT']} -U {db_config['USER']} -w -d {db_config['NAME']} {path}",
-                shell=True,
-            )
-        except CalledProcessError:  # pragma: no cover
-            raise CommandError("Error occurred whilst calling pg_restore to load locations dump")
+        with open(path, "rb") as f:
+            try:
+                subprocess.run(
+                    [
+                        "docker",
+                        "exec",
+                        "-i",
+                        PG_CONTAINER_NAME,
+                        "pg_restore",
+                        "-d",
+                        TEMBA_DB_NAME,
+                        "-U",
+                        TEMBA_DB_USER,
+                    ],
+                    input=f.read(),
+                    stdout=subprocess.PIPE,
+                    check=True,
+                )
+            except subprocess.CalledProcessError:
+                raise CommandError("Error occurred whilst calling pg_restore to load locations dump")
+
+        time.sleep(1)
+        self._log(self.style.SUCCESS("OK") + "\n")
 
         # fetch as tuples of (WARD, DISTRICT, STATE)
         wards = AdminBoundary.objects.filter(level=3).prefetch_related("parent", "parent__parent")
         locations = [(w, w.parent, w.parent.parent) for w in wards]
-
         country = AdminBoundary.objects.filter(level=0).get()
-
-        self._log(self.style.SUCCESS("OK") + "\n")
         return country, locations
 
     def create_orgs(self, superuser, country, num_total):
@@ -245,24 +272,23 @@ class Command(BaseCommand):
         orgs = []
         for o in range(num_total):
             orgs.append(
-                Org(
+                Org.objects.create(
                     name=org_names[o % len(org_names)],
-                    timezone=self.random.choice(pytz.all_timezones),
-                    brand="rapidpro.io",
+                    timezone=self.random.choice(zoneinfo.available_timezones()),
                     country=country,
                     created_on=self.db_begins_on,
                     created_by=superuser,
                     modified_by=superuser,
                     is_anon=(o % 2 != 0),  # org 1 non-anon, org 2 anon etc
+                    flow_languages=["eng"],
                 )
             )
-        Org.objects.bulk_create(orgs)
         orgs = list(Org.objects.order_by("id"))
 
         self._log(self.style.SUCCESS("OK") + "\nInitializing orgs... ")
 
         for o, org in enumerate(orgs):
-            org.initialize(topup_size=max((1000 - o), 1) * 1000)
+            org.initialize()
 
             # we'll cache some metadata on each org as it's created to save re-fetching things
             org.cache = {
@@ -291,7 +317,6 @@ class Command(BaseCommand):
                     email, email, password, first_name=u["first_name"], last_name=u["last_name"]
                 )
                 org.add_user(user, u["role"])
-                user.set_org(org)
                 org.cache["users"].append(user)
 
         self._log(self.style.SUCCESS("OK") + "\n")
@@ -305,7 +330,7 @@ class Command(BaseCommand):
         for org in orgs:
             user = org.cache["users"][0]
             for c in CHANNELS:
-                Channel.objects.create(
+                channel = Channel.objects.create(
                     org=org,
                     name=c["name"],
                     channel_type=c["channel_type"],
@@ -315,7 +340,67 @@ class Command(BaseCommand):
                     modified_by=user,
                 )
 
-        self._log(self.style.SUCCESS("OK") + "\n")
+                # Create some whatsapp message templates
+                if channel.channel_type == "WAC":
+                    TemplateTranslation.get_or_create(
+                        channel,
+                        "hello",
+                        locale="eng-US",
+                        content="Hello {{1}}",
+                        variable_count=1,
+                        status=TemplateTranslation.STATUS_APPROVED,
+                        external_id="1234",
+                        external_locale="en_US",
+                        namespace="",
+                        components=[
+                            {
+                                "type": "BODY",
+                                "text": "Hello {{1}}",
+                                "example": {"body_text": [["Bob"]]},
+                            },
+                        ],
+                        params={"body": [{"type": "text"}]},
+                    )
+                    TemplateTranslation.get_or_create(
+                        channel,
+                        "hello",
+                        locale="fra-FR",
+                        content="Bonjour {{1}}",
+                        variable_count=1,
+                        status=TemplateTranslation.STATUS_APPROVED,
+                        external_id="5678",
+                        external_locale="fr_FR",
+                        namespace="",
+                        components=[
+                            {
+                                "type": "BODY",
+                                "text": "Bonjour {{1}}",
+                                "example": {"body_text": [["Bob"]]},
+                            },
+                        ],
+                        params={"body": [{"type": "text"}]},
+                    )
+                    TemplateTranslation.get_or_create(
+                        channel,
+                        "bye",
+                        locale="eng-US",
+                        content="See ya {{1}}",
+                        variable_count=1,
+                        status=TemplateTranslation.STATUS_PENDING,
+                        external_id="6789",
+                        external_locale="en_US",
+                        namespace="",
+                        components=[
+                            {
+                                "type": "BODY",
+                                "text": "See ya {{1}}",
+                                "example": {"body_text": [["Bob"]]},
+                            },
+                        ],
+                        params={"body": [{"type": "text"}]},
+                    )
+
+            self._log(self.style.SUCCESS("OK") + "\n")
 
     def create_archives(self, orgs):
         """
@@ -498,108 +583,123 @@ class Command(BaseCommand):
 
         # disable table triggers to speed up insertion and in the case of contact group m2m, avoid having an unsquashed
         # count row for every contact
-        with DisableTriggersOn(Contact, ContactURN, ContactGroup.contacts.through):
-            names = [f"{c1} {c2}".strip() for c2 in CONTACT_NAMES[1] for c1 in CONTACT_NAMES[0]]
-            names = [n if n else None for n in names]
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                ALTER TABLE contacts_contact DISABLE TRIGGER when_contacts_changed_then_update_groups_trg;
+                ALTER TABLE contacts_contactgroup_contacts DISABLE TRIGGER when_contact_groups_changed_then_update_count_trg;
+                """
+            )
 
-            batch_num = 1
-            for index_batch in chunk_list(range(num_contacts), self.batch_size):
-                batch = []
+        names = [f"{c1} {c2}".strip() for c2 in CONTACT_NAMES[1] for c1 in CONTACT_NAMES[0]]
+        names = [n if n else None for n in names]
 
-                # generate flat representations and contact objects for this batch
-                for c_index in index_batch:  # pragma: no cover
-                    org = self.random_org(orgs)
-                    name = self.random_choice(names)
-                    location = self.random_choice(locations) if self.probability(CONTACT_HAS_FIELD_PROB) else None
-                    created_on = self.timeline_date(c_index / num_contacts)
+        batch_num = 1
+        for index_batch in chunk_list(range(num_contacts), self.batch_size):
+            batch = []
 
-                    status = Contact.STATUS_ACTIVE
-                    if self.probability(CONTACT_IS_STOPPED_PROB):
-                        status = Contact.STATUS_STOPPED
-                    elif self.probability(CONTACT_IS_BLOCKED_PROB):
-                        status = Contact.STATUS_BLOCKED
+            # generate flat representations and contact objects for this batch
+            for c_index in index_batch:  # pragma: no cover
+                org = self.random_org(orgs)
+                name = self.random_choice(names)
+                location = self.random_choice(locations) if self.probability(CONTACT_HAS_FIELD_PROB) else None
+                created_on = self.timeline_date(c_index / num_contacts)
 
-                    c = {
-                        "org": org,
-                        "user": org.cache["users"][0],
-                        "name": name,
-                        "groups": [],
-                        "tel": "+2507%08d" % c_index if self.probability(CONTACT_HAS_TEL_PROB) else None,
-                        "twitter": "%s%d" % (name.replace(" ", "_").lower() if name else "tweep", c_index)
-                        if self.probability(CONTACT_HAS_TWITTER_PROB)
-                        else None,
-                        "gender": self.random_choice(("M", "F")) if self.probability(CONTACT_HAS_FIELD_PROB) else None,
-                        "age": self.random.randint(16, 80) if self.probability(CONTACT_HAS_FIELD_PROB) else None,
-                        "joined": self.random_date() if self.probability(CONTACT_HAS_FIELD_PROB) else None,
-                        "ward": location[0] if location else None,
-                        "district": location[1] if location else None,
-                        "state": location[2] if location else None,
-                        "language": self.random_choice(CONTACT_LANGS),
-                        "status": status,
-                        "is_active": self.probability(1 - CONTACT_IS_DELETED_PROB),
-                        "created_on": created_on,
-                        "modified_on": self.random_date(created_on, self.db_ends_on),
-                        "fields_as_json": {},
+                status = Contact.STATUS_ACTIVE
+                if self.probability(CONTACT_IS_STOPPED_PROB):
+                    status = Contact.STATUS_STOPPED
+                elif self.probability(CONTACT_IS_BLOCKED_PROB):
+                    status = Contact.STATUS_BLOCKED
+
+                c = {
+                    "org": org,
+                    "user": org.cache["users"][0],
+                    "name": name,
+                    "groups": [],
+                    "tel": "+2507%08d" % c_index if self.probability(CONTACT_HAS_TEL_PROB) else None,
+                    "twitter": "%s%d" % (name.replace(" ", "_").lower() if name else "tweep", c_index)
+                    if self.probability(CONTACT_HAS_TWITTER_PROB)
+                    else None,
+                    "gender": self.random_choice(("M", "F")) if self.probability(CONTACT_HAS_FIELD_PROB) else None,
+                    "age": self.random.randint(16, 80) if self.probability(CONTACT_HAS_FIELD_PROB) else None,
+                    "joined": self.random_date() if self.probability(CONTACT_HAS_FIELD_PROB) else None,
+                    "ward": location[0] if location else None,
+                    "district": location[1] if location else None,
+                    "state": location[2] if location else None,
+                    "language": self.random_choice(CONTACT_LANGS),
+                    "status": status,
+                    "is_active": self.probability(1 - CONTACT_IS_DELETED_PROB),
+                    "created_on": created_on,
+                    "modified_on": self.random_date(created_on, self.db_ends_on),
+                    "fields_as_json": {},
+                }
+
+                if c["gender"] is not None:
+                    c["fields_as_json"][str(org.cache["fields"]["gender"].uuid)] = {"text": str(c["gender"])}
+                if c["age"] is not None:
+                    c["fields_as_json"][str(org.cache["fields"]["age"].uuid)] = {
+                        "text": str(c["age"]),
+                        "number": str(c["age"]),
+                    }
+                if c["joined"] is not None:
+                    c["fields_as_json"][str(org.cache["fields"]["joined"].uuid)] = {
+                        "text": org.format_datetime(c["joined"], show_time=False),
+                        "datetime": timezone.localtime(c["joined"], org.timezone).isoformat(),
                     }
 
-                    if c["gender"] is not None:
-                        c["fields_as_json"][str(org.cache["fields"]["gender"].uuid)] = {"text": str(c["gender"])}
-                    if c["age"] is not None:
-                        c["fields_as_json"][str(org.cache["fields"]["age"].uuid)] = {
-                            "text": str(c["age"]),
-                            "number": str(c["age"]),
+                if location:
+                    c["fields_as_json"].update(
+                        {
+                            str(org.cache["fields"]["ward"].uuid): {
+                                "text": str(c["ward"].path.split(" > ")[-1]),
+                                "ward": c["ward"].path,
+                                "district": c["district"].path,
+                                "state": c["state"].path,
+                            },
+                            str(org.cache["fields"]["district"].uuid): {
+                                "text": str(c["district"].path.split(" > ")[-1]),
+                                "district": c["district"].path,
+                                "state": c["state"].path,
+                            },
+                            str(org.cache["fields"]["state"].uuid): {
+                                "text": str(c["state"].path.split(" > ")[-1]),
+                                "state": c["state"].path,
+                            },
                         }
-                    if c["joined"] is not None:
-                        c["fields_as_json"][str(org.cache["fields"]["joined"].uuid)] = {
-                            "text": org.format_datetime(c["joined"], show_time=False),
-                            "datetime": timezone.localtime(c["joined"], org.timezone).isoformat(),
-                        }
+                    )
 
-                    if location:
-                        c["fields_as_json"].update(
-                            {
-                                str(org.cache["fields"]["ward"].uuid): {
-                                    "text": str(c["ward"].path.split(" > ")[-1]),
-                                    "ward": c["ward"].path,
-                                    "district": c["district"].path,
-                                    "state": c["state"].path,
-                                },
-                                str(org.cache["fields"]["district"].uuid): {
-                                    "text": str(c["district"].path.split(" > ")[-1]),
-                                    "district": c["district"].path,
-                                    "state": c["state"].path,
-                                },
-                                str(org.cache["fields"]["state"].uuid): {
-                                    "text": str(c["state"].path.split(" > ")[-1]),
-                                    "state": c["state"].path,
-                                },
-                            }
-                        )
+                # work out which groups this contact belongs to
+                if c["is_active"]:
+                    if c["status"] == Contact.STATUS_ACTIVE:
+                        c["groups"].append(org.cache["status_groups"][ContactGroup.TYPE_DB_ACTIVE])
 
-                    # work out which groups this contact belongs to
-                    if c["is_active"]:
-                        if c["status"] == Contact.STATUS_ACTIVE:
-                            c["groups"].append(org.cache["status_groups"][ContactGroup.TYPE_DB_ACTIVE])
+                        # let each user group decide if it is taking this contact
+                        for g in org.cache["groups"]:
+                            if g.member(c) if callable(g.member) else self.probability(g.member):
+                                c["groups"].append(g)
 
-                            # let each user group decide if it is taking this contact
-                            for g in org.cache["groups"]:
-                                if g.member(c) if callable(g.member) else self.probability(g.member):
-                                    c["groups"].append(g)
+                    elif c["status"] == Contact.STATUS_BLOCKED:
+                        c["groups"].append(org.cache["status_groups"][ContactGroup.TYPE_DB_BLOCKED])
+                    elif c["status"] == Contact.STATUS_STOPPED:
+                        c["groups"].append(org.cache["status_groups"][ContactGroup.TYPE_DB_STOPPED])
 
-                        elif c["status"] == Contact.STATUS_BLOCKED:
-                            c["groups"].append(org.cache["status_groups"][ContactGroup.TYPE_DB_BLOCKED])
-                        elif c["status"] == Contact.STATUS_STOPPED:
-                            c["groups"].append(org.cache["status_groups"][ContactGroup.TYPE_DB_STOPPED])
+                # track changes to group counts
+                for g in c["groups"]:
+                    group_counts[g] += 1
 
-                    # track changes to group counts
-                    for g in c["groups"]:
-                        group_counts[g] += 1
+                batch.append(c)
 
-                    batch.append(c)
+            self._create_contact_batch(batch)
+            self._log(" > Created batch %d of %d\n" % (batch_num, max(num_contacts // self.batch_size, 1)))
+            batch_num += 1
 
-                self._create_contact_batch(batch)
-                self._log(" > Created batch %d of %d\n" % (batch_num, max(num_contacts // self.batch_size, 1)))
-                batch_num += 1
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                ALTER TABLE contacts_contact ENABLE TRIGGER when_contacts_changed_then_update_groups_trg;
+                ALTER TABLE contacts_contactgroup_contacts ENABLE TRIGGER when_contact_groups_changed_then_update_count_trg;
+                """
+            )
 
         # create group count records manually
         counts = []
@@ -718,22 +818,3 @@ class Command(BaseCommand):
     def _log(self, text):
         self.stdout.write(text, ending="")
         self.stdout.flush()
-
-
-class DisableTriggersOn:
-    """
-    Helper context manager for temporarily disabling database triggers for a given model
-    """
-
-    def __init__(self, *models):
-        self.tables = [m._meta.db_table for m in models]
-
-    def __enter__(self):
-        with connection.cursor() as cursor:
-            for table in self.tables:
-                cursor.execute(f"ALTER TABLE {table} DISABLE TRIGGER ALL;")
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        with connection.cursor() as cursor:
-            for table in self.tables:
-                cursor.execute(f"ALTER TABLE {table} ENABLE TRIGGER ALL;")

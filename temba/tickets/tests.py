@@ -1,42 +1,39 @@
-import datetime as dt
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
+from datetime import timezone as tzone
 from unittest.mock import patch
 
+from django.conf import settings
 from django.test.utils import override_settings
 from django.urls import reverse
 from django.utils import timezone
+from openpyxl import load_workbook
 
-from temba.contacts.models import Contact
-from temba.tests import CRUDLTestMixin, MigrationTest, TembaTest, matchers, mock_mailroom
+from temba.contacts.models import Contact, ContactField, ContactURN
+from temba.tests import CRUDLTestMixin, TembaTest, matchers, mock_mailroom
 from temba.utils.dates import datetime_to_timestamp
+from temba.utils.uuid import uuid4
 
 from .models import (
+    ExportTicketsTask,
     Team,
     Ticket,
     TicketCount,
     TicketDailyCount,
     TicketDailyTiming,
-    Ticketer,
     TicketEvent,
     Topic,
     export_ticket_stats,
 )
-from .tasks import squash_ticketcounts
-from .types import reload_ticketer_types
-from .types.internal import InternalType
-from .types.mailgun import MailgunType
-from .types.zendesk import ZendeskType
+from .tasks import squash_ticket_counts
 
 
 class TicketTest(TembaTest):
     def test_model(self):
-        ticketer = Ticketer.create(self.org, self.user, MailgunType.slug, "Email (bob@acme.com)", {})
         topic = Topic.create(self.org, self.admin, "Sales")
         contact = self.create_contact("Bob", urns=["twitter:bobby"])
 
         ticket = Ticket.objects.create(
             org=self.org,
-            ticketer=ticketer,
             contact=contact,
             topic=self.org.default_ticket_topic,
             body="Where are my cookies?",
@@ -47,16 +44,16 @@ class TicketTest(TembaTest):
 
         # test bulk assignment
         with patch("temba.mailroom.client.MailroomClient.ticket_assign") as mock_assign:
-            Ticket.bulk_assign(self.org, self.admin, [ticket], self.agent, "over to you")
+            Ticket.bulk_assign(self.org, self.admin, [ticket], self.agent)
 
-        mock_assign.assert_called_once_with(self.org.id, self.admin.id, [ticket.id], self.agent.id, "over to you")
+        mock_assign.assert_called_once_with(self.org.id, self.admin.id, [ticket.id], self.agent.id)
         mock_assign.reset_mock()
 
         # test bulk un-assignment
         with patch("temba.mailroom.client.MailroomClient.ticket_assign") as mock_assign:
             Ticket.bulk_assign(self.org, self.admin, [ticket], None)
 
-        mock_assign.assert_called_once_with(self.org.id, self.admin.id, [ticket.id], None, None)
+        mock_assign.assert_called_once_with(self.org.id, self.admin.id, [ticket.id], None)
         mock_assign.reset_mock()
 
         # test bulk adding a note
@@ -89,96 +86,134 @@ class TicketTest(TembaTest):
 
     @mock_mailroom
     def test_counts(self, mr_mocks):
-        ticketer = Ticketer.create(self.org, self.admin, MailgunType.slug, "bob@acme.com", {})
+        general = self.org.default_ticket_topic
+        cats = Topic.create(self.org, self.admin, "Cats")
+
         contact1 = self.create_contact("Bob", urns=["twitter:bobby"])
         contact2 = self.create_contact("Jim", urns=["twitter:jimmy"])
-        org2_ticketer = Ticketer.create(self.org2, self.admin2, MailgunType.slug, "jim@acme.com", {})
+
+        org2_general = self.org2.default_ticket_topic
         org2_contact = self.create_contact("Bob", urns=["twitter:bobby"], org=self.org2)
 
-        t1 = self.create_ticket(ticketer, contact1, "Test 1")
-        t2 = self.create_ticket(ticketer, contact2, "Test 2")
-        t3 = self.create_ticket(ticketer, contact1, "Test 3")
-        t4 = self.create_ticket(ticketer, contact2, "Test 4")
-        t5 = self.create_ticket(ticketer, contact1, "Test 5")
-        t6 = self.create_ticket(org2_ticketer, org2_contact, "Test 6")
+        t1 = self.create_ticket(contact1, "Test 1", topic=general)
+        t2 = self.create_ticket(contact2, "Test 2", topic=general)
+        t3 = self.create_ticket(contact1, "Test 3", topic=general)
+        t4 = self.create_ticket(contact2, "Test 4", topic=cats)
+        t5 = self.create_ticket(contact1, "Test 5", topic=cats)
+        t6 = self.create_ticket(org2_contact, "Test 6", topic=org2_general)
 
-        def assert_counts(org, *, open: dict, closed: dict, contacts: dict):
+        def assert_counts(
+            org, *, assignee_open: dict, assignee_closed: dict, topic_open: dict, topic_closed: dict, contacts: dict
+        ):
             assignees = [None] + list(Ticket.get_allowed_assignees(org))
 
-            self.assertEqual(open, TicketCount.get_by_assignees(org, assignees, Ticket.STATUS_OPEN))
-            self.assertEqual(closed, TicketCount.get_by_assignees(org, assignees, Ticket.STATUS_CLOSED))
+            self.assertEqual(assignee_open, TicketCount.get_by_assignees(org, assignees, Ticket.STATUS_OPEN))
+            self.assertEqual(assignee_closed, TicketCount.get_by_assignees(org, assignees, Ticket.STATUS_CLOSED))
 
-            self.assertEqual(sum(open.values()), TicketCount.get_all(org, Ticket.STATUS_OPEN))
-            self.assertEqual(sum(closed.values()), TicketCount.get_all(org, Ticket.STATUS_CLOSED))
+            self.assertEqual(sum(assignee_open.values()), TicketCount.get_all(org, Ticket.STATUS_OPEN))
+            self.assertEqual(sum(assignee_closed.values()), TicketCount.get_all(org, Ticket.STATUS_CLOSED))
+
+            self.assertEqual(topic_open, TicketCount.get_by_topics(org, list(org.topics.all()), Ticket.STATUS_OPEN))
+            self.assertEqual(
+                topic_closed, TicketCount.get_by_topics(org, list(org.topics.all()), Ticket.STATUS_CLOSED)
+            )
 
             self.assertEqual(contacts, {c: Contact.objects.get(id=c.id).ticket_count for c in contacts})
 
-        # t1:O/None t2:O/None t3:O/None t4:O/None t5:O/None t6:O/None
+        # t1:O/None/General t2:O/None/General t3:O/None/General t4:O/None/Cats t5:O/None/Cats t6:O/None/General
         assert_counts(
             self.org,
-            open={None: 5, self.agent: 0, self.editor: 0, self.admin: 0},
-            closed={None: 0, self.agent: 0, self.editor: 0, self.admin: 0},
+            assignee_open={None: 5, self.agent: 0, self.editor: 0, self.admin: 0},
+            assignee_closed={None: 0, self.agent: 0, self.editor: 0, self.admin: 0},
+            topic_open={general: 3, cats: 2},
+            topic_closed={general: 0, cats: 0},
             contacts={contact1: 3, contact2: 2},
         )
         assert_counts(
-            self.org2, open={None: 1, self.admin2: 0}, closed={None: 0, self.admin2: 0}, contacts={org2_contact: 1}
+            self.org2,
+            assignee_open={None: 1, self.admin2: 0},
+            assignee_closed={None: 0, self.admin2: 0},
+            topic_open={org2_general: 1},
+            topic_closed={org2_general: 0},
+            contacts={org2_contact: 1},
         )
 
         Ticket.bulk_assign(self.org, self.admin, [t1, t2], assignee=self.agent)
         Ticket.bulk_assign(self.org, self.admin, [t3], assignee=self.editor)
         Ticket.bulk_assign(self.org2, self.admin2, [t6], assignee=self.admin2)
 
-        # t1:O/Agent t2:O/Agent t3:O/Editor t4:O/None t5:O/None t6:O/Admin2
+        # t1:O/Agent/General t2:O/Agent/General t3:O/Editor/General t4:O/None/Cats t5:O/None/Cats t6:O/Admin2/General
         assert_counts(
             self.org,
-            open={None: 2, self.agent: 2, self.editor: 1, self.admin: 0},
-            closed={None: 0, self.agent: 0, self.editor: 0, self.admin: 0},
+            assignee_open={None: 2, self.agent: 2, self.editor: 1, self.admin: 0},
+            assignee_closed={None: 0, self.agent: 0, self.editor: 0, self.admin: 0},
+            topic_open={general: 3, cats: 2},
+            topic_closed={general: 0, cats: 0},
             contacts={contact1: 3, contact2: 2},
         )
         assert_counts(
-            self.org2, open={None: 0, self.admin2: 1}, closed={None: 0, self.admin2: 0}, contacts={org2_contact: 1}
+            self.org2,
+            assignee_open={None: 0, self.admin2: 1},
+            assignee_closed={None: 0, self.admin2: 0},
+            topic_open={org2_general: 1},
+            topic_closed={org2_general: 0},
+            contacts={org2_contact: 1},
         )
 
         Ticket.bulk_close(self.org, self.admin, [t1, t4])
         Ticket.bulk_close(self.org2, self.admin2, [t6])
 
-        # t1:C/Agent t2:O/Agent t3:O/Editor t4:C/None t5:O/None t6:C/Admin2
+        # t1:C/Agent/General t2:O/Agent/General t3:O/Editor/General t4:C/None/Cats t5:O/None/Cats t6:C/Admin2/General
         assert_counts(
             self.org,
-            open={None: 1, self.agent: 1, self.editor: 1, self.admin: 0},
-            closed={None: 1, self.agent: 1, self.editor: 0, self.admin: 0},
+            assignee_open={None: 1, self.agent: 1, self.editor: 1, self.admin: 0},
+            assignee_closed={None: 1, self.agent: 1, self.editor: 0, self.admin: 0},
+            topic_open={general: 2, cats: 1},
+            topic_closed={general: 1, cats: 1},
             contacts={contact1: 2, contact2: 1},
         )
         assert_counts(
-            self.org2, open={None: 0, self.admin2: 0}, closed={None: 0, self.admin2: 1}, contacts={org2_contact: 0}
+            self.org2,
+            assignee_open={None: 0, self.admin2: 0},
+            assignee_closed={None: 0, self.admin2: 1},
+            topic_open={org2_general: 0},
+            topic_closed={org2_general: 1},
+            contacts={org2_contact: 0},
         )
 
         Ticket.bulk_assign(self.org, self.admin, [t1, t5], assignee=self.admin)
 
-        # t1:C/Admin t2:O/Agent t3:O/Editor t4:C/None t5:O/Admin t6:C/Admin2
+        # t1:C/Admin/General t2:O/Agent/General t3:O/Editor/General t4:C/None/Cats t5:O/Admin/Cats t6:C/Admin2/General
         assert_counts(
             self.org,
-            open={None: 0, self.agent: 1, self.editor: 1, self.admin: 1},
-            closed={None: 1, self.agent: 0, self.editor: 0, self.admin: 1},
+            assignee_open={None: 0, self.agent: 1, self.editor: 1, self.admin: 1},
+            assignee_closed={None: 1, self.agent: 0, self.editor: 0, self.admin: 1},
+            topic_open={general: 2, cats: 1},
+            topic_closed={general: 1, cats: 1},
             contacts={contact1: 2, contact2: 1},
         )
 
         Ticket.bulk_reopen(self.org, self.admin, [t4])
+        Ticket.bulk_change_topic(self.org, self.admin, [t1], cats)
 
-        # t1:C/Admin t2:O/Agent t3:O/Editor t4:O/None t5:O/Admin t6:C/Admin2
+        # t1:C/Admin/General t2:O/Agent/General t3:O/Editor/General t4:O/None/Cats t5:O/Admin/Cats t6:C/Admin2/General
         assert_counts(
             self.org,
-            open={None: 1, self.agent: 1, self.editor: 1, self.admin: 1},
-            closed={None: 0, self.agent: 0, self.editor: 0, self.admin: 1},
+            assignee_open={None: 1, self.agent: 1, self.editor: 1, self.admin: 1},
+            assignee_closed={None: 0, self.agent: 0, self.editor: 0, self.admin: 1},
+            topic_open={general: 2, cats: 2},
+            topic_closed={general: 0, cats: 1},
             contacts={contact1: 2, contact2: 2},
         )
 
-        squash_ticketcounts()  # shouldn't change counts
+        squash_ticket_counts()  # shouldn't change counts
 
         assert_counts(
             self.org,
-            open={None: 1, self.agent: 1, self.editor: 1, self.admin: 1},
-            closed={None: 0, self.agent: 0, self.editor: 0, self.admin: 1},
+            assignee_open={None: 1, self.agent: 1, self.editor: 1, self.admin: 1},
+            assignee_closed={None: 0, self.agent: 0, self.editor: 0, self.admin: 1},
+            topic_open={general: 2, cats: 2},
+            topic_closed={general: 0, cats: 1},
             contacts={contact1: 2, contact2: 2},
         )
 
@@ -187,34 +222,75 @@ class TicketTest(TembaTest):
         t2.delete()
         t6.delete()
 
-        # t3:O/Editor t4:O/None t5:O/Admin
+        # t3:O/Editor/General t4:O/None/Cats t5:O/Admin/Cats
         assert_counts(
             self.org,
-            open={None: 1, self.agent: 0, self.editor: 1, self.admin: 1},
-            closed={None: 0, self.agent: 0, self.editor: 0, self.admin: 0},
+            assignee_open={None: 1, self.agent: 0, self.editor: 1, self.admin: 1},
+            assignee_closed={None: 0, self.agent: 0, self.editor: 0, self.admin: 0},
+            topic_open={general: 1, cats: 2},
+            topic_closed={general: 0, cats: 0},
             contacts={contact1: 2, contact2: 1},
         )
         assert_counts(
-            self.org2, open={None: 0, self.admin2: 0}, closed={None: 0, self.admin2: 0}, contacts={org2_contact: 0}
+            self.org2,
+            assignee_open={None: 0, self.admin2: 0},
+            assignee_closed={None: 0, self.admin2: 0},
+            topic_open={org2_general: 0},
+            topic_closed={org2_general: 0},
+            contacts={org2_contact: 0},
         )
+
+
+class TopicCRUDLTest(TembaTest, CRUDLTestMixin):
+    def setUp(self):
+        super().setUp()
+
+    def test_update(self):
+        system_topic = Topic.objects.filter(org=self.org, is_system=True).first()
+        user_topic = Topic.objects.create(
+            org=self.org, name="Hot Topic", created_by=self.admin, modified_by=self.admin
+        )
+
+        # can't edit a system topic
+        update_url = reverse("tickets.topic_update", args=[system_topic.uuid])
+        self.assertUpdateSubmit(
+            update_url,
+            {"name": "My Topic"},
+            form_errors={"name": "Cannot edit system topic"},
+            object_unchanged=system_topic,
+        )
+
+        # names must be unique
+        update_url = reverse("tickets.topic_update", args=[user_topic.uuid])
+        self.assertUpdateSubmit(
+            update_url,
+            {"name": "General"},
+            form_errors={"name": "Topic already exists, please try another name"},
+            object_unchanged=user_topic,
+        )
+
+        # check permissions
+        self.assertUpdateFetch(update_url, allow_viewers=False, allow_editors=True, form_fields=["name"])
+
+        # edit successfully
+        self.assertUpdateSubmit(update_url, {"name": "Boring Tickets"}, success_status=302)
+
+        user_topic.refresh_from_db()
+        self.assertEqual(user_topic.name, "Boring Tickets")
 
 
 class TicketCRUDLTest(TembaTest, CRUDLTestMixin):
     def setUp(self):
         super().setUp()
 
-        self.mailgun = Ticketer.create(self.org, self.user, MailgunType.slug, "Email (bob@acme.com)", {})
-        self.zendesk = Ticketer.create(self.org, self.user, ZendeskType.slug, "Zendesk (acme)", {})
-        self.internal = Ticketer.create(self.org, self.user, InternalType.slug, "Internal", {})
-        self.other_org_internal = Ticketer.create(self.org2, self.admin2, InternalType.slug, "Internal", {})
         self.contact = self.create_contact("Bob", urns=["twitter:bobby"])
 
     def test_list(self):
         list_url = reverse("tickets.ticket_list")
-        ticket = self.create_ticket(self.internal, self.contact, "Test 1", assignee=self.admin)
+        ticket = self.create_ticket(self.contact, "Test 1", assignee=self.admin)
 
         # just a placeholder view for frontend components
-        self.assertListFetch(list_url, allow_viewers=False, allow_editors=True, allow_agents=True, context_objects=[])
+        self.assertListFetch(list_url, allow_viewers=True, allow_editors=True, allow_agents=True, context_objects=[])
 
         # can hit this page with a uuid
         # TODO: work out reverse for deep link
@@ -223,8 +299,9 @@ class TicketCRUDLTest(TembaTest, CRUDLTestMixin):
         # )
 
         deep_link = f"{list_url}all/open/{str(ticket.uuid)}/"
+        self.assertContentMenu(deep_link, self.admin, ["Edit", "Add Note", "Start Flow"])
         response = self.assertListFetch(
-            deep_link, allow_viewers=False, allow_editors=True, allow_agents=True, context_objects=[]
+            deep_link, allow_viewers=True, allow_editors=True, allow_agents=True, context_objects=[]
         )
 
         # our ticket exists on the first page, so it'll get flagged to be focused
@@ -232,7 +309,9 @@ class TicketCRUDLTest(TembaTest, CRUDLTestMixin):
 
         # deep link into a page that doesn't have our ticket
         deep_link = f"{list_url}all/closed/{str(ticket.uuid)}/"
+
         self.login(self.admin)
+
         response = self.client.get(deep_link)
 
         # now our ticket is listed as the uuid and we were redirected to all/open
@@ -240,78 +319,125 @@ class TicketCRUDLTest(TembaTest, CRUDLTestMixin):
         self.assertEqual("open", response.context["status"])
         self.assertEqual(str(ticket.uuid), response.context["uuid"])
 
-        # fetch with spa flag
+        # bad topic should give a 404
+        bad_topic_link = f"{list_url}{uuid4()}/open/{str(ticket.uuid)}/"
+        response = self.client.get(bad_topic_link)
+        self.assertEqual(404, response.status_code)
+
         response = self.client.get(
             list_url,
             content_type="application/json",
-            headers={"temba-spa": "1", "temba-referer-path": f"/tickets/mine/open/{ticket.uuid}"},
+            headers={"temba-referer-path": f"/tickets/mine/open/{ticket.uuid}"},
         )
-        self.assertEqual("spa.html", response.context["base_template"])
+
         self.assertEqual(("tickets", "mine", "open", str(ticket.uuid)), response.context["temba_referer"])
+
+        # contacts in a flow get interrupt menu option instead
+        flow = self.get_flow("color")
+        self.contact.current_flow = flow
+        self.contact.save()
+        deep_link = f"{list_url}all/open/{str(ticket.uuid)}/"
+        self.assertContentMenu(deep_link, self.admin, ["Edit", "Add Note", "Interrupt"])
+
+        # closed our tickets don't get extra menu options
+        ticket.status = Ticket.STATUS_CLOSED
+        ticket.save()
+        deep_link = f"{list_url}all/closed/{str(ticket.uuid)}/"
+        self.assertContentMenu(deep_link, self.admin, [])
+
+    def test_update(self):
+        ticket = self.create_ticket(self.contact, "Test 1", assignee=self.admin)
+
+        update_url = reverse("tickets.ticket_update", args=[ticket.uuid])
+
+        self.assertUpdateFetch(
+            update_url, allow_viewers=False, allow_editors=True, allow_agents=True, form_fields=["topic", "body"]
+        )
+
+        user_topic = Topic.objects.create(
+            org=self.org, name="Hot Topic", created_by=self.admin, modified_by=self.admin
+        )
+
+        # edit successfully
+        self.assertUpdateSubmit(update_url, {"topic": user_topic.id, "body": "This is silly"}, success_status=302)
+
+        ticket.refresh_from_db()
+        self.assertEqual(user_topic, ticket.topic)
+        self.assertEqual("This is silly", ticket.body)
 
     def test_menu(self):
         menu_url = reverse("tickets.ticket_menu")
 
-        self.create_ticket(self.internal, self.contact, "Test 1", assignee=self.admin)
-        self.create_ticket(self.internal, self.contact, "Test 2", assignee=self.admin)
-        self.create_ticket(self.internal, self.contact, "Test 3", assignee=None)
-        self.create_ticket(self.internal, self.contact, "Test 4", closed_on=timezone.now())
+        self.create_ticket(self.contact, "Test 1", assignee=self.admin)
+        self.create_ticket(self.contact, "Test 2", assignee=self.admin)
+        self.create_ticket(self.contact, "Test 3", assignee=None)
+        self.create_ticket(self.contact, "Test 4", closed_on=timezone.now())
 
-        response = self.assertListFetch(menu_url, allow_viewers=False, allow_editors=True, allow_agents=True)
-
-        menu = response.json()["results"]
-        self.assertEqual(
-            [
-                {"id": "mine", "name": "My Tickets", "icon": "coffee", "count": 2},
-                {"id": "unassigned", "name": "Unassigned", "icon": "mail", "count": 1},
-                {"id": "all", "name": "All", "icon": "archive", "count": 3},
-            ],
-            menu,
-        )
+        self.assertListFetch(menu_url, allow_viewers=True, allow_editors=True, allow_agents=True)
+        self.assertMenu(menu_url, 5, ["My Tickets", "Unassigned", "All", "General"], allow_viewers=True)
 
     @mock_mailroom
     def test_folder(self, mr_mocks):
         self.login(self.admin)
+
+        user_topic = Topic.objects.create(
+            org=self.org, name="Hot Topic", created_by=self.admin, modified_by=self.admin
+        )
 
         contact1 = self.create_contact("Joe", phone="123", last_seen_on=timezone.now())
         contact2 = self.create_contact("Frank", phone="124", last_seen_on=timezone.now())
         contact3 = self.create_contact("Anne", phone="125", last_seen_on=timezone.now())
         self.create_contact("Mary No tickets", phone="126", last_seen_on=timezone.now())
         self.create_contact("Mr Other Org", phone="126", last_seen_on=timezone.now(), org=self.org2)
+        topic = Topic.objects.filter(org=self.org).first()
 
         open_url = reverse("tickets.ticket_folder", kwargs={"folder": "all", "status": "open"})
         closed_url = reverse("tickets.ticket_folder", kwargs={"folder": "all", "status": "closed"})
         mine_url = reverse("tickets.ticket_folder", kwargs={"folder": "mine", "status": "open"})
         unassigned_url = reverse("tickets.ticket_folder", kwargs={"folder": "unassigned", "status": "open"})
+        system_topic_url = reverse("tickets.ticket_folder", kwargs={"folder": topic.uuid, "status": "open"})
+        user_topic_url = reverse("tickets.ticket_folder", kwargs={"folder": user_topic.uuid, "status": "open"})
+        bad_topic_url = reverse("tickets.ticket_folder", kwargs={"folder": uuid4(), "status": "open"})
 
         def assert_tickets(resp, tickets: list):
             actual_tickets = [t["ticket"]["uuid"] for t in resp.json()["results"]]
             expected_tickets = [str(t.uuid) for t in tickets]
             self.assertEqual(expected_tickets, actual_tickets)
 
+        # general topic gets export
+        self.assertContentMenu(system_topic_url, self.admin, ["Export"])
+
+        # user topic gets edit too
+        self.assertContentMenu(user_topic_url, self.admin, ["Edit", "-", "Export"])
+
         # no tickets yet so no contacts returned
         response = self.client.get(open_url)
         assert_tickets(response, [])
 
         # contact 1 has two open tickets
-        c1_t1 = self.create_ticket(self.mailgun, contact1, "Question 1")
+        c1_t1 = self.create_ticket(contact1, "Question 1")
         # assign it
-        c1_t1.assign(self.admin, assignee=self.admin, note="I've got this")
-        c1_t2 = self.create_ticket(self.mailgun, contact1, "Question 2")
+        c1_t1.assign(self.admin, assignee=self.admin)
+        c1_t2 = self.create_ticket(contact1, "Question 2")
 
+        # give contact1 and old style broadcast message that doesn't have created_by set
         self.create_incoming_msg(contact1, "I have an issue")
-        self.create_broadcast(self.admin, "We can help", contacts=[contact1]).msgs.first()
+        c1_msg1 = self.create_broadcast(self.admin, "We can help", contacts=[contact1]).msgs.first()
+        c1_msg1.created_by = None
+        c1_msg1.save(update_fields=("created_by",))
 
         # contact 2 has an open ticket and a closed ticket
-        c2_t1 = self.create_ticket(self.mailgun, contact2, "Question 3")
-        c2_t2 = self.create_ticket(self.mailgun, contact2, "Question 4", closed_on=timezone.now())
+        c2_t1 = self.create_ticket(contact2, "Question 3")
+        c2_t2 = self.create_ticket(contact2, "Question 4", closed_on=timezone.now())
 
         self.create_incoming_msg(contact2, "Anyone there?")
         self.create_incoming_msg(contact2, "Hello?")
 
         # contact 3 has two closed tickets
-        c3_t1 = self.create_ticket(self.mailgun, contact3, "Question 5", closed_on=timezone.now())
-        c3_t2 = self.create_ticket(self.mailgun, contact3, "Question 6", closed_on=timezone.now())
+        c3_t1 = self.create_ticket(contact3, "Question 5", closed_on=timezone.now())
+        c3_t2 = self.create_ticket(contact3, "Question 6", closed_on=timezone.now())
+
+        self.create_outgoing_msg(contact3, "Yes", created_by=self.agent)
 
         # fetching open folder returns all open tickets
         response = self.client.get(open_url)
@@ -328,7 +454,7 @@ class TicketCRUDLTest(TembaTest, CRUDLTestMixin):
                     "last_msg": {
                         "text": "Hello?",
                         "direction": "I",
-                        "type": "I",
+                        "type": "T",
                         "created_on": matchers.ISODate(),
                         "sender": None,
                         "attachments": [],
@@ -349,7 +475,7 @@ class TicketCRUDLTest(TembaTest, CRUDLTestMixin):
                     "last_msg": {
                         "text": "We can help",
                         "direction": "O",
-                        "type": "I",
+                        "type": "T",
                         "created_on": matchers.ISODate(),
                         "sender": {"id": self.admin.id, "email": "admin@nyaruka.com"},
                         "attachments": [],
@@ -370,7 +496,7 @@ class TicketCRUDLTest(TembaTest, CRUDLTestMixin):
                     "last_msg": {
                         "text": "We can help",
                         "direction": "O",
-                        "type": "I",
+                        "type": "T",
                         "created_on": matchers.ISODate(),
                         "sender": {"id": self.admin.id, "email": "admin@nyaruka.com"},
                         "attachments": [],
@@ -408,9 +534,41 @@ class TicketCRUDLTest(TembaTest, CRUDLTestMixin):
         response = self.client.get(mine_url)
         assert_tickets(response, [c1_t1])
 
+        # three tickets for our general topic
+        response = self.client.get(system_topic_url)
+        assert_tickets(response, [c2_t1, c1_t2, c1_t1])
+
+        # bad topic should be a 404
+        response = self.client.get(bad_topic_url)
+        self.assertEqual(response.status_code, 404)
+
         # fetching closed folder returns all closed tickets
         response = self.client.get(closed_url)
         assert_tickets(response, [c3_t2, c3_t1, c2_t2])
+        self.assertEqual(
+            {
+                "uuid": str(contact3.uuid),
+                "name": "Anne",
+                "last_seen_on": matchers.ISODate(),
+                "last_msg": {
+                    "text": "Yes",
+                    "direction": "O",
+                    "type": "T",
+                    "created_on": matchers.ISODate(),
+                    "sender": {"id": self.agent.id, "email": "agent@nyaruka.com"},
+                    "attachments": [],
+                },
+                "ticket": {
+                    "uuid": str(c3_t2.uuid),
+                    "assignee": None,
+                    "topic": {"uuid": matchers.UUID4String(), "name": "General"},
+                    "body": "Question 6",
+                    "last_activity_on": matchers.ISODate(),
+                    "closed_on": matchers.ISODate(),
+                },
+            },
+            response.json()["results"][0],
+        )
 
         # deep linking to a single ticket returns just that ticket
         response = self.client.get(f"{open_url}{str(c1_t1.uuid)}")
@@ -423,7 +581,7 @@ class TicketCRUDLTest(TembaTest, CRUDLTestMixin):
 
     @mock_mailroom
     def test_note(self, mr_mocks):
-        ticket = self.create_ticket(self.mailgun, self.contact, "Ticket 1")
+        ticket = self.create_ticket(self.contact, "Ticket 1")
 
         update_url = reverse("tickets.ticket_note", args=[ticket.uuid])
 
@@ -439,61 +597,6 @@ class TicketCRUDLTest(TembaTest, CRUDLTestMixin):
 
         self.assertEqual(1, ticket.events.filter(event_type=TicketEvent.TYPE_NOTE_ADDED).count())
 
-    @mock_mailroom
-    def test_assign(self, mr_mocks):
-        ticket = self.create_ticket(self.mailgun, self.contact, "Some ticket")
-
-        assign_url = reverse("tickets.ticket_assign", args=[ticket.uuid])
-
-        response = self.assertUpdateFetch(
-            assign_url, allow_viewers=False, allow_editors=True, allow_agents=True, form_fields=["note", "assignee"]
-        )
-        # should show unassigned as option plus other permitted users
-        self.assertEqual(
-            [
-                ("", "Unassigned"),
-                (self.admin.id, "Andy"),
-                (self.agent.id, "Agnes"),
-                (self.editor.id, "Ed McEdits"),
-            ],
-            list(response.context["form"].fields["assignee"].choices),
-        )
-
-        self.assertUpdateSubmit(
-            assign_url, {"assignee": self.admin.id, "note": "You got this one"}, success_status=200
-        )
-        ticket.refresh_from_db()
-        self.assertEqual(self.admin, ticket.assignee)
-
-        last_event = ticket.events.order_by("id").last()
-        self.assertEqual(self.admin, last_event.assignee)
-        self.assertEqual("You got this one", last_event.note)
-
-        # now fetch it again to make sure our initial value is set
-        self.assertUpdateFetch(
-            assign_url,
-            allow_viewers=False,
-            allow_editors=True,
-            allow_agents=True,
-            form_fields={"note": None, "assignee": self.admin.id},
-        )
-
-        # submit an assignment to the same person
-        self.assertUpdateSubmit(
-            assign_url, {"assignee": self.admin.id, "note": "Have you looked?"}, success_status=200
-        )
-
-        # this should create a note event instead of an assignment event
-        last_event = ticket.events.all().last()
-        self.assertIsNone(last_event.assignee)
-        self.assertEqual("Have you looked?", last_event.note)
-
-        # submit with no assignee to un-assign
-        self.assertUpdateSubmit(assign_url, {"assignee": ""}, success_status=200)
-
-        ticket.refresh_from_db()
-        self.assertIsNone(ticket.assignee)
-
     def test_export_stats(self):
         export_url = reverse("tickets.ticket_export_stats")
 
@@ -507,112 +610,403 @@ class TicketCRUDLTest(TembaTest, CRUDLTestMixin):
             response["Content-Disposition"],
         )
 
+    def test_export_when_export_already_in_progress(self):
+        self.clear_storage()
+        self.login(self.admin)
+        export_url = reverse("tickets.ticket_export")
 
-class TicketerTest(TembaTest):
-    @patch("temba.mailroom.client.MailroomClient.ticket_close")
-    def test_release(self, mock_ticket_close):
-        ticketer = Ticketer.create(self.org, self.user, MailgunType.slug, "Email (bob@acme.com)", {})
+        # create a dummy export task so that we won't be able to export
+        blocking_export = ExportTicketsTask.create(
+            self.org, self.admin, start_date=date.today() - timedelta(days=7), end_date=date.today(), with_fields=()
+        )
+        response = self.client.post(export_url, {"start_date": "2022-06-28", "end_date": "2022-09-28"})
+        self.assertModalResponse(response, redirect="/ticket/")
 
-        contact = self.create_contact("Bob", urns=["twitter:bobby"])
+        response = self.client.get("/ticket/")
+        self.assertContains(response, "already an export in progress")
 
-        ticket = self.create_ticket(ticketer, contact, "Where are my cookies?")
+        # ok mark that export as finished and try again
+        blocking_export.update_status(ExportTicketsTask.STATUS_COMPLETE)
 
-        # release it
-        ticketer.release(self.user)
-        ticketer.refresh_from_db()
-        self.assertFalse(ticketer.is_active)
-        self.assertEqual(self.user, ticketer.modified_by)
+        response = self.client.post(export_url, {"start_date": "2022-06-28", "end_date": "2022-09-28"})
+        self.assertModalResponse(response, redirect="/ticket/")
+        self.assertEqual(2, ExportTicketsTask.objects.count())
 
-        # will have asked mailroom to close the ticket
-        mock_ticket_close.assert_called_once_with(self.org.id, self.user.id, [ticket.id], force=True)
+    def test_export_empty(self):
+        self.login(self.admin)
 
-        # reactivate
-        ticketer.is_active = True
-        ticketer.save()
+        # check results of sheet in workbook (no Contact ID column)
+        export = self._request_export(start_date=date.today() - timedelta(days=7), end_date=date.today())
+        self.assertExcelSheet(
+            export[0],
+            [
+                [
+                    "UUID",
+                    "Opened On",
+                    "Closed On",
+                    "Topic",
+                    "Assigned To",
+                    "Contact UUID",
+                    "Contact Name",
+                    "URN Scheme",
+                    "URN Value",
+                ]
+            ],
+            tz=self.org.timezone,
+        )
 
-        # add a dependency and try again
-        flow = self.create_flow("Deps")
-        flow.ticketer_dependencies.add(ticketer)
+        with self.anonymous(self.org):
+            # anon org doesn't see URN value column
+            export = self._request_export(start_date=date.today() - timedelta(days=7), end_date=date.today())
+            self.assertExcelSheet(
+                export[0],
+                [
+                    [
+                        "UUID",
+                        "Opened On",
+                        "Closed On",
+                        "Topic",
+                        "Assigned To",
+                        "Contact UUID",
+                        "Contact Name",
+                        "URN Scheme",
+                        "Anon Value",
+                    ]
+                ],
+                tz=self.org.timezone,
+            )
 
-        self.assertFalse(flow.has_issues)
+        self.clear_storage()
 
-        ticketer.release(self.editor)
-        ticketer.refresh_from_db()
-
-        self.assertFalse(ticketer.is_active)
-        self.assertEqual(self.editor, ticketer.modified_by)
-        self.assertNotIn(ticketer, flow.ticketer_dependencies.all())
-
-        flow.refresh_from_db()
-        self.assertTrue(flow.has_issues)
-
-
-class TicketerCRUDLTest(TembaTest, CRUDLTestMixin):
-    def test_org_home(self):
-        ticketer = Ticketer.create(self.org, self.user, MailgunType.slug, "Email (bob@acme.com)", {})
+    def test_export(self):
+        export_url = reverse("tickets.ticket_export")
 
         self.login(self.admin)
-        response = self.client.get(reverse("orgs.org_home"))
 
-        self.assertContains(response, "Email (bob@acme.com)")
-        self.assertContains(response, "ticketer/delete/")
-        self.assertContains(response, "HTTP Log")
-        self.assertContains(response, reverse("request_logs.httplog_ticketer", args=[ticketer.uuid]))
+        gender = self.create_field("gender", "Gender")
+        age = self.create_field("age", "Age", value_type=ContactField.TYPE_NUMBER)
 
-    def test_connect(self):
-        connect_url = reverse("tickets.ticketer_connect")
+        # messages can't be older than org
+        self.org.created_on = datetime(2016, 1, 2, 10, tzinfo=tzone.utc)
+        self.org.save(update_fields=("created_on",))
 
-        with override_settings(TICKETER_TYPES=[]):
-            reload_ticketer_types()
+        topic = Topic.create(self.org, self.admin, "AFC Richmond")
+        assignee = self.admin
+        today = timezone.now().astimezone(self.org.timezone).date()
 
-            response = self.assertListFetch(connect_url, allow_viewers=False, allow_editors=False, allow_agents=False)
+        # create a contact with no urns
+        nate = self.create_contact("Nathan Shelley", fields={"gender": "Male"})
 
-            self.assertEqual([], response.context["ticketer_types"])
-            self.assertContains(response, "No ticketing services are available.")
+        # create a contact with one set of urns
+        jamie = self.create_contact("Jamie Tartt", fields={"gender": "Male", "age": 25})
+        ContactURN.create(self.org, jamie, "twitter:jamietarttshark")
 
-        with override_settings(TICKETER_TYPES=["temba.tickets.types.mailgun.MailgunType"], MAILGUN_API_KEY="123"):
-            reload_ticketer_types()
+        # create a contact with multiple urns that have different max priority
+        roy = self.create_contact("Roy Kent", fields={"gender": "Male", "age": 41})
+        ContactURN.create(self.org, roy, "tel:+1234567890")
+        ContactURN.create(self.org, roy, "twitter:roykent")
 
-            response = self.assertListFetch(connect_url, allow_viewers=False, allow_editors=False, allow_agents=False)
+        # create a contact with multiple urns that have the same max priority
+        sam = self.create_contact("Sam Obisanya", fields={"gender": "Male", "age": 22})
+        ContactURN.create(self.org, sam, "twitter:nigerianprince", priority=50)
+        ContactURN.create(self.org, sam, "tel:+9876543210", priority=50)
 
-            self.assertNotContains(response, "No ticketing services are available.")
-            self.assertContains(response, reverse("tickets.types.mailgun.connect"))
+        testers = self.create_group("Testers", contacts=[nate, roy])
 
-        # put them all back...
-        reload_ticketer_types()
+        # create an open ticket for nate, opened 30 days ago
+        ticket1 = self.create_ticket(
+            nate,
+            body="Y'ello",
+            topic=topic,
+            assignee=assignee,
+            opened_on=timezone.now() - timedelta(days=30),
+        )
+        # create an open ticket for jamie, opened 25 days ago
+        ticket2 = self.create_ticket(
+            jamie, body="Hi", topic=topic, assignee=assignee, opened_on=timezone.now() - timedelta(days=25)
+        )
 
-    @patch("temba.mailroom.client.MailroomClient.ticket_close")
-    def test_delete(self, mock_ticket_close):
-        ticketer = Ticketer.create(self.org, self.user, MailgunType.slug, "Email (bob@acme.com)", {})
+        # create a closed ticket for roy, opened yesterday
+        ticket3 = self.create_ticket(
+            roy,
+            body="Hello",
+            topic=topic,
+            assignee=assignee,
+            opened_on=timezone.now() - timedelta(days=1),
+            closed_on=timezone.now(),
+        )
+        # create a closed ticket for sam, opened today
+        ticket4 = self.create_ticket(
+            sam,
+            body="Yo",
+            topic=topic,
+            assignee=assignee,
+            opened_on=timezone.now(),
+            closed_on=timezone.now(),
+        )
 
-        delete_url = reverse("tickets.ticketer_delete", args=[ticketer.uuid])
+        # create a ticket on another org for rebecca
+        self.create_ticket(self.create_contact("Rebecca", urns=["twitter:rwaddingham"], org=self.org2), "Stuff")
 
-        # fetch delete modal
-        response = self.assertDeleteFetch(delete_url)
-        self.assertContains(response, "You are about to delete")
+        # try to submit without specifying dates (UI doesn't actually allow this)
+        response = self.client.post(export_url, {})
+        self.assertFormError(response.context["form"], "start_date", "This field is required.")
+        self.assertFormError(response.context["form"], "end_date", "This field is required.")
 
-        # submit to delete it
-        response = self.assertDeleteSubmit(delete_url, object_deactivated=ticketer, success_status=200)
-        self.assertEqual("/org/home/", response["Temba-Success"])
+        # try to submit with start date in future
+        response = self.client.post(export_url, {"start_date": "2200-01-01", "end_date": "2022-09-28"})
+        self.assertFormError(response.context["form"], None, "Start date can't be in the future.")
 
-        # reactivate
-        ticketer.is_active = True
-        ticketer.save()
+        # try to submit with start date > end date
+        response = self.client.post(export_url, {"start_date": "2022-09-01", "end_date": "2022-03-01"})
+        self.assertFormError(response.context["form"], None, "End date can't be before start date.")
 
-        # add a dependency and try again
-        flow = self.create_flow("Color Flow")
-        flow.ticketer_dependencies.add(ticketer)
-        self.assertFalse(flow.has_issues)
+        # check requesting export for last 90 days
+        with self.mockReadOnly(assert_models={Ticket, ContactURN}):
+            with self.assertNumQueries(33):
+                export = self._request_export(start_date=today - timedelta(days=90), end_date=today)
 
-        response = self.assertDeleteFetch(delete_url)
-        self.assertContains(response, "is used by the following items but can still be deleted:")
-        self.assertContains(response, "Color Flow")
+        expected_headers = [
+            "UUID",
+            "Opened On",
+            "Closed On",
+            "Topic",
+            "Assigned To",
+            "Contact UUID",
+            "Contact Name",
+            "URN Scheme",
+            "URN Value",
+        ]
 
-        self.assertDeleteSubmit(delete_url, object_deactivated=ticketer, success_status=200)
+        self.assertExcelSheet(
+            export[0],
+            rows=[
+                expected_headers,
+                [
+                    ticket1.uuid,
+                    ticket1.opened_on,
+                    "",
+                    ticket1.topic.name,
+                    ticket1.assignee.email,
+                    ticket1.contact.uuid,
+                    "Nathan Shelley",
+                    "",
+                    "",
+                ],
+                [
+                    ticket2.uuid,
+                    ticket2.opened_on,
+                    "",
+                    ticket2.topic.name,
+                    ticket2.assignee.email,
+                    ticket2.contact.uuid,
+                    "Jamie Tartt",
+                    "twitter",
+                    "jamietarttshark",
+                ],
+                [
+                    ticket3.uuid,
+                    ticket3.opened_on,
+                    ticket3.closed_on,
+                    ticket3.topic.name,
+                    ticket3.assignee.email,
+                    ticket3.contact.uuid,
+                    "Roy Kent",
+                    "tel",
+                    "+1234567890",
+                ],
+                [
+                    ticket4.uuid,
+                    ticket4.opened_on,
+                    ticket4.closed_on,
+                    ticket4.topic.name,
+                    ticket4.assignee.email,
+                    ticket4.contact.uuid,
+                    "Sam Obisanya",
+                    "twitter",
+                    "nigerianprince",
+                ],
+            ],
+            tz=self.org.timezone,
+        )
 
-        flow.refresh_from_db()
-        self.assertTrue(flow.has_issues)
-        self.assertNotIn(ticketer, flow.ticketer_dependencies.all())
+        # check requesting export for last 7 days
+        with self.mockReadOnly(assert_models={Ticket, ContactURN}):
+            export = self._request_export(start_date=today - timedelta(days=7), end_date=today)
+
+        self.assertExcelSheet(
+            export[0],
+            rows=[
+                expected_headers,
+                [
+                    ticket3.uuid,
+                    ticket3.opened_on,
+                    ticket3.closed_on,
+                    ticket3.topic.name,
+                    ticket3.assignee.email,
+                    ticket3.contact.uuid,
+                    "Roy Kent",
+                    "tel",
+                    "+1234567890",
+                ],
+                [
+                    ticket4.uuid,
+                    ticket4.opened_on,
+                    ticket4.closed_on,
+                    ticket4.topic.name,
+                    ticket4.assignee.email,
+                    ticket4.contact.uuid,
+                    "Sam Obisanya",
+                    "twitter",
+                    "nigerianprince",
+                ],
+            ],
+            tz=self.org.timezone,
+        )
+
+        # check requesting with contact fields and groups
+        with self.mockReadOnly(assert_models={Ticket, ContactURN}):
+            export = self._request_export(
+                start_date=today - timedelta(days=7), end_date=today, with_fields=(age, gender), with_groups=(testers,)
+            )
+
+        self.assertExcelSheet(
+            export[0],
+            rows=[
+                expected_headers + ["Field:Age", "Field:Gender", "Group:Testers"],
+                [
+                    ticket3.uuid,
+                    ticket3.opened_on,
+                    ticket3.closed_on,
+                    ticket3.topic.name,
+                    ticket3.assignee.email,
+                    ticket3.contact.uuid,
+                    "Roy Kent",
+                    "tel",
+                    "+1234567890",
+                    "41",
+                    "Male",
+                    True,
+                ],
+                [
+                    ticket4.uuid,
+                    ticket4.opened_on,
+                    ticket4.closed_on,
+                    ticket4.topic.name,
+                    ticket4.assignee.email,
+                    ticket4.contact.uuid,
+                    "Sam Obisanya",
+                    "twitter",
+                    "nigerianprince",
+                    "22",
+                    "Male",
+                    False,
+                ],
+            ],
+            tz=self.org.timezone,
+        )
+
+        with self.anonymous(self.org):
+            with self.mockReadOnly(assert_models={Ticket, ContactURN}):
+                export = self._request_export(start_date=today - timedelta(days=90), end_date=today)
+            self.assertExcelSheet(
+                export[0],
+                [
+                    [
+                        "UUID",
+                        "Opened On",
+                        "Closed On",
+                        "Topic",
+                        "Assigned To",
+                        "Contact UUID",
+                        "Contact Name",
+                        "URN Scheme",
+                        "Anon Value",
+                    ],
+                    [
+                        ticket1.uuid,
+                        ticket1.opened_on,
+                        "",
+                        ticket1.topic.name,
+                        ticket1.assignee.email,
+                        ticket1.contact.uuid,
+                        "Nathan Shelley",
+                        "",
+                        ticket1.contact.anon_display,
+                    ],
+                    [
+                        ticket2.uuid,
+                        ticket2.opened_on,
+                        "",
+                        ticket2.topic.name,
+                        ticket2.assignee.email,
+                        ticket2.contact.uuid,
+                        "Jamie Tartt",
+                        "twitter",
+                        ticket2.contact.anon_display,
+                    ],
+                    [
+                        ticket3.uuid,
+                        ticket3.opened_on,
+                        ticket3.closed_on,
+                        ticket3.topic.name,
+                        ticket3.assignee.email,
+                        ticket3.contact.uuid,
+                        "Roy Kent",
+                        "tel",
+                        ticket3.contact.anon_display,
+                    ],
+                    [
+                        ticket4.uuid,
+                        ticket4.opened_on,
+                        ticket4.closed_on,
+                        ticket4.topic.name,
+                        ticket4.assignee.email,
+                        ticket4.contact.uuid,
+                        "Sam Obisanya",
+                        "twitter",
+                        ticket4.contact.anon_display,
+                    ],
+                ],
+                tz=self.org.timezone,
+            )
+
+        self.clear_storage()
+
+    def test_export_with_too_many_fields_and_groups(self):
+        export_url = reverse("tickets.ticket_export")
+        today = timezone.now().astimezone(self.org.timezone).date()
+        too_many_fields = [self.create_field(f"Field {i}", f"field{i}") for i in range(11)]
+        too_many_groups = [self.create_group(f"Group {i}", contacts=[]) for i in range(11)]
+
+        self.login(self.admin)
+        response = self.client.post(
+            export_url,
+            {
+                "start_date": today - timedelta(days=7),
+                "end_date": today,
+                "with_fields": [cf.id for cf in too_many_fields],
+                "with_groups": [cg.id for cg in too_many_groups],
+            },
+        )
+        self.assertFormError(response.context["form"], "with_fields", "You can only include up to 10 fields.")
+        self.assertFormError(response.context["form"], "with_groups", "You can only include up to 10 groups.")
+
+    def _request_export(self, start_date: date, end_date: date, with_fields=(), with_groups=()):
+        export_url = reverse("tickets.ticket_export")
+        self.client.post(
+            export_url,
+            {
+                "start_date": start_date.isoformat(),
+                "end_date": end_date.isoformat(),
+                "with_fields": [cf.id for cf in with_fields],
+                "with_groups": [cf.id for cf in with_groups],
+            },
+        )
+        task = ExportTicketsTask.objects.all().order_by("-id").first()
+        filename = f"{settings.MEDIA_ROOT}/test_orgs/{self.org.id}/ticket_exports/{task.uuid}.xlsx"
+        workbook = load_workbook(filename=filename)
+        return workbook.worksheets
 
 
 class TopicTest(TembaTest):
@@ -729,6 +1123,23 @@ class TopicTest(TembaTest):
         topic15, result = _import({"uuid": "bef5f64c-0ad5-4ee0-9c9f-b3f471ec3b0c", "name": "Yet More"})
         self.assertIsNone(topic15)
         self.assertEqual(Topic.ImportResult.IGNORED_LIMIT_REACHED, result)
+
+    def test_release(self):
+        topic1 = Topic.create(self.org, self.admin, "Sales")
+        flow = self.create_flow("Test")
+        flow.topic_dependencies.add(topic1)
+
+        topic1.release(self.admin)
+
+        self.assertFalse(topic1.is_active)
+        self.assertTrue(topic1.name.startswith("deleted-"))
+
+        flow.refresh_from_db()
+        self.assertTrue(flow.has_issues)
+
+        # can't release default topic
+        with self.assertRaises(AssertionError):
+            self.org.default_ticket_topic.release(self.admin)
 
 
 class TeamTest(TembaTest):
@@ -934,79 +1345,3 @@ class TicketDailyTimingTest(TembaTest):
         TicketDailyTiming.objects.create(
             count_type=TicketDailyTiming.TYPE_LAST_CLOSE, scope=f"o:{org.id}", day=d, count=count, seconds=seconds
         )
-
-
-class BackfillTicketDailyReplyTimingsTest(MigrationTest):
-    app = "tickets"
-    migrate_from = "0035_ticketdailytiming_ticket_replied_on_and_more"
-    migrate_to = "0036_backfill_ticket_reply_timings"
-
-    def setUpBeforeMigration(self, apps):
-        ticketer = self.org.ticketers.get()
-        contact = self.create_contact("Bob", phone="+1234567890")
-
-        # ticket opened on May 1
-        self.ticket1 = self.create_ticket(
-            ticketer, contact, "Help", opened_on=datetime(2022, 5, 1, 10, 30, 0, 0, tzinfo=dt.timezone.utc)
-        )
-
-        # first reply 30 mins later, then another 30 mins after that
-        self._ticket_reply(
-            self.ticket1, "What is the problem?", datetime(2022, 5, 1, 11, 0, 0, 0, tzinfo=dt.timezone.utc)
-        )
-        self._ticket_reply(self.ticket1, "Still there?", datetime(2022, 5, 1, 11, 30, 0, 0, tzinfo=dt.timezone.utc))
-
-        # another ticket opened on May 1
-        self.ticket2 = self.create_ticket(
-            ticketer, contact, "Help", opened_on=datetime(2022, 5, 1, 13, 0, 0, 0, tzinfo=dt.timezone.utc)
-        )
-
-        # only reply 1 hour later
-        self._ticket_reply(
-            self.ticket2, "What is the problem?", datetime(2022, 5, 1, 14, 0, 0, 0, tzinfo=dt.timezone.utc)
-        )
-
-        # another ticket opened on May 2, no replies
-        self.ticket3 = self.create_ticket(
-            ticketer, contact, "Help", opened_on=datetime(2022, 5, 2, 13, 0, 0, 0, tzinfo=dt.timezone.utc)
-        )
-
-        # finally another ticket on May 2 which has a reply that is already counted
-        self.ticket4 = self.create_ticket(
-            ticketer, contact, "Help", opened_on=datetime(2022, 5, 2, 15, 0, 0, 0, tzinfo=dt.timezone.utc)
-        )
-        self._ticket_reply(self.ticket4, "Hi?", datetime(2022, 5, 2, 15, 30, 0, 0, tzinfo=dt.timezone.utc))
-
-        self.ticket4.replied_on = datetime(2022, 5, 1, 15, 30, 0, 0, tzinfo=dt.timezone.utc)
-        self.ticket4.save(update_fields=("replied_on",))
-
-        TicketDailyTiming.objects.create(
-            count_type=TicketDailyTiming.TYPE_FIRST_REPLY,
-            scope=f"o:{self.org.id}",
-            day=date(2022, 5, 2),
-            count=1,
-            seconds=30 * 60,
-        )
-
-    def test_migration(self):
-        self.ticket1.refresh_from_db()
-        self.ticket2.refresh_from_db()
-        self.ticket3.refresh_from_db()
-        self.ticket4.refresh_from_db()
-
-        self.assertEqual(datetime(2022, 5, 1, 11, 0, 0, 0, tzinfo=dt.timezone.utc), self.ticket1.replied_on)
-        self.assertEqual(datetime(2022, 5, 1, 14, 0, 0, 0, tzinfo=dt.timezone.utc), self.ticket2.replied_on)
-        self.assertIsNone(self.ticket3.replied_on)
-        self.assertEqual(datetime(2022, 5, 2, 15, 30, 0, 0, tzinfo=dt.timezone.utc), self.ticket4.replied_on)
-
-        self.assertEqual(
-            [(date(2022, 5, 1), 2), (date(2022, 5, 2), 1)],
-            TicketDailyTiming.get_by_org(self.org, TicketDailyTiming.TYPE_FIRST_REPLY).day_totals(),
-        )
-        self.assertEqual(
-            [(date(2022, 5, 1), 2700.0), (date(2022, 5, 2), 1800.0)],
-            TicketDailyTiming.get_by_org(self.org, TicketDailyTiming.TYPE_FIRST_REPLY).day_averages(),
-        )
-
-    def _ticket_reply(self, ticket, text, when):
-        self.create_broadcast(self.admin, text, contacts=[ticket.contact], ticket=ticket, created_on=when)

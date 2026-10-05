@@ -1,6 +1,6 @@
 from datetime import datetime
+from datetime import timezone as tzone
 
-import pytz
 import regex
 
 from temba.tests.dates import FULL_ISO8601_REGEX
@@ -65,7 +65,7 @@ class Datetime(MatcherMixin, datetime):
     """
 
     def __new__(cls):
-        return datetime.__new__(cls, 2019, 10, 30, 13, 39, 30, 123456, pytz.UTC)
+        return datetime.__new__(cls, 2019, 10, 30, 13, 39, 30, 123456, tzone.utc)
 
     def __eq__(self, other):
         return isinstance(other, datetime)
@@ -76,5 +76,32 @@ class Int(MatcherMixin, int):
     Matches any int
     """
 
+    def __new__(cls, min=None):
+        m = int.__new__(cls, 0)
+        m.min = min
+        return m
+
     def __eq__(self, other):
-        return isinstance(other, int)
+        if not isinstance(other, int):
+            return False
+        if self.min is not None and other < self.min:
+            return False
+        return True
+
+
+class Float(MatcherMixin, float):
+    """
+    Matches any float
+    """
+
+    def __new__(cls, min=None):
+        m = float.__new__(cls, 0)
+        m.min = min
+        return m
+
+    def __eq__(self, other):
+        if not isinstance(other, float):
+            return False
+        if self.min is not None and other < self.min:
+            return False
+        return True

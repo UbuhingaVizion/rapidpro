@@ -1,13 +1,17 @@
 import logging
-import time
+import mimetypes
+import os
+import re
 from array import array
-from datetime import datetime, timedelta
+from dataclasses import dataclass
+from fnmatch import fnmatch
+from urllib.parse import unquote, urlparse
 
 import iso8601
-import pytz
 from django.conf import settings
 from django.contrib.auth.models import User
 from django.contrib.postgres.fields import ArrayField
+from django.core.files.storage import default_storage
 from django.core.files.temp import NamedTemporaryFile
 from django.db import models
 from django.db.models import Prefetch, Q, Sum
@@ -18,25 +22,152 @@ from xlsxlite.writer import XLSXBook
 
 from temba import mailroom
 from temba.assets.models import register_asset_store
-from temba.channels.models import Channel, ChannelEvent
-from temba.contacts.models import URN, Contact, ContactGroup, ContactURN
-from temba.orgs.models import DependencyMixin, Org, TopUp
+from temba.channels.models import Channel, ChannelLog
+from temba.contacts import search
+from temba.contacts.models import Contact, ContactGroup, ContactURN
+from temba.orgs.models import DependencyMixin, Org
 from temba.schedules.models import Schedule
 from temba.utils import chunk_list, on_transaction_commit
-from temba.utils.export import BaseExportAssetStore, BaseExportTask
-from temba.utils.models import JSONAsTextField, LegacyUUIDMixin, SquashableModel, TembaModel, TranslatableField
-from temba.utils.text import clean_string
+from temba.utils.export import BaseExportAssetStore, BaseItemWithContactExport
+from temba.utils.models import JSONAsTextField, SquashableModel, TembaModel
+from temba.utils.s3 import public_file_storage
 from temba.utils.uuid import uuid4
 
 logger = logging.getLogger(__name__)
 
 
-class UnreachableException(Exception):
+class Media(models.Model):
     """
-    Exception thrown when a message is being sent to a contact that we don't have a sendable URN for
+    An uploaded media file that can be used as an attachment on messages.
     """
 
-    pass
+    ALLOWED_CONTENT_TYPES = ("image/*", "audio/*", "video/*", "application/pdf")
+    MAX_UPLOAD_SIZE = 1024 * 1024 * 25  # 25MB
+
+    STATUS_PENDING = "P"
+    STATUS_READY = "R"
+    STATUS_FAILED = "F"
+    STATUS_CHOICES = ((STATUS_PENDING, "Pending"), (STATUS_READY, "Ready"), (STATUS_FAILED, "Failed"))
+
+    uuid = models.UUIDField(default=uuid4, unique=True)
+    org = models.ForeignKey(Org, on_delete=models.PROTECT, related_name="media")
+    url = models.URLField(max_length=2048)
+    content_type = models.CharField(max_length=255)
+    path = models.CharField(max_length=2048)
+    size = models.IntegerField(default=0)  # bytes
+    original = models.ForeignKey("self", null=True, on_delete=models.CASCADE, related_name="alternates")
+    status = models.CharField(max_length=1, default=STATUS_PENDING, choices=STATUS_CHOICES)
+
+    # fields that will be set after upload by a processing task
+    duration = models.IntegerField(default=0)  # milliseconds
+    width = models.IntegerField(default=0)  # pixels
+    height = models.IntegerField(default=0)  # pixels
+
+    created_by = models.ForeignKey(User, on_delete=models.PROTECT)
+    created_on = models.DateTimeField(default=timezone.now)
+
+    @classmethod
+    def is_allowed_type(cls, content_type: str) -> bool:
+        for allowed_type in cls.ALLOWED_CONTENT_TYPES:
+            if fnmatch(content_type, allowed_type):
+                return True
+        return False
+
+    @classmethod
+    def get_storage_path(cls, org, uuid, filename):
+        """
+        Returns the storage path for the given filename. Differs slightly from that used by the media endpoint because
+        it preserves the original filename which courier still needs if there's no media record for an attachment URL.
+        """
+        return f"{settings.STORAGE_ROOT_DIR}/{org.id}/media/{str(uuid)[0:4]}/{uuid}/{filename}"
+
+    @classmethod
+    def clean_name(cls, filename: str, content_type: str) -> str:
+        base_name, extension = os.path.splitext(filename)
+        base_name = re.sub(r"[^\w\-\[\]\(\) ]", "", base_name).strip()[:255] or "file"
+
+        if not extension or len(extension) < 2 or not extension[1:].isalnum():
+            extension = mimetypes.guess_extension(content_type) or ".bin"
+
+        return base_name + extension
+
+    @classmethod
+    def from_upload(cls, org, user, file, process=True):
+        """
+        Creates a new media instance from a file upload.
+        """
+
+        from .tasks import process_media_upload
+
+        assert cls.is_allowed_type(file.content_type), "unsupported content type"
+
+        filename = cls.clean_name(file.name, file.content_type)
+
+        # browsers might send m4a files but correct MIME type is audio/mp4
+        if filename.endswith(".m4a"):
+            file.content_type = "audio/mp4"
+
+        media = cls._create(org, user, filename, file.content_type, file)
+
+        if process:
+            on_transaction_commit(lambda: process_media_upload.delay(media.id))
+
+        return media
+
+    @classmethod
+    def create_alternate(cls, original, filename: str, content_type: str, file, **kwargs):
+        """
+        Creates a new alternate media instance for the given original.
+        """
+
+        return cls._create(
+            original.org,
+            original.created_by,
+            filename,
+            content_type,
+            file,
+            original=original,
+            status=cls.STATUS_READY,
+            **kwargs,
+        )
+
+    @classmethod
+    def _create(cls, org, user, filename: str, content_type: str, file, **kwargs):
+        uuid = uuid4()
+        path = cls.get_storage_path(org, uuid, filename)
+        path = public_file_storage.save(path, file)
+        size = public_file_storage.size(path)
+
+        return cls.objects.create(
+            uuid=uuid,
+            org=org,
+            url=public_file_storage.url(path),
+            content_type=content_type,
+            path=path,
+            size=size,
+            created_by=user,
+            **kwargs,
+        )
+
+    @property
+    def filename(self) -> str:
+        return os.path.basename(self.path)
+
+    def process_upload(self):
+        from .media import process_upload
+
+        assert self.status == self.STATUS_PENDING, "media file is already processed"
+        assert not self.original, "only original uploads can be processed"
+
+        process_upload(self)
+
+    def __str__(self) -> str:
+        return f"{self.content_type}:{self.url}"
+
+    class Meta:
+        indexes = [
+            models.Index(name="media_originals_by_org", fields=["org", "-created_on"], condition=Q(original=None))
+        ]
 
 
 class Broadcast(models.Model):
@@ -46,116 +177,63 @@ class Broadcast(models.Model):
     messages sent from the same bundle together
     """
 
-    STATUS_INITIALIZING = "I"
     STATUS_QUEUED = "Q"
     STATUS_SENT = "S"
     STATUS_FAILED = "F"
-    STATUS_CHOICES = (
-        (STATUS_INITIALIZING, "Initializing"),
-        (STATUS_QUEUED, "Queued"),
-        (STATUS_SENT, "Sent"),
-        (STATUS_FAILED, "Failed"),
-    )
+    STATUS_CHOICES = ((STATUS_QUEUED, "Queued"), (STATUS_SENT, "Sent"), (STATUS_FAILED, "Failed"))
 
-    MAX_TEXT_LEN = settings.MSG_FIELD_SIZE
-
-    TEMPLATE_STATE_LEGACY = "legacy"
-    TEMPLATE_STATE_EVALUATED = "evaluated"
-    TEMPLATE_STATE_UNEVALUATED = "unevaluated"
-    TEMPLATE_STATE_CHOICES = (TEMPLATE_STATE_LEGACY, TEMPLATE_STATE_EVALUATED, TEMPLATE_STATE_UNEVALUATED)
-
-    METADATA_QUICK_REPLIES = "quick_replies"
-    METADATA_TEMPLATE_STATE = "template_state"
-
-    org = models.ForeignKey(Org, on_delete=models.PROTECT)
+    org = models.ForeignKey(Org, on_delete=models.PROTECT, related_name="broadcasts")
 
     # recipients of this broadcast
     groups = models.ManyToManyField(ContactGroup, related_name="addressed_broadcasts")
     contacts = models.ManyToManyField(Contact, related_name="addressed_broadcasts")
-    urns = models.ManyToManyField(ContactURN, related_name="addressed_broadcasts")
+    urns = ArrayField(models.TextField(), null=True)
+    query = models.TextField(null=True)
 
-    # URN strings that mailroom will turn into contacts and URN objects
-    raw_urns = ArrayField(models.TextField(), null=True)
+    # message content in different languages, e.g. {"eng": {"text": "Hello", "attachments": [...]}, "spa": ...}
+    translations = models.JSONField()
+    base_language = models.CharField(max_length=3)  # ISO-639-3
+    optin = models.ForeignKey("msgs.OptIn", null=True, on_delete=models.PROTECT)
 
-    # message content
-    base_language = models.CharField(max_length=4)
-    text = TranslatableField(max_length=MAX_TEXT_LEN)
-    media = TranslatableField(max_length=2048, null=True)
-
-    channel = models.ForeignKey(Channel, on_delete=models.PROTECT, null=True)
-    ticket = models.ForeignKey("tickets.Ticket", on_delete=models.PROTECT, null=True, related_name="broadcasts")
-
-    status = models.CharField(max_length=1, choices=STATUS_CHOICES, default=STATUS_INITIALIZING)
-
-    schedule = models.OneToOneField(Schedule, on_delete=models.PROTECT, null=True, related_name="broadcast")
-
-    # used for repeating scheduled broadcasts
-    parent = models.ForeignKey("Broadcast", on_delete=models.PROTECT, null=True, related_name="children")
-
+    status = models.CharField(max_length=1, choices=STATUS_CHOICES, default=STATUS_QUEUED)
     created_by = models.ForeignKey(User, null=True, on_delete=models.PROTECT, related_name="broadcast_creations")
-    created_on = models.DateTimeField(default=timezone.now, db_index=True)  # TODO remove index
+    created_on = models.DateTimeField(default=timezone.now)
     modified_by = models.ForeignKey(User, null=True, on_delete=models.PROTECT, related_name="broadcast_modifications")
     modified_on = models.DateTimeField(default=timezone.now)
 
-    # whether this broadcast should send to all URNs for each contact
-    send_all = models.BooleanField(default=False)
-
-    metadata = JSONAsTextField(null=True, default=dict)
+    # used for scheduled broadcasts which are never actually sent themselves but spawn child broadcasts which are
+    schedule = models.OneToOneField(Schedule, on_delete=models.PROTECT, null=True, related_name="broadcast")
+    parent = models.ForeignKey("Broadcast", on_delete=models.PROTECT, null=True, related_name="children")
+    is_active = models.BooleanField(null=True, default=True)
 
     @classmethod
     def create(
         cls,
         org,
         user,
-        text,
+        translations: dict[str, dict] = None,
         *,
+        base_language: str = None,
         groups=None,
         contacts=None,
         urns: list[str] = None,
         contact_ids: list[int] = None,
-        base_language: str = None,
-        channel: Channel = None,
-        ticket=None,
-        media: dict = None,
-        send_all: bool = False,
-        quick_replies: list[dict] = None,
-        template_state: str = TEMPLATE_STATE_LEGACY,
-        status: str = STATUS_INITIALIZING,
         **kwargs,
     ):
-        # for convenience broadcasts can still be created with single translation and no base_language
-        if isinstance(text, str):
-            base_language = org.flow_languages[0] if org.flow_languages else "base"
-            text = {base_language: text}
-
         assert groups or contacts or contact_ids or urns, "can't create broadcast without recipients"
-        assert base_language in text, "base_language doesn't exist in text translations"
-        assert not media or base_language in media, "base_language doesn't exist in media translations"
 
-        if quick_replies:
-            for quick_reply in quick_replies:
-                if base_language not in quick_reply:
-                    raise ValueError(
-                        "Base language '%s' doesn't exist for one or more of the provided quick replies"
-                        % base_language
-                    )
+        # if base language is not provided
+        if not base_language:
+            base_language = next(iter(translations))
 
-        metadata = {Broadcast.METADATA_TEMPLATE_STATE: template_state}
-        if quick_replies:
-            metadata[Broadcast.METADATA_QUICK_REPLIES] = quick_replies
+        assert base_language in translations, "no translation for base language"
 
         broadcast = cls.objects.create(
             org=org,
-            channel=channel,
-            ticket=ticket,
-            send_all=send_all,
+            translations=translations,
             base_language=base_language,
-            text=text,
-            media=media,
             created_by=user,
             modified_by=user,
-            metadata=metadata,
-            status=status,
             **kwargs,
         )
 
@@ -163,6 +241,23 @@ class Broadcast(models.Model):
         broadcast._set_recipients(groups=groups, contacts=contacts, urns=urns, contact_ids=contact_ids)
 
         return broadcast
+
+    @classmethod
+    def get_queued(cls, org):
+        """
+        Gets the queued broadcasts which will be prepended to the Outbox
+        """
+        return org.broadcasts.filter(status=cls.STATUS_QUEUED, schedule=None, is_active=True)
+
+    @classmethod
+    def preview(cls, org, *, include: mailroom.Inclusions, exclude: mailroom.Exclusions) -> tuple[str, int]:
+        """
+        Requests a preview of the recipients of a broadcast created with the given inclusions/exclusions, returning a
+        tuple of the canonical query and the total count of contacts.
+        """
+        preview = search.preview_broadcast(org, include=include, exclude=exclude)
+
+        return preview.query, preview.total
 
     def send_async(self):
         """
@@ -179,34 +274,49 @@ class Broadcast(models.Model):
     def get_message_count(self):
         return BroadcastMsgCount.get_count(self)
 
-    def get_text(self, contact=None):
+    def get_translation(self, contact=None) -> dict:
         """
-        Gets the text that will be sent. If contact is provided and their language is a valid flow language and there's
-        a translation for it then that will be used (used when rendering upcoming scheduled broadcasts).
+        Gets a translation to use to display this broadcast. If contact is provided and their language is a valid flow
+        language and there's a translation for it then that will be used.
         """
+
+        def trans(d):
+            return {"text": "", "attachments": [], "quick_replies": []} | d  # ensure we always have text+attachments
 
         if contact and contact.language and contact.language in self.org.flow_languages:  # try contact language
-            if contact.language in self.text:
-                return self.text[contact.language]
+            if contact.language in self.translations:
+                return trans(self.translations[contact.language])
 
-        if self.org.flow_languages and self.org.flow_languages[0] in self.text:  # try org primary language
-            return self.text[self.org.flow_languages[0]]
+        if self.org.flow_languages[0] in self.translations:  # try org primary language
+            return trans(self.translations[self.org.flow_languages[0]])
 
-        return self.text[self.base_language]  # should always be a base language translation
+        return trans(self.translations[self.base_language])  # should always be a base language translation
 
-    def release(self):
-        for child in self.children.all():
-            child.release()
+    def delete(self, user, *, soft: bool):
+        if soft:
+            assert self.schedule, "can only soft delete scheduled broadcasts"
+            schedule = self.schedule
 
-        for msg in self.msgs.all():
-            msg.delete()
+            self.schedule = None
+            self.modified_by = user
+            self.modified_on = timezone.now()
+            self.is_active = False
+            self.save(update_fields=("schedule", "modified_by", "modified_on", "is_active"))
 
-        BroadcastMsgCount.objects.filter(broadcast=self).delete()
+            schedule.delete()
+        else:
+            for child in self.children.all():
+                child.delete(user, soft=False)
 
-        self.delete()
+            for msg in self.msgs.all():
+                msg.delete()
 
-        if self.schedule:
-            self.schedule.delete()
+            BroadcastMsgCount.objects.filter(broadcast=self).delete()
+
+            super().delete()
+
+            if self.schedule:
+                self.schedule.delete()
 
     def update_recipients(self, *, groups=None, contacts=None, urns: list[str] = None):
         """
@@ -229,8 +339,8 @@ class Broadcast(models.Model):
             self.contacts.add(*contacts)
 
         if urns:
-            self.raw_urns = urns
-            self.save(update_fields=("raw_urns",))
+            self.urns = urns
+            self.save(update_fields=("urns",))
 
         if contact_ids:
             RelatedModel = self.contacts.through
@@ -238,82 +348,106 @@ class Broadcast(models.Model):
                 bulk_contacts = [RelatedModel(contact_id=id, broadcast_id=self.id) for id in chunk]
                 RelatedModel.objects.bulk_create(bulk_contacts)
 
-    def get_template_state(self):
-        metadata = self.metadata or {}
-        return metadata.get(Broadcast.METADATA_TEMPLATE_STATE, Broadcast.TEMPLATE_STATE_LEGACY)
-
-    def __str__(self):  # pragma: no cover
-        return f"Broadcast[id={self.id}, text={self.text}]"
+    def __repr__(self):
+        return f'<Broadcast: id={self.id} text="{self.get_translation()["text"]}">'
 
     class Meta:
         indexes = [
             # used by the broadcasts API endpoint
-            models.Index(name="msgs_broadcasts_org_created_id", fields=["org", "-created_on", "-id"]),
+            models.Index(
+                name="msgs_broadcasts_api",
+                fields=["org", "-created_on", "-id"],
+                condition=Q(schedule__isnull=True, is_active=True),
+            ),
+            # used by the scheduled broadcasts view
+            models.Index(
+                name="msgs_broadcasts_scheduled",
+                fields=["org", "-created_on"],
+                condition=Q(schedule__isnull=False, is_active=True),
+            ),
+            # used to fetch queued broadcasts for the Outbox
+            models.Index(
+                name="msgs_broadcasts_queued",
+                fields=["org", "-created_on"],
+                condition=Q(schedule__isnull=True, status="Q", is_active=True),
+            ),
         ]
 
 
+@dataclass
 class Attachment:
     """
     Represents a message attachment stored as type:url
     """
 
-    def __init__(self, content_type, url):
-        self.content_type = content_type
-        self.url = url
+    content_type: str
+    url: str
+
+    MAX_LEN = 2048
+    CONTENT_TYPE_REGEX = re.compile(r"^(image|audio|video|application|geo|unavailable|(\w+/[-+.\w]+))$")
 
     @classmethod
     def parse(cls, s):
-        return cls(*s.split(":", 1))
+        if ":" in s:
+            content_type, url = s.split(":", 1)
+            if cls.CONTENT_TYPE_REGEX.match(content_type) and url:
+                return cls(content_type, url)
+
+        raise ValueError(f"{s} is not a valid attachment")
 
     @classmethod
     def parse_all(cls, attachments):
         return [cls.parse(s) for s in attachments] if attachments else []
 
+    @classmethod
+    def bulk_delete(cls, attachments):
+        for att in attachments:
+            parsed = urlparse(att.url)
+            default_storage.delete(unquote(parsed.path))
+
     def as_json(self):
         return {"content_type": self.content_type, "url": self.url}
-
-    def __eq__(self, other):
-        return self.content_type == other.content_type and self.url == other.url
 
 
 class Msg(models.Model):
     """
-    Messages are the main building blocks of a RapidPro application. Channels send and receive
-    these, Triggers and Flows handle them when appropriate.
-
-    Messages are either inbound or outbound and can have varying states depending on their
-    direction. Generally an outbound message will go through the following states:
+    Messages are either inbound or outbound and can have varying statuses depending on their direction. Generally an
+    outbound message will go through the following statuses:
 
       INITIALIZING > QUEUED > WIRED > SENT > DELIVERED
+                            |
+                            > ERRORED > FAILED
 
-    If things go wrong, they can be put into an ERRORED state where they can be retried. Once
-    we've given up then they can be put in the FAILED state.
+    Though in practice to save a database update, messages are created in the database as QUEUED, and only if queueing
+    to courier fails, put back in INITIALIZING. If things go wrong during sending, they can be put into ERRORED where
+    they can be retried. Once they've exceeded the allowed number of errored sends, they become FAILED.
 
-    Inbound messages are much simpler. They start as PENDING and the can be picked up by Triggers
-    or Flows where they would get set to the HANDLED state once they've been dealt with.
+    Inbound messages are simpler:
+
+      PENDING > HANDLED
+
+    They are created in the database as PENDING and updated to HANDLED once they've been handled by the flow engine.
     """
 
-    STATUS_INITIALIZING = "I"  # used to hold off sending the message until the flow is ready to receive a response
-    STATUS_PENDING = "P"  # initial state for all messages
-    STATUS_QUEUED = "Q"
-    STATUS_WIRED = "W"  # message was handed off to the provider and credits were deducted for it
-    STATUS_SENT = "S"  # we have confirmation that a message was sent
-    STATUS_DELIVERED = "D"  # we have confirmation that a message was delivered
-    STATUS_HANDLED = "H"
-    STATUS_ERRORED = "E"  # there was an error during delivery
-    STATUS_FAILED = "F"  # we gave up on sending this message
-    STATUS_RESENT = "R"  # we retried this message (no longer used)
+    STATUS_PENDING = "P"  # incoming msg created but not yet handled
+    STATUS_HANDLED = "H"  # incoming msg handled
+    STATUS_INITIALIZING = "I"  # outgoing msg that hasn't yet been queued
+    STATUS_QUEUED = "Q"  # outgoing msg queued to courier for sending
+    STATUS_WIRED = "W"  # outgoing msg requested to be sent via channel
+    STATUS_SENT = "S"  # outgoing msg having received sent confirmation from channel
+    STATUS_DELIVERED = "D"  # outgoing msg having received delivery confirmation from channel
+    STATUS_ERRORED = "E"  # outgoing msg which has errored and will be retried
+    STATUS_FAILED = "F"  # outgoing msg which has failed permanently
     STATUS_CHOICES = (
-        (STATUS_INITIALIZING, _("Initializing")),
         (STATUS_PENDING, _("Pending")),
+        (STATUS_HANDLED, _("Handled")),
+        (STATUS_INITIALIZING, _("Initializing")),
         (STATUS_QUEUED, _("Queued")),
         (STATUS_WIRED, _("Wired")),
         (STATUS_SENT, _("Sent")),
         (STATUS_DELIVERED, _("Delivered")),
-        (STATUS_HANDLED, _("Handled")),
         (STATUS_ERRORED, _("Error")),
         (STATUS_FAILED, _("Failed")),
-        (STATUS_RESENT, _("Resent")),
     )
 
     VISIBILITY_VISIBLE = "V"
@@ -331,28 +465,26 @@ class Msg(models.Model):
     DIRECTION_OUT = "O"
     DIRECTION_CHOICES = ((DIRECTION_IN, "Incoming"), (DIRECTION_OUT, "Outgoing"))
 
-    TYPE_INBOX = "I"
-    TYPE_FLOW = "F"
-    TYPE_IVR = "V"
-    TYPE_USSD = "U"
-    TYPE_CHOICES = (
-        (TYPE_INBOX, "Inbox Message"),
-        (TYPE_FLOW, "Flow Message"),
-        (TYPE_IVR, "IVR Message"),
-        (TYPE_USSD, "USSD Message"),
-    )
+    TYPE_TEXT = "T"
+    TYPE_OPTIN = "O"
+    TYPE_VOICE = "V"
+    TYPE_CHOICES = ((TYPE_TEXT, "Text"), (TYPE_OPTIN, "Opt-In Request"), (TYPE_VOICE, "Interactive Voice Response"))
 
     FAILED_SUSPENDED = "S"
+    FAILED_CONTACT = "C"
     FAILED_LOOPING = "L"
     FAILED_ERROR_LIMIT = "E"
     FAILED_TOO_OLD = "O"
     FAILED_NO_DESTINATION = "D"
+    FAILED_CHANNEL_REMOVED = "R"
     FAILED_CHOICES = (
         (FAILED_SUSPENDED, _("Workspace suspended")),
+        (FAILED_CONTACT, _("Contact is no longer active")),
         (FAILED_LOOPING, _("Looping detected")),  # mailroom checks for this
         (FAILED_ERROR_LIMIT, _("Retry limit reached")),  # courier tried to send but it errored too many times
         (FAILED_TOO_OLD, _("Too old to send")),  # was queued for too long, would be confusing to send now
         (FAILED_NO_DESTINATION, _("No suitable channel found")),  # no compatible channel + URN destination found
+        (FAILED_CHANNEL_REMOVED, _("Channel removed")),  # channel removed by user
     )
 
     MEDIA_GPS = "geo"
@@ -361,28 +493,41 @@ class Msg(models.Model):
     MEDIA_AUDIO = "audio"
     MEDIA_TYPES = [MEDIA_AUDIO, MEDIA_GPS, MEDIA_IMAGE, MEDIA_VIDEO]
 
-    MAX_TEXT_LEN = settings.MSG_FIELD_SIZE
+    MAX_TEXT_LEN = settings.MSG_FIELD_SIZE  # max chars allowed in a message
+    MAX_ATTACHMENTS = 10  # max attachments allowed in a message
 
     id = models.BigAutoField(primary_key=True)
-    uuid = models.UUIDField(null=True, default=uuid4)
-    org = models.ForeignKey(Org, on_delete=models.PROTECT, related_name="msgs")
+    uuid = models.UUIDField(default=uuid4)
+    org = models.ForeignKey(Org, on_delete=models.PROTECT, related_name="msgs", db_index=False)
+
+    # message destination
     channel = models.ForeignKey(Channel, on_delete=models.PROTECT, null=True, related_name="msgs")
     contact = models.ForeignKey(Contact, on_delete=models.PROTECT, related_name="msgs", db_index=False)
     contact_urn = models.ForeignKey(ContactURN, on_delete=models.PROTECT, null=True, related_name="msgs")
+
+    # message origin (note that we don't index or constrain flow/ticket so accessing by these is not supported)
     broadcast = models.ForeignKey(Broadcast, on_delete=models.PROTECT, null=True, related_name="msgs")
-    flow = models.ForeignKey("flows.Flow", on_delete=models.PROTECT, null=True, db_index=False)
+    flow = models.ForeignKey("flows.Flow", on_delete=models.DO_NOTHING, null=True, db_index=False, db_constraint=False)
+    ticket = models.ForeignKey(
+        "tickets.Ticket", on_delete=models.DO_NOTHING, null=True, db_index=False, db_constraint=False
+    )
+    created_by = models.ForeignKey(User, on_delete=models.PROTECT, null=True, db_index=False)
 
+    # message content
     text = models.TextField()
-    attachments = ArrayField(models.URLField(max_length=2048), null=True)
-
-    high_priority = models.BooleanField(null=True)
+    attachments = ArrayField(models.URLField(max_length=Attachment.MAX_LEN), null=True)
+    quick_replies = ArrayField(models.CharField(max_length=64), null=True)
+    optin = models.ForeignKey(
+        "msgs.OptIn", on_delete=models.DO_NOTHING, null=True, db_index=False, db_constraint=False
+    )
+    locale = models.CharField(max_length=6, null=True)  # eng, eng-US, por-BR, und etc
 
     created_on = models.DateTimeField(db_index=True)
     modified_on = models.DateTimeField(null=True, blank=True, auto_now=True)
     sent_on = models.DateTimeField(null=True)
     queued_on = models.DateTimeField(null=True)
 
-    msg_type = models.CharField(max_length=1, choices=TYPE_CHOICES, null=True)
+    msg_type = models.CharField(max_length=1, choices=TYPE_CHOICES)
     direction = models.CharField(max_length=1, choices=DIRECTION_CHOICES)
     status = models.CharField(max_length=1, choices=STATUS_CHOICES, default=STATUS_PENDING, db_index=True)
     visibility = models.CharField(max_length=1, choices=VISIBILITY_CHOICES, default=VISIBILITY_VISIBLE)
@@ -392,7 +537,8 @@ class Msg(models.Model):
     # the number of actual messages the channel sent this as (outgoing only)
     msg_count = models.IntegerField(default=1)
 
-    # sending issues (outgoing only)
+    # sending (outgoing only)
+    high_priority = models.BooleanField(null=True)
     error_count = models.IntegerField(default=0)  # number of times this message has errored
     next_attempt = models.DateTimeField(null=True)  # when we'll next retry
     failed_reason = models.CharField(null=True, max_length=1, choices=FAILED_CHOICES)  # why we've failed
@@ -400,41 +546,8 @@ class Msg(models.Model):
     # the id of this message on the other side of its channel
     external_id = models.CharField(max_length=255, null=True)
 
-    topup = models.ForeignKey(TopUp, null=True, blank=True, related_name="msgs", on_delete=models.PROTECT)
-
     metadata = JSONAsTextField(null=True, default=dict)
-
-    @classmethod
-    def get_messages(cls, org, is_archived=False, direction=None, msg_type=None):
-        messages = cls.objects.filter(org=org)
-
-        if is_archived:  # pragma: needs cover
-            messages = messages.filter(visibility=Msg.VISIBILITY_ARCHIVED)
-        else:
-            messages = messages.filter(visibility=Msg.VISIBILITY_VISIBLE)
-
-        if direction:  # pragma: needs cover
-            messages = messages.filter(direction=direction)
-
-        if msg_type:  # pragma: needs cover
-            messages = messages.filter(msg_type=msg_type)
-
-        return messages
-
-    @classmethod
-    def fail_old_messages(cls):  # pragma: needs cover
-        """
-        Looks for any errored or queued messages more than a week old and fails them. Messages that old would
-        probably be confusing to go out.
-        """
-        one_week_ago = timezone.now() - timedelta(days=7)
-        statuses = (cls.STATUS_QUEUED, cls.STATUS_PENDING, cls.STATUS_ERRORED)
-        failed_messages = Msg.objects.filter(
-            created_on__lte=one_week_ago, direction=Msg.DIRECTION_OUT, status__in=statuses
-        )
-
-        # fail our messages
-        failed_messages.update(status=cls.STATUS_FAILED, failed_reason=Msg.FAILED_TOO_OLD, modified_on=timezone.now())
+    log_uuids = ArrayField(models.UUIDField(), null=True)
 
     def as_archive_json(self):
         """
@@ -442,82 +555,24 @@ class Msg(models.Model):
         """
         from temba.api.v2.serializers import MsgReadSerializer
 
+        serializer = MsgReadSerializer()
+
         return {
             "id": self.id,
             "contact": {"uuid": str(self.contact.uuid), "name": self.contact.name},
             "channel": {"uuid": str(self.channel.uuid), "name": self.channel.name} if self.channel else None,
             "flow": {"uuid": str(self.flow.uuid), "name": self.flow.name} if self.flow else None,
             "urn": self.contact_urn.identity if self.contact_urn else None,
-            "direction": "in" if self.direction == Msg.DIRECTION_IN else "out",
-            "type": MsgReadSerializer.TYPES.get(self.msg_type),
-            "status": MsgReadSerializer.STATUSES.get(self.status),
-            "visibility": MsgReadSerializer.VISIBILITIES.get(self.visibility),
+            "direction": serializer.get_direction(self),
+            "type": serializer.get_type(self),
+            "status": serializer.get_status(self),
+            "visibility": serializer.get_visibility(self),
             "text": self.text,
             "attachments": [attachment.as_json() for attachment in Attachment.parse_all(self.attachments)],
-            "labels": [{"uuid": lb.uuid, "name": lb.name} for lb in self.labels.all()],
+            "labels": [{"uuid": str(lb.uuid), "name": lb.name} for lb in self.labels.all()],
             "created_on": self.created_on.isoformat(),
             "sent_on": self.sent_on.isoformat() if self.sent_on else None,
         }
-
-    @classmethod
-    def get_text_parts(cls, text, max_length=160):
-        """
-        Breaks our message into 160 character parts
-        """
-        if len(text) < max_length or max_length <= 0:
-            return [text]
-
-        else:
-
-            def next_part(text):
-                if len(text) <= max_length:
-                    return text, None
-
-                else:
-                    # search for a space to split on, up to 140 characters in
-                    index = max_length
-                    while index > max_length - 20:
-                        if text[index] == " ":
-                            break
-                        index -= 1
-
-                    # couldn't find a good split, oh well, 160 it is
-                    if index == max_length - 20:
-                        return text[:max_length], text[max_length:]
-                    else:
-                        return text[:index], text[index + 1 :]
-
-            parts = []
-            rest = text
-            while rest:
-                (part, rest) = next_part(rest)
-                parts.append(part)
-
-            return parts
-
-    @classmethod
-    def get_sync_commands(cls, msgs):
-        """
-        Returns the minimal # of broadcast commands for the given Android channel to uniquely represent all the
-        messages which are being sent to tel URNs. This will return an array of dicts that look like:
-             dict(cmd="mt_bcast", to=[dict(phone=msg.contact.tel, id=msg.pk) for msg in msgs], msg=broadcast.text))
-        """
-        commands = []
-        current_text = None
-        contact_id_pairs = []
-
-        for m in msgs.values("id", "text", "contact_urn__path").order_by("created_on"):
-            if m["text"] != current_text and contact_id_pairs:
-                commands.append(dict(cmd="mt_bcast", to=contact_id_pairs, msg=current_text))
-                contact_id_pairs = []
-
-            current_text = m["text"]
-            contact_id_pairs.append(dict(phone=m["contact_urn__path"], id=m["id"]))
-
-        if contact_id_pairs:
-            commands.append(dict(cmd="mt_bcast", to=contact_id_pairs, msg=current_text))
-
-        return commands
 
     def get_attachments(self):
         """
@@ -525,44 +580,8 @@ class Msg(models.Model):
         """
         return Attachment.parse_all(self.attachments)
 
-    def get_last_log(self):
-        """
-        Gets the last channel log for this message. Performs sorting in Python to ease pre-fetching.
-        """
-        sorted_logs = None
-        if self.channel and self.channel.is_active:
-            sorted_logs = sorted(self.channel_logs.all(), key=lambda log: log.created_on, reverse=True)
-        return sorted_logs[0] if sorted_logs else None
-
-    def update(self, cmd):
-        """
-        Updates our message according to the provided client command
-        """
-
-        date = datetime.fromtimestamp(int(cmd["ts"]) // 1000).replace(tzinfo=pytz.utc)
-        keyword = cmd["cmd"]
-        handled = False
-
-        if keyword == "mt_error":
-            self.status = self.STATUS_ERRORED
-            handled = True
-
-        elif keyword == "mt_fail":
-            self.status = self.STATUS_FAILED
-            handled = True
-
-        elif keyword == "mt_sent":
-            self.status = self.STATUS_SENT
-            self.sent_on = date
-            handled = True
-
-        elif keyword == "mt_dlvd":
-            self.status = self.STATUS_DELIVERED
-            self.sent_on = self.sent_on or date
-            handled = True
-
-        self.save(update_fields=("status", "sent_on"))
-        return handled
+    def get_logs(self) -> list:
+        return ChannelLog.get_logs(self.channel, self.log_uuids or [])
 
     def handle(self):
         """
@@ -571,52 +590,15 @@ class Msg(models.Model):
 
         mailroom.queue_msg_handling(self)
 
-    def __str__(self):  # pragma: needs cover
-        return self.text
-
-    @classmethod
-    def create_relayer_incoming(cls, org, channel, urn, text, received_on, attachments=None):
-        contact, contact_urn = Contact.resolve(channel, urn)
-
-        # we limit our text message length and remove any invalid chars
-        if text:
-            text = clean_string(text[: cls.MAX_TEXT_LEN])
-
-        now = timezone.now()
-
-        # don't create duplicate messages
-        existing = Msg.objects.filter(text=text, sent_on=received_on, contact=contact, direction="I").first()
-        if existing:
-            return existing
-
-        msg = Msg.objects.create(
-            org=org,
-            channel=channel,
-            contact=contact,
-            contact_urn=contact_urn,
-            text=text,
-            sent_on=received_on,
-            created_on=now,
-            modified_on=now,
-            queued_on=now,
-            direction=cls.DIRECTION_IN,
-            attachments=attachments,
-            status=cls.STATUS_PENDING,
-        )
-
-        # pass off handling of the message after we commit
-        on_transaction_commit(lambda: msg.handle())
-
-        return msg
-
     def archive(self):
         """
         Archives this message
         """
-        assert self.direction == self.DIRECTION_IN and self.visibility == Msg.VISIBILITY_VISIBLE
+        assert self.direction == self.DIRECTION_IN
 
-        self.visibility = self.VISIBILITY_ARCHIVED
-        self.save(update_fields=("visibility", "modified_on"))
+        if self.visibility == self.VISIBILITY_VISIBLE:
+            self.visibility = self.VISIBILITY_ARCHIVED
+            self.save(update_fields=("visibility", "modified_on"))
 
     @classmethod
     def archive_all_for_contacts(cls, contacts):
@@ -635,28 +617,11 @@ class Msg(models.Model):
         """
         Restores (i.e. un-archives) this message
         """
-        assert self.direction == self.DIRECTION_IN and self.visibility == Msg.VISIBILITY_ARCHIVED
+        assert self.direction == self.DIRECTION_IN
 
-        self.visibility = self.VISIBILITY_VISIBLE
-        self.save(update_fields=("visibility", "modified_on"))
-
-    def delete(self, soft: bool = False):
-        """
-        Deletes this message. This can be soft if messages are being deleted from the UI, or hard in the case of
-        contact or org removal.
-        """
-        if soft:
-            self.labels.clear()
-
-            self.text = ""
-            self.attachments = []
-            self.visibility = Msg.VISIBILITY_DELETED_BY_USER
-            self.save(update_fields=("text", "attachments", "visibility"))
-        else:
-            for log in self.channel_logs.all():
-                log.release()
-
-            super().delete()
+        if self.visibility == self.VISIBILITY_ARCHIVED:
+            self.visibility = self.VISIBILITY_VISIBLE
+            self.save(update_fields=("visibility", "modified_on"))
 
     @classmethod
     def apply_action_label(cls, user, msgs, label):
@@ -678,27 +643,104 @@ class Msg(models.Model):
 
     @classmethod
     def apply_action_delete(cls, user, msgs):
-        for msg in msgs:
-            msg.delete(soft=True)
+        cls.bulk_soft_delete(msgs)
 
     @classmethod
     def apply_action_resend(cls, user, msgs):
         if msgs:
             mailroom.get_client().msg_resend(msgs[0].org.id, [m.id for m in msgs])
 
+    @classmethod
+    def bulk_soft_delete(cls, msgs: list):
+        """
+        Bulk soft deletes the given incoming messages, i.e. clears content and updates its visibility to deleted.
+        """
+
+        attachments_to_delete = []
+
+        for msg in msgs:
+            assert msg.direction == Msg.DIRECTION_IN, "only incoming messages can be soft deleted"
+
+            attachments_to_delete.extend(msg.get_attachments())
+
+        Attachment.bulk_delete(attachments_to_delete)
+
+        for msg in msgs:
+            msg.labels.clear()
+
+        cls.objects.filter(id__in=[m.id for m in msgs]).update(
+            text="", attachments=[], visibility=Msg.VISIBILITY_DELETED_BY_USER
+        )
+
+    @classmethod
+    def bulk_delete(cls, msgs: list):
+        """
+        Bulk hard deletes the given messages.
+        """
+
+        attachments_to_delete = []
+
+        for msg in msgs:
+            if msg.direction == Msg.DIRECTION_IN:
+                attachments_to_delete.extend(msg.get_attachments())
+
+        Attachment.bulk_delete(attachments_to_delete)
+
+        cls.objects.filter(id__in=[m.id for m in msgs]).delete()
+
+    def __str__(self):  # pragma: needs cover
+        return self.text
+
     class Meta:
         indexes = [
+            # used by API messages endpoint hence the ordering, and general fetching by org or contact
+            models.Index(name="msgs_by_org", fields=["org", "-created_on", "-id"]),
+            models.Index(name="msgs_by_contact", fields=["contact", "-created_on", "-id"]),
             # used for finding errored messages to retry
             models.Index(
-                name="msgs_next_attempt_out_errored",
+                name="msgs_outgoing_to_retry",
                 fields=["next_attempt", "created_on", "id"],
-                condition=Q(direction="O", status="E", next_attempt__isnull=False),
+                condition=Q(direction="O", status__in=("I", "E"), next_attempt__isnull=False),
             ),
-            # used for view of sent messages
+            # used by courier to lookup messages by external id
             models.Index(
-                name="msgs_outgoing_visible_sent",
+                name="msgs_by_external_id",
+                fields=["channel_id", "external_id"],
+                condition=Q(external_id__isnull=False),
+            ),
+            # used for Inbox view and API folder
+            models.Index(
+                name="msgs_inbox",
+                fields=["org", "-created_on", "-id"],
+                condition=Q(direction="I", visibility="V", status="H", flow__isnull=True, msg_type="T"),
+            ),
+            # used for Flows view and API folder
+            models.Index(
+                name="msgs_flows",
+                fields=["org", "-created_on", "-id"],
+                condition=Q(direction="I", visibility="V", status="H", flow__isnull=False, msg_type="T"),
+            ),
+            # used for Archived view and API folder
+            models.Index(
+                name="msgs_archived",
+                fields=["org", "-created_on", "-id"],
+                condition=Q(direction="I", visibility="A", status="H", msg_type="T"),
+            ),
+            # used for Outbox and Failed views and API folders
+            models.Index(
+                name="msgs_outbox_and_failed",
+                fields=["org", "status", "-created_on", "-id"],
+                condition=Q(direction="O", visibility="V", status__in=("I", "Q", "E", "F")),
+            ),
+            # used for Sent view / API folder (distinct because of the ordering)
+            models.Index(
+                name="msgs_sent",
                 fields=["org", "-sent_on", "-id"],
                 condition=Q(direction="O", visibility="V", status__in=("W", "S", "D")),
+            ),
+            # used for API incoming folder (unpublicized as could be dropped when CasePro is retired)
+            models.Index(
+                name="msgs_api_incoming", fields=["org", "-modified_on", "-id"], condition=Q(direction="I", status="H")
             ),
         ]
         constraints = [
@@ -767,22 +809,39 @@ class SystemLabel:
         Gets the queryset for the given system label. Any change here needs to be reflected in a change to the db
         trigger used to maintain the label counts.
         """
-        # TODO: (Indexing) Sent and Failed require full message history
+
+        from temba.ivr.models import Call
+
+        assert label_type in [c[0] for c in cls.TYPE_CHOICES]
+
         if label_type == cls.TYPE_INBOX:
             qs = Msg.objects.filter(
-                direction=Msg.DIRECTION_IN, visibility=Msg.VISIBILITY_VISIBLE, msg_type=Msg.TYPE_INBOX
+                direction=Msg.DIRECTION_IN,
+                visibility=Msg.VISIBILITY_VISIBLE,
+                status=Msg.STATUS_HANDLED,
+                flow__isnull=True,
+                msg_type=Msg.TYPE_TEXT,
             )
         elif label_type == cls.TYPE_FLOWS:
             qs = Msg.objects.filter(
-                direction=Msg.DIRECTION_IN, visibility=Msg.VISIBILITY_VISIBLE, msg_type=Msg.TYPE_FLOW
+                direction=Msg.DIRECTION_IN,
+                visibility=Msg.VISIBILITY_VISIBLE,
+                status=Msg.STATUS_HANDLED,
+                flow__isnull=False,
+                msg_type=Msg.TYPE_TEXT,
             )
         elif label_type == cls.TYPE_ARCHIVED:
-            qs = Msg.objects.filter(direction=Msg.DIRECTION_IN, visibility=Msg.VISIBILITY_ARCHIVED)
+            qs = Msg.objects.filter(
+                direction=Msg.DIRECTION_IN,
+                visibility=Msg.VISIBILITY_ARCHIVED,
+                status=Msg.STATUS_HANDLED,
+                msg_type=Msg.TYPE_TEXT,
+            )
         elif label_type == cls.TYPE_OUTBOX:
             qs = Msg.objects.filter(
                 direction=Msg.DIRECTION_OUT,
                 visibility=Msg.VISIBILITY_VISIBLE,
-                status__in=(Msg.STATUS_PENDING, Msg.STATUS_QUEUED),
+                status__in=(Msg.STATUS_INITIALIZING, Msg.STATUS_QUEUED, Msg.STATUS_ERRORED),
             )
         elif label_type == cls.TYPE_SENT:
             qs = Msg.objects.filter(
@@ -795,38 +854,26 @@ class SystemLabel:
                 direction=Msg.DIRECTION_OUT, visibility=Msg.VISIBILITY_VISIBLE, status=Msg.STATUS_FAILED
             )
         elif label_type == cls.TYPE_SCHEDULED:
-            qs = Broadcast.objects.exclude(schedule=None).prefetch_related("groups", "contacts", "urns")
+            qs = Broadcast.objects.filter(is_active=True).exclude(schedule=None)
         elif label_type == cls.TYPE_CALLS:
-            qs = ChannelEvent.objects.filter(event_type__in=ChannelEvent.CALL_TYPES)
-        else:  # pragma: needs cover
-            raise ValueError(f"Invalid label type: {label_type}")
+            qs = Call.objects.all()
 
         return qs.filter(org=org)
 
     @classmethod
-    def get_archive_attributes(cls, label_type: str) -> tuple:
-        visibility = "visible"
-        msg_type = None
-        direction = "in"
-        statuses = None
-
+    def get_archive_query(cls, label_type: str) -> dict:
         if label_type == cls.TYPE_INBOX:
-            msg_type = "inbox"
+            return dict(direction="in", visibility="visible", status="handled", flow__isnull=True, type__ne="voice")
         elif label_type == cls.TYPE_FLOWS:
-            msg_type = "flow"
+            return dict(direction="in", visibility="visible", status="handled", flow__isnull=False, type__ne="voice")
         elif label_type == cls.TYPE_ARCHIVED:
-            visibility = "archived"
+            return dict(direction="in", visibility="archived", status="handled", type__ne="voice")
         elif label_type == cls.TYPE_OUTBOX:
-            direction = "out"
-            statuses = ["pending", "queued"]
+            return dict(direction="out", visibility="visible", status__in=("initializing", "queued", "errored"))
         elif label_type == cls.TYPE_SENT:
-            direction = "out"
-            statuses = ["wired", "sent", "delivered"]
+            return dict(direction="out", visibility="visible", status__in=("wired", "sent", "delivered"))
         elif label_type == cls.TYPE_FAILED:
-            direction = "out"
-            statuses = ["failed"]
-
-        return (visibility, direction, msg_type, statuses)
+            return dict(direction="out", visibility="visible", status="failed")
 
 
 class SystemLabelCount(SquashableModel):
@@ -834,42 +881,40 @@ class SystemLabelCount(SquashableModel):
     Counts of messages/broadcasts/calls maintained by database level triggers
     """
 
-    squash_over = ("org_id", "label_type", "is_archived")
+    squash_over = ("org_id", "label_type")
 
     org = models.ForeignKey(Org, on_delete=models.PROTECT, related_name="system_labels")
     label_type = models.CharField(max_length=1, choices=SystemLabel.TYPE_CHOICES)
-    is_archived = models.BooleanField(default=False)
     count = models.IntegerField(default=0)
 
     @classmethod
     def get_squash_query(cls, distinct_set):
         sql = """
         WITH deleted as (
-            DELETE FROM %(table)s WHERE "org_id" = %%s AND "label_type" = %%s and "is_archived" = %%s RETURNING "count"
+            DELETE FROM %(table)s WHERE "org_id" = %%s AND "label_type" = %%s RETURNING "count"
         )
-        INSERT INTO %(table)s("org_id", "label_type", "is_archived", "count", "is_squashed")
-        VALUES (%%s, %%s, %%s, GREATEST(0, (SELECT SUM("count") FROM deleted)), TRUE);
+        INSERT INTO %(table)s("org_id", "label_type", "count", "is_squashed")
+        VALUES (%%s, %%s, GREATEST(0, (SELECT SUM("count") FROM deleted)), TRUE);
         """ % {"table": cls._meta.db_table}
 
-        return sql, (distinct_set.org_id, distinct_set.label_type, distinct_set.is_archived) * 2
+        return sql, (distinct_set.org_id, distinct_set.label_type) * 2
 
     @classmethod
     def get_totals(cls, org):
         """
         Gets all system label counts by type for the given org
         """
-        counts = cls.objects.filter(org=org, is_archived=False)
-        counts = counts.values_list("label_type").annotate(count_sum=Sum("count"))
+        counts = cls.objects.filter(org=org).values_list("label_type").annotate(count_sum=Sum("count"))
         counts_by_type = {c[0]: c[1] for c in counts}
 
         # for convenience, include all label types
         return {lb: counts_by_type.get(lb, 0) for lb, n in SystemLabel.TYPE_CHOICES}
 
     class Meta:
-        indexes = [models.Index(fields=("org", "label_type"))]
+        indexes = [models.Index(fields=("org", "label_type", "is_squashed"))]
 
 
-class Label(LegacyUUIDMixin, TembaModel, DependencyMixin):
+class Label(TembaModel, DependencyMixin):
     """
     Labels represent both user defined labels and folders of labels. User defined labels that can be applied to messages
     much the same way labels or tags apply to messages in web-based email services.
@@ -877,15 +922,9 @@ class Label(LegacyUUIDMixin, TembaModel, DependencyMixin):
 
     MAX_ORG_FOLDERS = 250
 
-    TYPE_FOLDER = "F"
-    TYPE_LABEL = "L"
-    TYPE_CHOICES = ((TYPE_FOLDER, "Folder of labels"), (TYPE_LABEL, "Regular label"))
+    org_limit_key = Org.LIMIT_LABELS
 
     org = models.ForeignKey(Org, on_delete=models.PROTECT, related_name="msgs_labels")
-    folder = models.ForeignKey("Label", on_delete=models.PROTECT, null=True, related_name="children")
-    label_type = models.CharField(max_length=1, choices=TYPE_CHOICES, default=TYPE_LABEL)
-
-    org_limit_key = Org.LIMIT_LABELS
 
     @classmethod
     def create(cls, org, user, name: str):
@@ -898,48 +937,13 @@ class Label(LegacyUUIDMixin, TembaModel, DependencyMixin):
     def create_from_import_def(cls, org, user, definition: dict):
         return cls.create(org, user, definition["name"])
 
-    @classmethod
-    def get_hierarchy(cls, org):
-        """
-        Gets labels and folders organized into their hierarchy and with their message counts
-        """
-
-        labels_and_folders = list(Label.get_active_for_org(org).order_by(Lower("name")))
-        label_counts = LabelCount.get_totals([lb for lb in labels_and_folders if not lb.is_folder()])
-
-        folder_nodes = {}
-        all_nodes = []
-        for obj in labels_and_folders:
-            node = {"obj": obj, "count": label_counts.get(obj), "children": []}
-            all_nodes.append(node)
-
-            if obj.is_folder():
-                folder_nodes[obj.id] = node
-
-        top_nodes = []
-        for node in all_nodes:
-            if node["obj"].folder_id is None:
-                top_nodes.append(node)
-            else:
-                folder_nodes[node["obj"].folder_id]["children"].append(node)
-
-        return top_nodes
-
-    def filter_messages(self, queryset):
-        if self.is_folder():
-            return queryset.filter(labels__in=self.children.all()).distinct()
-
-        return queryset.filter(labels=self)
-
     def get_messages(self):
-        # TODO: consider purpose built indexes
-        return self.filter_messages(Msg.objects.all())
+        return self.msgs.all()
 
     def get_visible_count(self):
         """
         Returns the count of visible, non-test message tagged with this label
         """
-        assert not self.is_folder()
 
         return LabelCount.get_totals([self])[self]
 
@@ -947,8 +951,6 @@ class Label(LegacyUUIDMixin, TembaModel, DependencyMixin):
         """
         Adds or removes this label from the given messages
         """
-
-        assert not self.is_folder(), "can't assign messages to label folders"
 
         changed = set()
 
@@ -972,20 +974,11 @@ class Label(LegacyUUIDMixin, TembaModel, DependencyMixin):
 
         return changed
 
-    def has_child_labels(self):
-        return self.children.filter(is_active=True).exists()
-
-    def is_folder(self):
-        return self.label_type == Label.TYPE_FOLDER
-
     def release(self, user):
-        assert not self.has_child_labels(), "can't release non-empty label folder"
+        super().release(user)  # releases flow dependencies
 
-        if not self.is_folder():
-            super().release(user)  # releases flow dependencies
-
-            # delete labellings of messages with this label (not the actual messages)
-            Msg.labels.through.objects.filter(label=self).delete()
+        # delete labellings of messages with this label (not the actual messages)
+        Msg.labels.through.objects.filter(label=self).delete()
 
         self.counts.all().delete()
 
@@ -994,9 +987,7 @@ class Label(LegacyUUIDMixin, TembaModel, DependencyMixin):
         self.modified_by = user
         self.save(update_fields=("name", "is_active", "modified_by", "modified_on"))
 
-    def __str__(self):
-        if self.folder:
-            return f"{self.folder!s} > {self.name}"
+    def __str__(self):  # pragma: needs cover
         return self.name
 
     class Meta:
@@ -1040,6 +1031,28 @@ class LabelCount(SquashableModel):
         return {lb: counts_by_label_id.get(lb.id, 0) for lb in labels}
 
 
+class OptIn(TembaModel):
+    """
+    Contact optin for a particular messaging topic.
+    """
+
+    org = models.ForeignKey(Org, on_delete=models.PROTECT, related_name="optins")
+
+    @classmethod
+    def create(cls, org, user, name: str):
+        assert cls.is_valid_name(name), f"'{name}' is not a valid optin name"
+        assert not org.optins.filter(name__iexact=name).exists()
+
+        return org.optins.create(name=name, created_by=user, modified_by=user)
+
+    @classmethod
+    def create_from_import_def(cls, org, user, definition: dict):
+        return cls.create(org, user, definition["name"])
+
+    class Meta:
+        constraints = [models.UniqueConstraint("org", Lower("name"), name="unique_optin_names")]
+
+
 class MsgIterator:
     """
     Queryset wrapper to chunk queries and reduce in-memory footprint
@@ -1075,7 +1088,7 @@ class MsgIterator:
         return next(self._generator)
 
 
-class ExportMessagesTask(BaseExportTask):
+class ExportMessagesTask(BaseItemWithContactExport):
     """
     Wrapper for handling exports of raw messages. This will export all selected messages in
     an Excel spreadsheet, adding sheets as necessary to fall within the guidelines of Excel 97
@@ -1088,20 +1101,16 @@ class ExportMessagesTask(BaseExportTask):
     analytics_key = "msg_export"
     notification_export_type = "message"
 
-    groups = models.ManyToManyField(ContactGroup)
-
     label = models.ForeignKey(Label, on_delete=models.PROTECT, null=True)
-
     system_label = models.CharField(null=True, max_length=1)
 
-    start_date = models.DateField(null=True, blank=True, help_text=_("The date for the oldest message to export"))
-
-    end_date = models.DateField(null=True, blank=True, help_text=_("The date for the newest message to export"))
+    # TODO backfill, for now overridden from base class to make nullable
+    start_date = models.DateField(null=True)
+    end_date = models.DateField(null=True)
 
     @classmethod
-    def create(cls, org, user, system_label=None, label=None, groups=(), start_date=None, end_date=None):
-        if label and system_label:  # pragma: no cover
-            raise ValueError("Can't specify both label and system label")
+    def create(cls, org, user, start_date, end_date, system_label=None, label=None, with_fields=(), with_groups=()):
+        assert not (label and system_label), "can't specify both label and system label"
 
         export = cls.objects.create(
             org=org,
@@ -1112,7 +1121,8 @@ class ExportMessagesTask(BaseExportTask):
             created_by=user,
             modified_by=user,
         )
-        export.groups.add(*groups)
+        export.with_fields.add(*with_fields)
+        export.with_groups.add(*with_groups)
         return export
 
     def _add_msgs_sheet(self, book):
@@ -1126,80 +1136,40 @@ class ExportMessagesTask(BaseExportTask):
     def write_export(self):
         book = XLSXBook()
         book.num_msgs_sheets = 0
-
-        book.headers = [
-            "Date",
-            "Contact UUID",
-            "Name",
-            "ID" if self.org.is_anon else "URN",
-            "URN Type",
-            "Flow",
-            "Direction",
-            "Text",
-            "Attachments",
-            "Status",
-            "Channel",
-            "Labels",
-        ]
-
+        book.headers = (
+            ["Date"]
+            + self._get_contact_headers()
+            + ["Flow", "Direction", "Text", "Attachments", "Status", "Channel", "Labels"]
+        )
         book.current_msgs_sheet = self._add_msgs_sheet(book)
 
-        total_msgs_exported = 0
-        temp_msgs_exported = 0
+        start_date, end_date = self._get_date_range()
 
-        start = time.time()
+        logger.info(f"starting msgs export #{self.id} for org #{self.org.id}")
 
-        contact_uuids = set()
-        for group in self.groups.all():
-            contact_uuids = contact_uuids.union(set(group.contacts.only("uuid").values_list("uuid", flat=True)))
-
-        tz = self.org.timezone
-
-        start_date = self.org.created_on
-        if self.start_date:
-            start_date = tz.localize(datetime.combine(self.start_date, datetime.min.time()))
-
-        end_date = timezone.now()
-        if self.end_date:
-            end_date = tz.localize(datetime.combine(self.end_date, datetime.max.time()))
-
-        for batch in self._get_msg_batches(self.system_label, self.label, start_date, end_date, contact_uuids):
+        for batch in self._get_msg_batches(self.system_label, self.label, start_date, end_date):
             self._write_msgs(book, batch)
 
-            total_msgs_exported += len(batch)
-
-            # start logging
-            if (total_msgs_exported - temp_msgs_exported) > ExportMessagesTask.LOG_PROGRESS_PER_ROWS:
-                mins = (time.time() - start) / 60
-                logger.info(
-                    f"Msgs export #{self.id} for org #{self.org.id}: exported {total_msgs_exported} in {mins:.1f} mins"
-                )
-                temp_msgs_exported = total_msgs_exported
-
-                self.modified_on = timezone.now()
-                self.save(update_fields=["modified_on"])
+            # update modified_on so we can see if an export hangs
+            self.modified_on = timezone.now()
+            self.save(update_fields=("modified_on",))
 
         temp = NamedTemporaryFile(delete=True, suffix=".xlsx", mode="wb+")
         book.finalize(to_file=temp)
         temp.flush()
         return temp, "xlsx"
 
-    def _get_msg_batches(self, system_label, label, start_date, end_date, group_contacts):
-        logger.info(f"Msgs export #{self.id} for org #{self.org.id}: fetching msgs from archives to export...")
+    def _get_msg_batches(self, system_label, label, start_date, end_date):
+        from temba.archives.models import Archive
+        from temba.flows.models import Flow
 
         # firstly get msgs from archives
-        from temba.archives.models import Archive
-
-        where = {"visibility": "visible"}
         if system_label:
-            visibility, direction, msg_type, statuses = SystemLabel.get_archive_attributes(system_label)
-            where["direction"] = direction
-            if msg_type:
-                where["type"] = msg_type
-            if statuses:
-                where["status__in"] = statuses
+            where = SystemLabel.get_archive_query(system_label)
         elif label:
-            where["__raw__"] = f"'{label.uuid}' IN s.labels[*].uuid[*]"
+            where = {"visibility": "visible", "__raw__": f"'{label.uuid}' IN s.labels[*].uuid[*]"}
+        else:
+            where = {"visibility": "visible"}
 
         records = Archive.iter_all_records(self.org, Archive.TYPE_MSG, start_date, end_date, where=where)
         last_created_on = None
@@ -1211,9 +1181,6 @@ class ExportMessagesTask(BaseExportTask):
                 if last_created_on is None or last_created_on < created_on:
                     last_created_on = created_on
 
-                if group_contacts and record["contact"]["uuid"] not in group_contacts:
-                    continue
-
                 matching.append(record)
             yield matching
 
@@ -1222,16 +1189,9 @@ class ExportMessagesTask(BaseExportTask):
         elif label:
             messages = label.get_messages()
         else:
-            messages = Msg.get_messages(self.org)
+            messages = self.org.msgs.filter(visibility=Msg.VISIBILITY_VISIBLE)
 
-        if self.start_date:
-            messages = messages.filter(created_on__gte=start_date)
-
-        if self.end_date:
-            messages = messages.filter(created_on__lte=end_date)
-
-        if self.groups.all():
-            messages = messages.filter(contact__groups__in=self.groups.all())
+        messages = messages.filter(created_on__gte=start_date, created_on__lte=end_date)
 
         messages = messages.order_by("created_on").using("readonly")
         if last_created_on:
@@ -1239,16 +1199,15 @@ class ExportMessagesTask(BaseExportTask):
 
         all_message_ids = array("l", messages.values_list("id", flat=True))
 
-        logger.info(
-            f"Msgs export #{self.id} for org #{self.org.id}: found {len(all_message_ids)} msgs in database to export"
-        )
-
-        prefetch = Prefetch("labels", queryset=Label.objects.order_by("name"))
         for msg_batch in MsgIterator(
             all_message_ids,
-            order_by=["created_on"],
-            select_related=["contact", "contact_urn", "channel", "flow"],
-            prefetch_related=[prefetch],
+            order_by=("created_on",),
+            select_related=("channel", "contact_urn"),
+            prefetch_related=(
+                Prefetch("contact", queryset=Contact.objects.only("uuid", "name")),
+                Prefetch("flow", queryset=Flow.objects.only("uuid", "name")),
+                Prefetch("labels", queryset=Label.objects.only("uuid", "name").order_by("name")),
+            ),
         ):
             # convert this batch of msgs to same format as records in our archives
             yield [msg.as_archive_json() for msg in msg_batch]
@@ -1256,35 +1215,26 @@ class ExportMessagesTask(BaseExportTask):
     def _write_msgs(self, book, msgs):
         # get all the contacts referenced in this batch
         contact_uuids = {m["contact"]["uuid"] for m in msgs}
-        contacts = Contact.objects.filter(org=self.org, uuid__in=contact_uuids)
+        contacts = (
+            Contact.objects.filter(org=self.org, uuid__in=contact_uuids)
+            .select_related("org")
+            .prefetch_related("groups")
+            .using("readonly")
+        )
         contacts_by_uuid = {str(c.uuid): c for c in contacts}
 
         for msg in msgs:
             contact = contacts_by_uuid.get(msg["contact"]["uuid"])
             flow = msg.get("flow")
 
-            urn_scheme = URN.to_parts(msg["urn"])[0] if msg["urn"] else ""
-
-            # only show URN path if org isn't anon and there is a URN
-            if self.org.is_anon:  # pragma: needs cover
-                urn_path = f"{contact.id:010d}"
-                urn_scheme = ""
-            elif msg["urn"]:
-                urn_path = URN.format(msg["urn"], international=False, formatted=False)
-            else:
-                urn_path = ""
-
             if book.current_msgs_sheet.num_rows >= self.MAX_EXCEL_ROWS:  # pragma: no cover
                 book.current_msgs_sheet = self._add_msgs_sheet(book)
 
             self.append_row(
                 book.current_msgs_sheet,
-                [
-                    iso8601.parse_date(msg["created_on"]),
-                    msg["contact"]["uuid"],
-                    msg["contact"].get("name", ""),
-                    urn_path,
-                    urn_scheme,
+                [iso8601.parse_date(msg["created_on"])]
+                + self._get_contact_columns(contact, urn=msg["urn"])
+                + [
                     flow["name"] if flow else None,
                     msg["direction"].upper() if msg["direction"] else None,
                     msg["text"],

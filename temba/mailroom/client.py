@@ -53,15 +53,14 @@ class ContactSpec:
 
 
 @dataclass
-class QueryInclusions:
+class Inclusions:
     group_uuids: list = field(default_factory=list)
     contact_uuids: list = field(default_factory=list)
-    urns: list = field(default_factory=list)
     query: str = ""
 
 
 @dataclass
-class QueryExclusions:
+class Exclusions:
     non_active: bool = False  # contacts who are blocked, stopped or archived
     in_a_flow: bool = False  # contacts who are currently in a flow (including this one)
     started_previously: bool = False  # contacts who have been in this flow in the last 90 days
@@ -97,11 +96,15 @@ class SearchResults:
 
 
 @dataclass(frozen=True)
+class BroadcastPreview:
+    query: str
+    total: int
+
+
+@dataclass(frozen=True)
 class StartPreview:
     query: str
     total: int
-    sample_ids: list
-    metadata: QueryMetadata
 
 
 class MailroomClient:
@@ -119,20 +122,6 @@ class MailroomClient:
 
     def version(self):
         return self._request("", post=False).get("version")
-
-    def expression_migrate(self, expression):
-        """
-        Migrates a legacy expression to latest engine version
-        """
-        if not expression:
-            return ""
-
-        try:
-            resp = self._request("expression/migrate", {"expression": expression})
-            return resp["migrated"]
-        except FlowValidationException:
-            # if the expression is invalid.. just return original
-            return expression
 
     def flow_migrate(self, definition, to_version=None):
         """
@@ -164,34 +153,65 @@ class MailroomClient:
 
         return self._request("flow/clone", payload)
 
-    def flow_preview_start(
-        self,
-        org_id: int,
-        flow_id: int,
-        include: QueryInclusions,
-        exclude: QueryExclusions,
-        sample_size: int,
-    ) -> StartPreview:
+    def flow_start_preview(self, org_id: int, flow_id: int, include: Inclusions, exclude: Exclusions) -> StartPreview:
         payload = {
             "org_id": org_id,
             "flow_id": flow_id,
             "include": asdict(include),
             "exclude": asdict(exclude),
-            "sample_size": sample_size,
         }
 
-        response = self._request("flow/preview_start", payload, encode_json=True)
-        return StartPreview(
-            query=response["query"],
-            total=response["total"],
-            sample_ids=response["sample_ids"],
-            metadata=QueryMetadata(**response.get("metadata", {})),
-        )
+        response = self._request("flow/start_preview", payload, encode_json=True)
+        return StartPreview(query=response["query"], total=response["total"])
+
+    def msg_send(self, org_id: int, user_id: int, contact_id: int, text: str, attachments: list[str], ticket_id: int):
+        payload = {
+            "org_id": org_id,
+            "user_id": user_id,
+            "contact_id": contact_id,
+            "text": text,
+            "attachments": attachments,
+            "ticket_id": ticket_id,
+        }
+
+        return self._request("msg/send", payload)
 
     def msg_resend(self, org_id, msg_ids):
         payload = {"org_id": org_id, "msg_ids": msg_ids}
 
         return self._request("msg/resend", payload)
+
+    def msg_broadcast_preview(self, org_id: int, include: Inclusions, exclude: Exclusions) -> BroadcastPreview:
+        payload = {"org_id": org_id, "include": asdict(include), "exclude": asdict(exclude)}
+
+        response = self._request("msg/broadcast_preview", payload, encode_json=True)
+        return BroadcastPreview(query=response["query"], total=response["total"])
+
+    def msg_broadcast(
+        self,
+        org_id: int,
+        user_id: int,
+        translations: dict,
+        base_language: str,
+        group_ids: list,
+        contact_ids: list,
+        urns: list,
+        query: str,
+        optin_id: int,
+    ):
+        payload = {
+            "org_id": org_id,
+            "user_id": user_id,
+            "translations": translations,
+            "base_language": base_language,
+            "group_ids": group_ids,
+            "contact_ids": contact_ids,
+            "urns": urns,
+            "query": query,
+            "optin_id": optin_id,
+        }
+
+        return self._request("msg/broadcast", payload, encode_json=True)
 
     def po_export(self, org_id: int, flow_ids: list, language: str):
         payload = {"org_id": org_id, "flow_ids": flow_ids, "language": language}
@@ -218,7 +238,7 @@ class MailroomClient:
 
         return self._request("contact/create", payload)
 
-    def contact_modify(self, org_id, user_id, contact_ids, modifiers: list[Modifier]):
+    def contact_modify(self, org_id: int, user_id: int, contact_ids: list[int], modifiers: list[Modifier]):
         payload = {
             "org_id": org_id,
             "user_id": user_id,
@@ -229,18 +249,26 @@ class MailroomClient:
         return self._request("contact/modify", payload)
 
     def contact_resolve(self, org_id: int, channel_id: int, urn: str):
-        payload = {
-            "org_id": org_id,
-            "channel_id": channel_id,
-            "urn": urn,
-        }
+        payload = {"org_id": org_id, "channel_id": channel_id, "urn": urn}
 
         return self._request("contact/resolve", payload)
 
-    def contact_search(self, org_id, group_uuid, query, sort, offset=0, exclude_ids=()) -> SearchResults:
+    def contact_inspect(self, org_id: int, contact_ids: list[int]):
+        payload = {"org_id": org_id, "contact_ids": contact_ids}
+
+        return self._request("contact/inspect", payload)
+
+    def contact_interrupt(self, org_id: int, user_id: int, contact_id: int):
+        payload = {"org_id": org_id, "user_id": user_id, "contact_id": contact_id}
+
+        return self._request("contact/interrupt", payload)
+
+    def contact_search(
+        self, org_id: int, group_id: int, query: str, sort: str, offset=0, exclude_ids=()
+    ) -> SearchResults:
         payload = {
             "org_id": org_id,
-            "group_uuid": group_uuid,
+            "group_id": group_id,
             "exclude_ids": exclude_ids,
             "query": query,
             "sort": sort,
@@ -264,14 +292,8 @@ class MailroomClient:
             metadata=QueryMetadata(**response.get("metadata", {})),
         )
 
-    def ticket_assign(self, org_id: int, user_id: int, ticket_ids: list, assignee_id: int, note: str):
-        payload = {
-            "org_id": org_id,
-            "user_id": user_id,
-            "ticket_ids": ticket_ids,
-            "assignee_id": assignee_id,
-            "note": note,
-        }
+    def ticket_assign(self, org_id: int, user_id: int, ticket_ids: list, assignee_id: int):
+        payload = {"org_id": org_id, "user_id": user_id, "ticket_ids": ticket_ids, "assignee_id": assignee_id}
 
         return self._request("ticket/assign", payload)
 

@@ -55,8 +55,12 @@ a {
   }
 }
 
+.clickable {
+  @apply cursor-pointer;
+}
+
 .linked {
-  @apply text-primary cursor-pointer;
+  @apply text-primary clickable;
 
   &.active {
     @apply: underline;
@@ -77,6 +81,14 @@ a {
 
   &:hover {
     @apply text-primary no-underline;
+  }
+}
+
+.hover-darker {
+  &:hover {
+    cursor: pointer;
+    box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06),
+      inset 0 0 20px 20px rgba(55, 55, 55, 0.1) !important;
   }
 }
 
@@ -568,6 +580,19 @@ table.list{
   }
 }
 
+table.header {
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+
+.linked.is-active {
+  cursor: none;
+  color: #999999;
+  cursor: text;
+  text-decoration: none;
+  pointer-events: none;
+}
+
 .flow-start-type-selector {
   a {
     display: inline-block;
@@ -576,6 +601,7 @@ table.list{
       color: #999999;
       cursor: text;
       text-decoration: none;
+      pointer-events: none;
     }
   }
 }
@@ -945,6 +971,16 @@ code {
 .disabled {
   @apply text-gray-300;
   --icon-color: #ccc;
+
+}
+
+.filter {
+  @apply flex items-center text-sm mx-2;
+
+  temba-icon {
+    @apply mr-1;
+  }
+
 
 }
 

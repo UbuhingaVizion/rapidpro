@@ -29,11 +29,11 @@ class AccountView(IntegrationFormaxView):
                     )
 
     form_class = Form
-    template_name = "orgs/integrations/dtone/account.haml"
+    template_name = "orgs/integrations/dtone/account.html"
 
     def derive_initial(self):
         initial = super().derive_initial()
-        config = self.request.user.get_org().config
+        config = self.request.org.config
         initial["api_key"] = config.get(self.integration_type.CONFIG_KEY)
         initial["api_secret"] = config.get(self.integration_type.CONFIG_SECRET)
         initial["disconnect"] = "false"
@@ -41,11 +41,11 @@ class AccountView(IntegrationFormaxView):
 
     def form_valid(self, form):
         user = self.request.user
-        org = user.get_org()
+        org = self.request.org
         disconnect = form.cleaned_data.get("disconnect", "false") == "true"
         if disconnect:
             self.integration_type.disconnect(org, user)
-            return HttpResponseRedirect(reverse("orgs.org_home"))
+            return HttpResponseRedirect(reverse("orgs.org_workspace"))
         else:
             self.integration_type.connect(org, user, form.cleaned_data["api_key"], form.cleaned_data["api_secret"])
             return super().form_valid(form)

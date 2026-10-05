@@ -39,8 +39,6 @@ class ClaimView(NonAtomicMixin, ClaimViewMixin, SmartFormView):
     form_class = Form
 
     def form_valid(self, form):
-        org = self.request.user.get_org()
-
         cleaned_data = form.cleaned_data
         api_key = cleaned_data["api_key"]
         api_secret = cleaned_data["api_secret"]
@@ -65,7 +63,7 @@ class ClaimView(NonAtomicMixin, ClaimViewMixin, SmartFormView):
 
         try:
             self.object = Channel.create(
-                org,
+                self.request.org,
                 self.request.user,
                 None,
                 self.channel_type,
@@ -82,7 +80,7 @@ class ClaimView(NonAtomicMixin, ClaimViewMixin, SmartFormView):
 
 class UpdateForm(UpdateChannelForm):
     class Meta(UpdateChannelForm.Meta):
-        fields = "name", "address", "alert_email"
+        fields = "name", "address", "log_policy"
         readonly = ("address",)
         labels = {"address": _("Handle")}
         helps = {"address": _("Twitter handle of this channel")}

@@ -6,6 +6,7 @@ from temba.tests import CRUDLTestMixin, MockResponse, TembaTest
 from temba.utils import json
 
 from ...models import Channel
+from .type import ViberPublicType
 from .views import CONFIG_WELCOME_MESSAGE
 
 
@@ -13,17 +14,23 @@ class ViberPublicTypeTest(TembaTest, CRUDLTestMixin):
     def setUp(self):
         super().setUp()
 
-        self.channel = Channel.create(
-            self.org,
-            self.user,
-            None,
-            "VP",
-            name="Viber",
-            address="12345",
-            role="SR",
-            schemes=["viber"],
-            config={"auth_token": "abcd1234"},
-        )
+        with patch("requests.post") as mock_post:
+            mock_post.return_value = (
+                MockResponse(
+                    200, json.dumps({"status": 0, "status_message": "ok", "id": "viberId", "uri": "viberName"})
+                ),
+            )
+            self.channel = Channel.create(
+                self.org,
+                self.user,
+                None,
+                "VP",
+                name="Viber",
+                address="12345",
+                role="SR",
+                schemes=["viber"],
+                config={"auth_token": "abcd1234"},
+            )
 
     @patch("requests.post")
     def test_claim(self, mock_post):
@@ -55,7 +62,6 @@ class ViberPublicTypeTest(TembaTest, CRUDLTestMixin):
         channel = Channel.objects.get(address="viberId")
         self.assertEqual(channel.config["auth_token"], "123456")
         self.assertEqual(channel.name, "viberName")
-        self.assertTrue(channel.type.has_attachment_support(channel))
 
         # should have been called with our webhook URL
         self.assertEqual(mock_post.call_args[0][0], "https://chatapi.viber.com/pa/set_webhook")
@@ -69,12 +75,13 @@ class ViberPublicTypeTest(TembaTest, CRUDLTestMixin):
 
     def test_update(self):
         update_url = reverse("channels.channel_update", args=[self.channel.id])
+        read_url = reverse("channels.channel_read", args=[self.channel.uuid])
 
         self.assertUpdateFetch(
             update_url,
             allow_viewers=False,
             allow_editors=True,
-            form_fields={"name": "Viber", "alert_email": None, "welcome_message": ""},
+            form_fields={"name": "Viber", "welcome_message": ""},
         )
 
         self.assertUpdateSubmit(
@@ -89,13 +96,22 @@ class ViberPublicTypeTest(TembaTest, CRUDLTestMixin):
             update_url,
             allow_viewers=False,
             allow_editors=True,
-            form_fields={
-                "name": "Updated",
-                "alert_email": None,
-                "welcome_message": "Welcome, please subscribe for more",
-            },
+            form_fields={"name": "Updated", "welcome_message": "Welcome, please subscribe for more"},
         )
 
         # read page has link to update page
-        response = self.client.get(reverse("channels.channel_read", args=[self.channel.uuid]))
-        self.assertContains(response, update_url)
+        self.assertContentMenu(read_url, self.admin, ["Configuration", "Logs", "Edit", "Delete"])
+
+        # staff users see extra log policy field
+        self.login(self.customer_support, choose_org=self.org)
+        response = self.client.get(update_url)
+        self.assertEqual(
+            ["name", "log_policy", "welcome_message", "loc"],
+            list(response.context["form"].fields.keys()),
+        )
+
+    def test_get_error_ref_url(self):
+        self.assertEqual(
+            "https://developers.viber.com/docs/api/rest-bot-api/#error-codes",
+            ViberPublicType().get_error_ref_url(None, "12"),
+        )

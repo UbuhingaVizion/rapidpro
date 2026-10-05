@@ -1,11 +1,10 @@
 ---
 
-- name: Pip | Install via PIP and virtualenv
+- name: UV | Sync python environment
   become: no
-  pip: |
+  command: |
+    uv sync --frozen
     chdir={{ project_path }}
-    virtualenv={{ project_path }}/.venv
-    requirements={{ pip_requirements_file }}
 
 - name: Django | Settings symlink
   file: |

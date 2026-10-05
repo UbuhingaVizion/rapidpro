@@ -1,5 +1,3 @@
-import locale
-import resource
 from itertools import islice
 
 from django.conf import settings
@@ -52,28 +50,6 @@ def sizeof_fmt(num, suffix="b"):
     return f"{num:.1f} Y{suffix}"
 
 
-def prepped_request_to_str(prepped):
-    """
-    Graciously cribbed from http://stackoverflow.com/a/23816211
-    """
-    return "{}\n{}\n\n{}".format(
-        prepped.method + " " + prepped.url,
-        "\n".join(f"{k}: {v}" for k, v in prepped.headers.items()),
-        prepped.body,
-    )
-
-
-def splitting_getlist(request, name, default=None):
-    """
-    Used for backward compatibility in the API where some list params can be provided as comma separated values
-    """
-    vals = request.query_params.getlist(name, default)
-    if vals and len(vals) == 1:
-        return vals[0].split(",")
-    else:
-        return vals
-
-
 def chunk_list(iterable, size):
     """
     Splits a very large list into evenly sized chunks.
@@ -86,20 +62,6 @@ def chunk_list(iterable, size):
         item = list(islice(it, size))
 
 
-def print_max_mem_usage(msg=None):
-    """
-    Prints the maximum RAM used by the process thus far.
-    """
-    if msg is None:
-        msg = "Max usage: "
-
-    locale.setlocale(locale.LC_ALL, "")
-    print("")
-    print("=" * 80)
-    print(msg + locale.format("%d", resource.getrusage(resource.RUSAGE_SELF).ru_maxrss, grouping=True))
-    print("=" * 80)
-
-
 def on_transaction_commit(func):
     """
     Requests that the given function be called after the current transaction has been committed. However function will
@@ -107,8 +69,36 @@ def on_transaction_commit(func):
     """
     if getattr(settings, "CELERY_TASK_ALWAYS_EAGER", False):
         func()
-    else:
+    else:  # pragma: no cover
         transaction.on_commit(func)
+
+
+def get_nested_key(nested_dict, key, default=""):
+    keys = key.split(".")
+    value = nested_dict
+    while keys:
+        key = keys.pop(0)
+        value = value.get(key, default)
+        if not isinstance(value, dict):
+            break
+    return value
+
+
+def set_nested_key(nested_dict, key, value):
+    keys = key.split(".")
+    level = nested_dict
+    while keys:
+        key = keys.pop(0)
+        if not keys:
+            level[key] = value
+        next_level = level.get(key)
+
+        # create our next level if it doesn't exist
+        if not next_level:
+            next_level = {}
+            level[key] = next_level
+
+        level = next_level
 
 
 _anon_user = None
@@ -125,13 +115,3 @@ def get_anonymous_user():
 
         _anon_user = User.objects.get(username=settings.ANONYMOUS_USER_NAME)
     return _anon_user
-
-
-def extract_constants(config, reverse=False):
-    """
-    Extracts a mapping between db and API codes from a constant config in a model
-    """
-    if reverse:
-        return {t[2]: t[0] for t in config}
-    else:
-        return {t[0]: t[2] for t in config}

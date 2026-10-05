@@ -6,6 +6,7 @@ from smartmin.views import SmartCreateView, SmartCRUDL, SmartListView, SmartUpda
 
 from temba.orgs.views import DependencyDeleteModal, DependencyUsagesModal, ModalMixin, OrgObjPermsMixin, OrgPermsMixin
 from temba.utils.fields import InputWidget
+from temba.utils.views import ContentMenuMixin, SpaMixin
 
 from .models import Global
 
@@ -88,7 +89,7 @@ class GlobalCRUDL(SmartCRUDL):
 
         def form_valid(self, form):
             self.object = Global.get_or_create(
-                self.request.user.get_org(),
+                self.request.org,
                 self.request.user,
                 key=Global.make_key(name=form.cleaned_data["name"]),
                 name=form.cleaned_data["name"],
@@ -112,32 +113,40 @@ class GlobalCRUDL(SmartCRUDL):
         success_url = "@globals.global_list"
         success_message = ""
 
-    class List(OrgPermsMixin, SmartListView):
+    class List(SpaMixin, ContentMenuMixin, OrgPermsMixin, SmartListView):
         title = _("Manage Globals")
         fields = ("name", "key", "value")
         search_fields = ("name__icontains", "key__icontains")
         default_order = ("key",)
         paginate_by = 250
+        menu_path = "/flow/globals"
+
+        def build_content_menu(self, menu):
+            if self.has_org_perm("globals.global_create"):
+                menu.add_modax(
+                    _("New Global"),
+                    "new-global",
+                    reverse("globals.global_create"),
+                    title=_("New Global"),
+                    as_button=True,
+                    on_redirect="refreshGlobals()",
+                )
 
         def get_queryset(self, **kwargs):
-            qs = super().get_queryset(**kwargs).filter(org=self.org, is_active=True)
+            qs = super().get_queryset(**kwargs).filter(org=self.request.org, is_active=True)
             return Global.annotate_usage(qs)
 
         def get_context_data(self, **kwargs):
             context = super().get_context_data(**kwargs)
 
-            org_globals = self.org.globals.filter(is_active=True)
+            org_globals = self.request.org.globals.filter(is_active=True)
             all_count = org_globals.count()
+            unused_count = Global.annotate_usage(org_globals).filter(usage_count=0).count()
 
-            if "x-formax" in self.request.headers:
-                context["global_count"] = all_count
-            else:
-                unused_count = Global.annotate_usage(org_globals).filter(usage_count=0).count()
-
-                context["global_categories"] = [
-                    {"label": _("All"), "count": all_count, "url": reverse("globals.global_list")},
-                    {"label": _("Unused"), "count": unused_count, "url": reverse("globals.global_unused")},
-                ]
+            context["global_categories"] = [
+                {"label": _("All"), "count": all_count, "url": reverse("globals.global_list")},
+                {"label": _("Unused"), "count": unused_count, "url": reverse("globals.global_unused")},
+            ]
 
             return context
 

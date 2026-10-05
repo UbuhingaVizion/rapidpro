@@ -1,12 +1,7 @@
 from django import template
 from django.utils.safestring import mark_safe
 
-from temba.campaigns.models import EventFire
-from temba.channels.models import ChannelEvent
-from temba.contacts.models import URN, ContactURN
-from temba.flows.models import FlowRun
-from temba.ivr.models import IVRCall
-from temba.mailroom.events import Event
+from temba.contacts.models import URN, ContactField, ContactURN
 from temba.msgs.models import Msg
 
 register = template.Library()
@@ -25,66 +20,21 @@ URN_SCHEME_ICONS = {
     URN.WHATSAPP_SCHEME: "icon-whatsapp",
 }
 
-ACTIVITY_ICONS = {
-    Event.TYPE_AIRTIME_TRANSFERRED: "icon-cash",
-    Event.TYPE_BROADCAST_CREATED: "icon-bullhorn",
-    Event.TYPE_CALL_STARTED: "icon-phone",
-    Event.TYPE_CAMPAIGN_FIRED: "icon-clock",
-    Event.TYPE_CHANNEL_EVENT: "icon-power",
-    Event.TYPE_CHANNEL_EVENT + ":missed_incoming": "icon-call-incoming",
-    Event.TYPE_CHANNEL_EVENT + ":missed_outgoing": "icon-call-outgoing",
-    Event.TYPE_CONTACT_FIELD_CHANGED: "icon-pencil",
-    Event.TYPE_CONTACT_GROUPS_CHANGED: "icon-users",
-    Event.TYPE_CONTACT_LANGUAGE_CHANGED: "icon-language",
-    Event.TYPE_CONTACT_NAME_CHANGED: "icon-contact",
-    Event.TYPE_CONTACT_URNS_CHANGED: "icon-address-book",
-    Event.TYPE_EMAIL_SENT: "icon-envelop",
-    Event.TYPE_ERROR: "icon-warning",
-    Event.TYPE_FAILURE: "icon-warning",
-    Event.TYPE_FLOW_ENTERED: "icon-flow",
-    Event.TYPE_FLOW_EXITED + ":expired": "icon-clock",
-    Event.TYPE_FLOW_EXITED + ":interrupted": "icon-cancel-circle",
-    Event.TYPE_FLOW_EXITED + ":completed": "icon-checkmark",
-    Event.TYPE_INPUT_LABELS_ADDED: "icon-tags",
-    Event.TYPE_IVR_CREATED: "icon-call-outgoing",
-    Event.TYPE_MSG_CREATED: "icon-bubble-right",
-    Event.TYPE_MSG_CREATED + ":failed": "icon-bubble-notification",
-    Event.TYPE_MSG_CREATED + ":delivered": "icon-bubble-check",
-    Event.TYPE_MSG_RECEIVED: "icon-bubble-user",
-    Event.TYPE_MSG_RECEIVED + ":voice": "icon-call-incoming",
-    Event.TYPE_RUN_RESULT_CHANGED: "icon-bars",
-    Event.TYPE_TICKET_ASSIGNED: "icon-ticket",
-    Event.TYPE_TICKET_REOPENED: "icon-ticket",
-    Event.TYPE_TICKET_OPENED: "icon-ticket",
-    Event.TYPE_TICKET_CLOSED: "icon-ticket",
-    Event.TYPE_TICKET_NOTE_ADDED: "icon-pencil",
-    Event.TYPE_WEBHOOK_CALLED: "icon-cloud-upload",
-}
-
-MSG_EVENTS = {Event.TYPE_MSG_CREATED, Event.TYPE_MSG_RECEIVED, Event.TYPE_IVR_CREATED, Event.TYPE_BROADCAST_CREATED}
-
-# events that are included in the summary view
-SUMMARY_EVENTS = {
-    Event.TYPE_CALL_STARTED,
-    Event.TYPE_CAMPAIGN_FIRED,
-    Event.TYPE_FLOW_ENTERED,
-    Event.TYPE_FLOW_EXITED,
-    Event.TYPE_BROADCAST_CREATED,
-    Event.TYPE_IVR_CREATED,
-    Event.TYPE_MSG_CREATED,
-    Event.TYPE_MSG_RECEIVED,
-}
-
 MISSING_VALUE = "--"
 
 
-@register.filter
-def contact_field(contact, arg):
-    field = contact.org.fields.filter(is_active=True, key=arg).first()
+@register.simple_tag()
+def contact_field(contact, key):
+    field = contact.org.fields.filter(is_active=True, key=key).first()
     if field is None:
         return MISSING_VALUE
 
     value = contact.get_field_display(field)
+    if value and field.value_type == ContactField.TYPE_DATETIME:
+        value = contact.get_field_value(field)
+        if value:
+            return mark_safe(f"<temba-date value='{value.isoformat()}' display='date'></temba-date>")
+
     return value or MISSING_VALUE
 
 
@@ -94,13 +44,18 @@ def name_or_urn(contact, org):
 
 
 @register.filter
-def name(contact, org):
-    if contact.name:
-        return contact.name
-    elif org.is_anon:
-        return contact.anon_identifier
+def urn_or_anon(contact, org):
+    """
+    Renders the contact has their primary URN or anon id if org is anon
+    """
+    if not org.is_anon:
+        contact_urn = contact.get_urn()
+        if contact_urn:
+            return format_urn(contact_urn, org)
+        else:
+            return MISSING_VALUE
     else:
-        return MISSING_VALUE
+        return contact.anon_display
 
 
 @register.filter
@@ -108,24 +63,7 @@ def format_urn(urn, org):
     if org and org.is_anon:
         return ContactURN.ANON_MASK_HTML
 
-    if isinstance(urn, ContactURN):
-        return urn.get_display(org=org, international=True)
-    else:
-        return URN.format(urn, international=True)
-
-
-@register.filter
-def urn(contact, org):
-    contact_urn = contact.get_urn()
-    if contact_urn:
-        return format_urn(contact_urn, org)
-    else:
-        return MISSING_VALUE
-
-
-@register.filter
-def format_contact(contact, org):  # pragma: needs cover
-    return contact.get_display(org=org)
+    return urn.get_display(org=org, international=True)
 
 
 @register.filter
@@ -134,68 +72,32 @@ def urn_icon(urn):
 
 
 @register.filter
-def history_icon(event: dict) -> str:
-    event_type = event["type"]
-    variant = None
+def msg_status_badge(msg) -> str:
+    display = {}
 
-    if event_type == Event.TYPE_MSG_CREATED:
-        if event["status"] in (Msg.STATUS_ERRORED, Msg.STATUS_FAILED):
-            variant = "failed"
-        elif event["status"] == Msg.STATUS_DELIVERED:
-            variant = "delivered"
+    if msg.status == Msg.STATUS_DELIVERED:
+        display = {"background": "#efffe0", "icon": "check", "icon_color": "rgb(var(--success-rgb))"}
 
-    elif event_type == Event.TYPE_MSG_RECEIVED:
-        if event["msg_type"] == Msg.TYPE_IVR:
-            variant = "voice"
+    if msg.direction == Msg.DIRECTION_IN or msg.status == Msg.STATUS_WIRED:
+        display = {"background": "#f9f9f9", "icon": "check", "icon_color": "var(--color-primary-dark)"}
 
-    elif event_type == Event.TYPE_FLOW_EXITED:
-        if event["status"] == FlowRun.STATUS_INTERRUPTED:
-            variant = "interrupted"
-        elif event["status"] == FlowRun.STATUS_EXPIRED:
-            variant = "expired"
-        else:
-            variant = "completed"
+    if msg.status == Msg.STATUS_ERRORED or msg.status == Msg.STATUS_FAILED:
+        display = {"background": "#fff4f4", "icon": "x", "icon_color": "var(--color-error)"}
 
-    elif event_type == Event.TYPE_CHANNEL_EVENT:
-        if event["channel_event_type"] == ChannelEvent.TYPE_CALL_IN_MISSED:
-            variant = "missed_incoming"
-        elif event["channel_event_type"] == ChannelEvent.TYPE_CALL_OUT_MISSED:
-            variant = "missed_outgoing"
+        # we are still working on errored messages, slightly different icon
+        if msg.status == Msg.STATUS_ERRORED:
+            display["icon"] = "retry"
 
-    if variant:
-        glyph_name = ACTIVITY_ICONS.get(event_type + ":" + variant)
-    else:
-        glyph_name = ACTIVITY_ICONS.get(event_type)
-
-    return mark_safe(f'<span class="glyph {glyph_name}"></span>')
-
-
-@register.filter
-def history_class(event: dict) -> str:
-    event_type = event["type"]
-    classes = []
-
-    if event_type in MSG_EVENTS:
-        classes.append("msg")
-
-        if event.get("status") in (Msg.STATUS_ERRORED, Msg.STATUS_FAILED):
-            classes.append("warning")
-    else:
-        classes.append("non-msg")
-
-        if event_type == Event.TYPE_ERROR or event_type == "failure":
-            classes.append("warning")
-        elif event_type == Event.TYPE_WEBHOOK_CALLED and event["status"] != "success":
-            classes.append("warning")
-        elif event_type == Event.TYPE_CALL_STARTED and event["status"] == IVRCall.STATUS_FAILED:
-            classes.append("warning")
-        elif event_type == Event.TYPE_CAMPAIGN_FIRED and event["fired_result"] == EventFire.RESULT_SKIPPED:
-            classes.append("skipped")
-
-    if event_type not in SUMMARY_EVENTS:
-        classes.append("detail-event")
-
-    return " ".join(classes)
+    if len(display) >= 3:
+        return mark_safe(
+            """
+            <div class="flex items-center flex-row p-1 rounded-lg" style="background:%(background)s">
+                <temba-icon name="%(icon)s" style="--icon-color:%(icon_color)s"></temba-icon>
+            </div>
+        """
+            % display
+        )
+    return ""
 
 
 @register.filter

@@ -24,6 +24,7 @@ from .views import (
     MediaEndpoint,
     MessageActionsEndpoint,
     MessagesEndpoint,
+    OptInsEndpoint,
     ResthookEventsEndpoint,
     ResthooksEndpoint,
     ResthookSubscribersEndpoint,
@@ -31,7 +32,6 @@ from .views import (
     RunsEndpoint,
     TemplatesEndpoint,
     TicketActionsEndpoint,
-    TicketersEndpoint,
     TicketsEndpoint,
     TopicsEndpoint,
     UsersEndpoint,
@@ -39,7 +39,7 @@ from .views import (
 )
 
 urlpatterns = [
-    path("", RootView.as_view(), name="api.v2"),
+    path("", RootView.as_view(), name="api.v2.root"),
     path("explorer/", ExplorerView.as_view(), name="api.v2.explorer"),
     path("authenticate", AuthenticateView.as_view(), name="api.v2.authenticate"),
     # ========== endpoints A-Z ===========
@@ -63,13 +63,13 @@ urlpatterns = [
     path("media", MediaEndpoint.as_view(), name="api.v2.media"),
     path("messages", MessagesEndpoint.as_view(), name="api.v2.messages"),
     path("message_actions", MessageActionsEndpoint.as_view(), name="api.v2.message_actions"),
+    path("optins", OptInsEndpoint.as_view(), name="api.v2.optins"),
     path("org", WorkspaceEndpoint.as_view(), name="api.v2.org"),  # deprecated
     path("resthooks", ResthooksEndpoint.as_view(), name="api.v2.resthooks"),
     path("resthook_events", ResthookEventsEndpoint.as_view(), name="api.v2.resthook_events"),
     path("resthook_subscribers", ResthookSubscribersEndpoint.as_view(), name="api.v2.resthook_subscribers"),
     path("runs", RunsEndpoint.as_view(), name="api.v2.runs"),
     path("templates", TemplatesEndpoint.as_view(), name="api.v2.templates"),
-    path("ticketers", TicketersEndpoint.as_view(), name="api.v2.ticketers"),
     path("tickets", TicketsEndpoint.as_view(), name="api.v2.tickets"),
     path("ticket_actions", TicketActionsEndpoint.as_view(), name="api.v2.ticket_actions"),
     path("topics", TopicsEndpoint.as_view(), name="api.v2.topics"),
@@ -77,4 +77,4 @@ urlpatterns = [
     path("workspace", WorkspaceEndpoint.as_view(), name="api.v2.workspace"),
 ]
 
-urlpatterns = format_suffix_patterns(urlpatterns, allowed=["json", "api"])
+urlpatterns = format_suffix_patterns(urlpatterns, allowed=["json"])

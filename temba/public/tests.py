@@ -14,6 +14,7 @@ class PublicTest(TembaTest):
         home_url = reverse("public.public_index")
         response = self.client.get(home_url, follow=True)
         self.assertEqual(response.request["PATH_INFO"], "/")
+        self.assertContains(response, "RapidPro")
 
         response = self.client.get(home_url + "?errors=&foo", follow=True)
         self.assertEqual(response.request["PATH_INFO"], "/")

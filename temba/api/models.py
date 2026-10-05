@@ -17,19 +17,56 @@ from temba.utils.uuid import uuid4
 logger = logging.getLogger(__name__)
 
 
+class BulkActionFailure:
+    """
+    Bulk action serializers can return a partial failure if some objects couldn't be acted on
+    """
+
+    def __init__(self, failures):
+        self.failures = failures
+
+    def as_json(self):
+        return {"failures": self.failures}
+
+
 class APIPermission(BasePermission):
     """
     Verifies that the user has the permission set on the endpoint view
     """
 
-    def has_permission(self, request, view):
+    perms_map = {
+        "GET": "%(app_label)s.%(model_name)s_list",
+        "POST": "%(app_label)s.%(model_name)s_create",
+        "PUT": "%(app_label)s.%(model_name)s_update",
+        "DELETE": "%(app_label)s.%(model_name)s_delete",
+    }
 
-        if getattr(view, "permission", None):
+    def get_required_permission(self, request, view) -> str:
+        """
+        Given a model and an HTTP method, return the list of permission
+        codes that the user is required to have.
+        """
+
+        if hasattr(view, "permission"):
+            return view.permission
+
+        if request.method not in self.perms_map or request.method not in view.allowed_methods:
+            view.http_method_not_allowed(request)
+
+        return self.perms_map[request.method] % {
+            "app_label": view.model._meta.app_label,
+            "model_name": view.model._meta.model_name,
+        }
+
+    def has_permission(self, request, view):
+        permission = self.get_required_permission(request, view)
+
+        if permission:
             # no anon access to API endpoints
             if request.user.is_anonymous:
                 return False
 
-            org = request.user.get_org()
+            org = request.org
 
             if request.auth:
                 # check that user is still allowed to use the token's role
@@ -43,7 +80,7 @@ class APIPermission(BasePermission):
             else:
                 return False
 
-            has_perm = role.has_perm(view.permission)
+            has_perm = role.has_api_perm(permission)
 
             # viewers can only ever get from the API
             if role == OrgRole.VIEWER:
@@ -109,6 +146,11 @@ class Resthook(SmartModel):
         self.is_active = False
         self.modified_by = user
         self.save(update_fields=["is_active", "modified_on", "modified_by"])
+
+    def delete(self):
+        self.subscribers.all().delete()
+
+        super().delete()
 
     def __str__(self):  # pragma: needs cover
         return str(self.slug)
@@ -211,12 +253,12 @@ class APIToken(models.Model):
             return tokens.first()
 
     @classmethod
-    def get_orgs_for_role(cls, user, role: OrgRole):
+    def get_orgs_for_role(cls, request, role: OrgRole):
         """
         Gets all the orgs the user can access the API with the given role
         """
         granting_roles = cls.GROUP_GRANTED_TO.get(role.group.name, [])
-        return user.get_orgs(roles=granting_roles) if granting_roles else Org.objects.none()
+        return User.get_orgs_for_request(request, roles=granting_roles) if granting_roles else Org.objects.none()
 
     @classmethod
     def get_default_role(cls, org, user):
@@ -253,21 +295,3 @@ class APIToken(models.Model):
 
     def __str__(self):
         return self.key
-
-
-def get_or_create_api_token(user):
-    """
-    Gets or creates an API token for this user. If user doen't have access to the API, this returns None.
-    """
-    org = user.get_org()
-    if not org:
-        org = user.get_orgs(roles=[OrgRole.ADMINISTRATOR]).first()
-
-    if org:
-        try:
-            token = APIToken.get_or_create(org, user)
-            return token.key
-        except ValueError:
-            pass
-
-    return None

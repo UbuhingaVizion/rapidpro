@@ -1,4 +1,5 @@
-import pytz
+from zoneinfo import ZoneInfo
+
 from django.urls import reverse
 
 from temba.tests import TembaTest
@@ -18,7 +19,7 @@ class PlayMobileTypeTest(TembaTest):
         self.assertNotContains(response, url)
 
         # but if we are in the proper time zone
-        self.org.timezone = pytz.timezone("Asia/Tashkent")
+        self.org.timezone = ZoneInfo("Asia/Tashkent")
         self.org.save()
 
         response = self.client.get(reverse("channels.channel_claim"))

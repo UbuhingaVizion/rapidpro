@@ -32,6 +32,15 @@ class MockEventStream:
         yield from self.events
 
 
+class MockPaginator:
+    def __init__(self, client, method: str):
+        self.client = client
+        self.method = method
+
+    def paginate(self, **kwargs):
+        return [getattr(self.client, self.method)(**kwargs)]
+
+
 class MockS3Client:
     """
     A mock of the boto S3 client
@@ -60,6 +69,14 @@ class MockS3Client:
 
         return {"DeleteMarker": False, "VersionId": "versionId", "RequestCharged": "requester"}
 
+    def delete_objects(self, Bucket: str, Delete: dict, **kwargs):
+        self.calls["delete_objects"].append(call(Bucket=Bucket, Delete=Delete, **kwargs))
+
+        for obj in Delete["Objects"]:
+            del self.objects[(Bucket, obj["Key"])]
+
+        return {"Deleted": Delete["Objects"], "RequestCharged": "requester"}
+
     def list_objects_v2(self, Bucket, Prefix, **kwargs):
         matches = []
         for o in self.objects.keys():
@@ -80,6 +97,9 @@ class MockS3Client:
                 records.append(record)
 
         return {"Payload": MockEventStream(records)}
+
+    def get_paginator(self, method: str):
+        return MockPaginator(self, method)
 
 
 def jsonlgz_encode(records: list) -> tuple:
@@ -134,6 +154,8 @@ def _condition_matches(lh, op, rh, record: dict) -> bool:
 
     if op == "=":
         return lh == rh
+    if op == "!=":
+        return lh != rh
     elif op == ">=":
         return lh >= rh
     elif op == ">":
@@ -144,6 +166,10 @@ def _condition_matches(lh, op, rh, record: dict) -> bool:
         return lh < rh
     elif op == "IN":
         return lh in rh
+    elif op == "IS":
+        return lh is None
+    elif op == "IS NOT":
+        return lh is not None
 
 
 def _parse_expression(exp: str) -> list:
@@ -153,7 +179,7 @@ def _parse_expression(exp: str) -> list:
     conditions = exp[33:].split(" AND ")
     parsed = []
     for con in conditions:
-        match = regex.match(r"(.*)\s(=|!=|>|>=|<|<=|IN)\s(.+)", con)
+        match = regex.match(r"(.*)\s(=|!=|>|>=|<|<=|IN|IS NOT|IS)\s(.+)", con)
         lh, op, rh = match.group(1), match.group(2), match.group(3)
 
         parsed.append((_parse_value(lh), op, _parse_value(rh)))
@@ -180,3 +206,5 @@ def _parse_value(val: str):
         return True
     elif val == "FALSE":
         return False
+    elif val == "NULL":
+        return None

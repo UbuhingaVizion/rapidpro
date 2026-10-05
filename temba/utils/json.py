@@ -2,7 +2,7 @@ import datetime
 import decimal
 import json
 
-import pytz
+from django.core.serializers.json import DjangoJSONEncoder
 
 
 def load(value):
@@ -37,7 +37,7 @@ def encode_datetime(dt, micros=False):
     :param micros: whether to include microseconds
     """
     # always output as UTC / Z and always include milliseconds
-    as_utc = dt.astimezone(pytz.utc)
+    as_utc = dt.astimezone(datetime.UTC)
     as_str = as_utc.strftime("%Y-%m-%dT%H:%M:%S.%f")
     return (as_str if micros else as_str[:-3]) + "Z"
 
@@ -60,3 +60,10 @@ class TembaEncoder(json.JSONEncoder):
 class TembaDecoder(json.JSONDecoder):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, parse_float=decimal.Decimal, **kwargs)
+
+
+class EpochEncoder(DjangoJSONEncoder):
+    def default(self, o):
+        if isinstance(o, datetime.date):
+            return int(o.strftime("%s")) * 1000
+        return super().default(o)

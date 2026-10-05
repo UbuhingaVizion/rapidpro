@@ -3,7 +3,6 @@ from django.utils.translation import gettext_lazy as _
 from smartmin.views import SmartFormView
 
 from temba.contacts.models import URN
-from temba.utils.fields import ExternalURLField
 
 from ...models import Channel
 from ...views import ALL_COUNTRIES, ClaimViewMixin
@@ -11,11 +10,10 @@ from ...views import ALL_COUNTRIES, ClaimViewMixin
 
 class ClaimView(ClaimViewMixin, SmartFormView):
     class Form(ClaimViewMixin.Form):
-        number = forms.CharField(help_text=_("Your enterprise WhatsApp number"))
+        address = forms.CharField(help_text=_("Your enterprise WhatsApp number"), label=_("Number"))
         country = forms.ChoiceField(
             choices=ALL_COUNTRIES, label=_("Country"), help_text=_("The country this phone number is used in")
         )
-        base_url = ExternalURLField(help_text=_("The base URL for your 360 Dialog WhatsApp enterprise installation"))
 
         api_key = forms.CharField(
             max_length=256, help_text=_("The 360 Dialog API key generated after account registration")
@@ -24,33 +22,28 @@ class ClaimView(ClaimViewMixin, SmartFormView):
         def clean(self):
             # first check that our phone number looks sane
             country = self.cleaned_data["country"]
-            normalized = URN.normalize_number(self.cleaned_data["number"], country)
+            normalized = URN.normalize_number(self.cleaned_data["address"], country)
             if not URN.validate(URN.from_parts(URN.TEL_SCHEME, normalized), country):
                 raise forms.ValidationError(_("Please enter a valid phone number"))
-            self.cleaned_data["number"] = normalized
-
-            return self.cleaned_data
+            self.cleaned_data["address"] = normalized
+            return super().clean()
 
     form_class = Form
 
     def form_valid(self, form):
-        user = self.request.user
-        org = user.get_org()
-
         data = form.cleaned_data
-
         config = {
-            Channel.CONFIG_BASE_URL: data["base_url"],
+            Channel.CONFIG_BASE_URL: "https://waba-v2.360dialog.io",
             Channel.CONFIG_AUTH_TOKEN: data["api_key"],
         }
 
         self.object = Channel.create(
-            org,
-            user,
+            self.request.org,
+            self.request.user,
             data["country"],
             self.channel_type,
-            name=f"WhatsApp: {data['number']}",
-            address=data["number"],
+            name=f"WhatsApp: {data['address']}",
+            address=data["address"],
             config=config,
             tps=45,
         )

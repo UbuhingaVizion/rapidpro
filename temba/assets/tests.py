@@ -1,3 +1,5 @@
+from datetime import date
+
 from django.test import override_settings
 from django.urls import reverse
 
@@ -6,8 +8,9 @@ from temba.flows.models import ExportFlowResultsTask
 from temba.msgs.models import ExportMessagesTask, SystemLabel
 from temba.orgs.models import OrgRole
 from temba.tests import TembaTest
+from temba.tickets.models import ExportTicketsTask
 
-from .checks import storage_url
+from .checks import storage
 
 
 class AssetTest(TembaTest):
@@ -16,7 +19,9 @@ class AssetTest(TembaTest):
 
     def test_download(self):
         # create a message export
-        message_export_task = ExportMessagesTask.create(self.org, self.admin, SystemLabel.TYPE_INBOX)
+        message_export_task = ExportMessagesTask.create(
+            self.org, self.admin, start_date=date.today(), end_date=date.today(), system_label=SystemLabel.TYPE_INBOX
+        )
 
         response = self.client.get(
             reverse("assets.download", kwargs=dict(type="message_export", pk=message_export_task.pk))
@@ -62,14 +67,33 @@ class AssetTest(TembaTest):
 
         # create flow results export and check that we can access it
         flow = self.create_flow("Test")
-        results_export_task = ExportFlowResultsTask.objects.create(
-            org=self.org, created_by=self.admin, modified_by=self.admin
+        results_export_task = ExportFlowResultsTask.create(
+            self.org,
+            self.admin,
+            start_date=date.today(),
+            end_date=date.today(),
+            flows=[flow],
+            with_fields=(),
+            with_groups=(),
+            responded_only=False,
+            extra_urns=(),
         )
         results_export_task.flows.add(flow)
         results_export_task.perform()
 
         response = self.client.get(
             reverse("assets.download", kwargs=dict(type="results_export", pk=results_export_task.pk))
+        )
+        self.assertContains(response, "Your download should start automatically", status_code=200)
+
+        # create ticket export and check that we can access it
+        ticket_export_task = ExportTicketsTask.create(
+            self.org, self.admin, start_date=date.today(), end_date=date.today()
+        )
+        ticket_export_task.perform()
+
+        response = self.client.get(
+            reverse("assets.download", kwargs=dict(type="ticket_export", pk=ticket_export_task.pk))
         )
         self.assertContains(response, "Your download should start automatically", status_code=200)
 
@@ -85,13 +109,15 @@ class AssetTest(TembaTest):
             reverse("assets.download", kwargs=dict(type="message_export", pk=message_export_task.pk))
         )
         self.assertEqual(200, response.status_code)
-        user = response.context_data["view"].request.user
-        self.assertEqual(user, self.admin)
-        self.assertEqual(user.get_org(), self.org)
+        request = response.context_data["view"].request
+        self.assertEqual(self.admin, request.user)
+        self.assertEqual(self.org, request.org)
 
     def test_stream(self):
         # create a message export
-        message_export_task = ExportMessagesTask.create(self.org, self.admin, SystemLabel.TYPE_INBOX)
+        message_export_task = ExportMessagesTask.create(
+            self.org, self.admin, start_date=date.today(), end_date=date.today(), system_label=SystemLabel.TYPE_INBOX
+        )
 
         # try as anon
         response = self.client.get(
@@ -121,11 +147,16 @@ class AssetTest(TembaTest):
 
 
 class SystemChecksTest(TembaTest):
-    def test_storage_url(self):
-        self.assertEqual(len(storage_url(None)), 0)
+    def test_storage(self):
+        self.assertEqual(len(storage(None)), 0)
+
+        with override_settings(STORAGES={"default": {"BACKEND": "x"}, "staticfiles": {"BACKEND": "x"}}):
+            self.assertEqual(storage(None)[0].msg, "Missing 'archives' storage config.")
+            self.assertEqual(storage(None)[1].msg, "Missing 'logs' storage config.")
+            self.assertEqual(storage(None)[2].msg, "Missing 'public' storage config.")
 
         with override_settings(STORAGE_URL=None):
-            self.assertEqual(storage_url(None)[0].msg, "No storage URL set")
+            self.assertEqual(storage(None)[0].msg, "No storage URL set.")
 
         with override_settings(STORAGE_URL="http://example.com/uploads/"):
-            self.assertEqual(storage_url(None)[0].msg, "Storage URL shouldn't end with trailing slash")
+            self.assertEqual(storage(None)[0].msg, "Storage URL shouldn't end with trailing slash.")

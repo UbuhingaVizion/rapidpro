@@ -7,23 +7,23 @@ from django.views.decorators.csrf import csrf_exempt
 from smartmin.views import SmartCRUDL, SmartReadView, SmartUpdateView
 
 from temba.locations.models import AdminBoundary, BoundaryAlias
-from temba.orgs.views import OrgPermsMixin
+from temba.orgs.views import OrgPermsMixin, SpaMixin
 from temba.utils import json
+from temba.utils.views import ContentMenuMixin
 
 
 class BoundaryCRUDL(SmartCRUDL):
     actions = ("alias", "geometry", "boundaries")
     model = AdminBoundary
 
-    class Alias(OrgPermsMixin, SmartReadView):
+    class Alias(SpaMixin, OrgPermsMixin, ContentMenuMixin, SmartReadView):
+        menu_path = "/settings/workspace"
+
         @classmethod
         def derive_url_pattern(cls, path, action):
             # though we are a read view, we don't actually need an id passed
             # in, that is derived
             return rf"^{path}/{action}/$"
-
-        def get_gear_links(self):
-            return [dict(title=_("Home"), style="button-light", href=reverse("orgs.org_home"))]
 
         def pre_process(self, request, *args, **kwargs):
             response = super().pre_process(self, request, *args, **kwargs)
@@ -31,16 +31,14 @@ class BoundaryCRUDL(SmartCRUDL):
             # we didn't shortcut for some other reason, check that they have an
             # org
             if not response:
-                org = request.user.get_org()
-                if not org.country:
+                if not request.org.country:
                     messages.warning(request, _("You must select a country for your workspace."))
-                    return HttpResponseRedirect(reverse("orgs.org_home"))
+                    return HttpResponseRedirect(reverse("orgs.org_workspace"))
 
             return None
 
         def get_object(self, queryset=None):
-            org = self.request.user.get_org()
-            return org.country
+            return self.request.org.country
 
     class Geometry(OrgPermsMixin, SmartReadView):
         @classmethod
@@ -72,29 +70,9 @@ class BoundaryCRUDL(SmartCRUDL):
             return AdminBoundary.geometries.get(osm_id=self.kwargs["osmId"])
 
         def post(self, request, *args, **kwargs):
-            def update_aliases(boundary, new_aliases):
-                boundary_siblings = boundary.parent.children.all()
-                # for now, nuke and recreate all aliases
-                BoundaryAlias.objects.filter(boundary=boundary, org=org).delete()
-                unique_new_aliases = list(set(new_aliases.split("\n")))
-                for new_alias in unique_new_aliases:
-                    if new_alias:
-                        new_alias = new_alias.strip()
-
-                        # aliases are only allowed to exist on one boundary with same parent at a time
-                        BoundaryAlias.objects.filter(name=new_alias, boundary__in=boundary_siblings, org=org).delete()
-
-                        BoundaryAlias.objects.create(
-                            boundary=boundary,
-                            org=org,
-                            name=new_alias,
-                            created_by=self.request.user,
-                            modified_by=self.request.user,
-                        )
-
             # try to parse our body
             json_string = request.body
-            org = request.user.get_org()
+            org = request.org
 
             try:
                 boundary_update = json.loads(json_string)
@@ -104,12 +82,14 @@ class BoundaryCRUDL(SmartCRUDL):
             boundary = AdminBoundary.objects.filter(osm_id=boundary_update["osm_id"]).first()
             aliases = boundary_update.get("aliases", "")
             if boundary:
-                update_aliases(boundary, aliases)
+                unique_new_aliases = [a.strip() for a in set(aliases.split("\n")) if a]
+
+                boundary.update_aliases(org, self.request.user, unique_new_aliases)
 
             return JsonResponse(boundary_update, safe=False)
 
         def get(self, request, *args, **kwargs):
-            org = request.user.get_org()
+            org = request.org
             boundary = self.get_object()
 
             page_size = 25

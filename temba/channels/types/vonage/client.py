@@ -31,7 +31,6 @@ class VonageClient:
         return response["numbers"] if int(response.get("count", 0)) else []
 
     def search_numbers(self, country, pattern):
-
         response = self._with_retry(
             self.base.get_available_numbers,
             country_code=country,
@@ -70,8 +69,6 @@ class VonageClient:
 
         if app_id:
             params["app_id"] = app_id
-            params["voiceCallbackType"] = "tel"
-            params["voiceCallbackValue"] = number
 
         self._with_retry(self.base.update_number, params=params)
 

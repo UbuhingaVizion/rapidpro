@@ -6,6 +6,7 @@ from django.views.generic import View
 from smartmin.views import SmartTemplateView, SmartView
 
 from temba.notifications.views import NotificationTargetMixin
+from temba.utils.views import SpaMixin
 
 from .models import AssetAccessDenied, AssetEntityNotFound, AssetFileNotFound, get_asset_store
 
@@ -35,12 +36,14 @@ def handle_asset_request(user, asset_store, pk):
         return HttpResponseNotFound("Object has no associated asset")
 
 
-class AssetDownloadView(NotificationTargetMixin, SmartTemplateView):
+class AssetDownloadView(SpaMixin, NotificationTargetMixin, SmartTemplateView):
     """
     Provides a landing page for an asset, e.g. /assets/download/contact_export/123/
     """
 
-    template_name = "assets/asset_read.haml"
+    template_name = "assets/asset_read.html"
+    menu_path = "/settings/workspace"
+    title = _("Download")
 
     def has_permission(self, request, *args, **kwargs):
         return self.request.user.is_authenticated
@@ -74,7 +77,7 @@ class AssetDownloadView(NotificationTargetMixin, SmartTemplateView):
             file_error = _("You do not have permission to access this file")
         else:
             file_error = None
-            self.request.user.set_org(asset.org)
+            self.request.org = asset.org
 
         context["file_error"] = file_error
         context["download_url"] = download_url

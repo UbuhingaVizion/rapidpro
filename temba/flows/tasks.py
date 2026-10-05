@@ -1,16 +1,20 @@
 import logging
+from collections import defaultdict
 from datetime import datetime, timedelta
+from datetime import timezone as tzone
 
-import pytz
 from celery import shared_task
 from django.conf import settings
-from django.db.models import F
+from django.db.models import F, Prefetch
 from django.utils import timezone
 from django.utils.timesince import timesince
 from django_redis import get_redis_connection
 
+from temba import mailroom
+from temba.contacts.models import ContactField, ContactGroup
 from temba.utils import chunk_list
-from temba.utils.celery import nonoverlapping_task
+from temba.utils.crons import cron_task
+from temba.utils.models import delete_in_batches
 
 from .models import (
     ExportFlowResultsTask,
@@ -20,17 +24,15 @@ from .models import (
     FlowPathCount,
     FlowRevision,
     FlowRun,
-    FlowRunCount,
+    FlowRunStatusCount,
     FlowSession,
-    FlowStart,
     FlowStartCount,
 )
 
-FLOW_TIMEOUT_KEY = "flow_timeouts_%y_%m_%d"
 logger = logging.getLogger(__name__)
 
 
-@shared_task(track_started=True, name="update_session_wait_expires")
+@shared_task
 def update_session_wait_expires(flow_id):
     """
     Update the wait_expires_on of any session currently waiting in the given flow
@@ -44,24 +46,27 @@ def update_session_wait_expires(flow_id):
         batch.update(wait_expires_on=F("wait_started_on") + timedelta(minutes=flow.expires_after_minutes))
 
 
-@shared_task(track_started=True, name="export_flow_results_task")
+@shared_task
 def export_flow_results_task(export_id):
     """
     Export a flow to a file and e-mail a link to the user
     """
-    ExportFlowResultsTask.objects.select_related("org", "created_by").get(id=export_id).perform()
+    ExportFlowResultsTask.objects.select_related("org", "created_by").prefetch_related(
+        Prefetch("with_fields", ContactField.objects.order_by("name")),
+        Prefetch("with_groups", ContactGroup.objects.order_by("name")),
+    ).get(id=export_id).perform()
 
 
-@nonoverlapping_task(track_started=True, name="squash_flowcounts", lock_timeout=7200)
-def squash_flowcounts():
+@cron_task(lock_timeout=7200)
+def squash_flow_counts():
     FlowNodeCount.squash()
-    FlowRunCount.squash()
+    FlowRunStatusCount.squash()
     FlowCategoryCount.squash()
     FlowStartCount.squash()
     FlowPathCount.squash()
 
 
-@nonoverlapping_task(track_started=True, name="trim_flow_revisions")
+@cron_task()
 def trim_flow_revisions():
     start = timezone.now()
 
@@ -71,7 +76,7 @@ def trim_flow_revisions():
     if not last_trim:
         last_trim = 0
 
-    last_trim = datetime.utcfromtimestamp(int(last_trim)).astimezone(pytz.utc)
+    last_trim = datetime.utcfromtimestamp(int(last_trim)).astimezone(tzone.utc)
     count = FlowRevision.trim(last_trim)
 
     r.set(FlowRevision.LAST_TRIM_KEY, int(timezone.now().timestamp()))
@@ -80,76 +85,46 @@ def trim_flow_revisions():
     logger.info(f"Trimmed {count} flow revisions since {last_trim} in {elapsed}")
 
 
-@nonoverlapping_task(track_started=True, name="trim_flow_sessions_and_starts")
-def trim_flow_sessions_and_starts():
-    trim_flow_sessions()
-    trim_flow_starts()
+@cron_task()
+def interrupt_flow_sessions():
+    """
+    Interrupt old flow sessions which have exceeded the absolute time limit
+    """
+
+    before = timezone.now() - timedelta(days=90)
+    num_interrupted = 0
+
+    # get old sessions and organize into lists by org
+    by_org = defaultdict(list)
+    sessions = (
+        FlowSession.objects.filter(created_on__lte=before, status=FlowSession.STATUS_WAITING)
+        .only("id", "org")
+        .select_related("org")
+        .order_by("id")
+    )
+    for session in sessions:
+        by_org[session.org].append(session)
+
+    for org, sessions in by_org.items():
+        for batch in chunk_list(sessions, 100):
+            mailroom.queue_interrupt(org, sessions=batch)
+            num_interrupted += len(sessions)
+
+    return {"interrupted": num_interrupted}
 
 
+@cron_task()
 def trim_flow_sessions():
     """
-    Cleanup old flow sessions
+    Cleanup ended flow sessions
     """
+
     trim_before = timezone.now() - settings.RETENTION_PERIODS["flowsession"]
-    num_deleted = 0
-    start = timezone.now()
 
-    logger.info(f"Deleting flow sessions which ended before {trim_before.isoformat()}...")
-
-    while True:
-        session_ids = list(FlowSession.objects.filter(ended_on__lte=trim_before).values_list("id", flat=True)[:1000])
-        if not session_ids:
-            break
-
+    def pre_delete(session_ids):
         # detach any flows runs that belong to these sessions
         FlowRun.objects.filter(session_id__in=session_ids).update(session_id=None)
 
-        FlowSession.objects.filter(id__in=session_ids).delete()
-        num_deleted += len(session_ids)
+    num_deleted = delete_in_batches(FlowSession.objects.filter(ended_on__lte=trim_before), pre_delete=pre_delete)
 
-        if num_deleted % 10000 == 0:  # pragma: no cover
-            print(f" > Deleted {num_deleted} flow sessions")
-
-    logger.info(f"Deleted {num_deleted} flow sessions in {timesince(start)}")
-
-
-def trim_flow_starts():
-    """
-    Cleanup completed non-user created flow starts
-    """
-    trim_before = timezone.now() - settings.RETENTION_PERIODS["flowstart"]
-    num_deleted = 0
-    start = timezone.now()
-
-    logger.info(f"Deleting completed non-user created flow starts created before {trim_before.isoformat()}")
-
-    while True:
-        start_ids = list(
-            FlowStart.objects.filter(
-                created_by=None,
-                status__in=(FlowStart.STATUS_COMPLETE, FlowStart.STATUS_FAILED),
-                modified_on__lte=trim_before,
-            ).values_list("id", flat=True)[:1000]
-        )
-        if not start_ids:
-            break
-
-        # detach any flows runs that belong to these starts
-        run_ids = FlowRun.objects.filter(start_id__in=start_ids).values_list("id", flat=True)[:100000]
-        while len(run_ids) > 0:
-            for chunk in chunk_list(run_ids, 1000):
-                FlowRun.objects.filter(id__in=chunk).update(start_id=None)
-
-            # reselect for our next batch
-            run_ids = FlowRun.objects.filter(start_id__in=start_ids).values_list("id", flat=True)[:100000]
-
-        FlowStart.contacts.through.objects.filter(flowstart_id__in=start_ids).delete()
-        FlowStart.groups.through.objects.filter(flowstart_id__in=start_ids).delete()
-        FlowStartCount.objects.filter(start_id__in=start_ids).delete()
-        FlowStart.objects.filter(id__in=start_ids).delete()
-        num_deleted += len(start_ids)
-
-        if num_deleted % 10000 == 0:  # pragma: no cover
-            logger.debug(f" > Deleted {num_deleted} flow starts")
-
-    logger.info(f"Deleted {num_deleted} completed non-user created flow starts in {timesince(start)}")
+    return {"deleted": num_deleted}

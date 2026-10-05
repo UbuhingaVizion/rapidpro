@@ -2,15 +2,17 @@ from collections import defaultdict
 from datetime import datetime
 
 import iso8601
+from django.conf import settings
 from django.contrib.auth.models import User
 from django.urls import reverse
+from django.utils import timezone
 
 from temba.airtime.models import AirtimeTransfer
 from temba.campaigns.models import EventFire
-from temba.channels.models import ChannelEvent
+from temba.channels.models import Channel, ChannelEvent
 from temba.flows.models import FlowExit, FlowRun
-from temba.ivr.models import IVRCall
-from temba.msgs.models import Msg
+from temba.ivr.models import Call
+from temba.msgs.models import Msg, OptIn
 from temba.orgs.models import Org
 from temba.tickets.models import Ticket, TicketEvent, Topic
 
@@ -36,6 +38,7 @@ class Event:
     TYPE_IVR_CREATED = "ivr_created"
     TYPE_MSG_CREATED = "msg_created"
     TYPE_MSG_RECEIVED = "msg_received"
+    TYPE_OPTIN_REQUESTED = "optin_requested"
     TYPE_RUN_RESULT_CHANGED = "run_result_changed"
     TYPE_TICKET_ASSIGNED = "ticket_assigned"
     TYPE_TICKET_CLOSED = "ticket_closed"
@@ -77,12 +80,13 @@ class Event:
         with an underscore.
         """
 
-        channel_log = obj.get_last_log()
-        logs_url = (
-            _url_for_user(org, user, "channels.channellog_read", args=[channel_log.channel.uuid, channel_log.id])
-            if channel_log
-            else None
-        )
+        obj_age = timezone.now() - obj.created_on
+
+        logs_url = None
+        if obj.channel and obj_age < settings.RETENTION_PERIODS["channellog"]:
+            logs_url = _url_for_user(
+                org, user, "channels.channellog_msg", args=[obj.channel.uuid, obj.id], perm="channels.channellog_read"
+            )
 
         if obj.direction == Msg.DIRECTION_IN:
             return {
@@ -90,7 +94,7 @@ class Event:
                 "created_on": get_event_time(obj).isoformat(),
                 "msg": _msg_in(obj),
                 # additional properties
-                "msg_type": obj.msg_type,
+                "msg_type": Msg.TYPE_VOICE if obj.msg_type == Msg.TYPE_VOICE else Msg.TYPE_TEXT,
                 "visibility": obj.visibility,
                 "logs_url": logs_url,
             }
@@ -98,36 +102,49 @@ class Event:
             return {
                 "type": cls.TYPE_BROADCAST_CREATED,
                 "created_on": get_event_time(obj).isoformat(),
-                "translations": obj.broadcast.text,
+                "translations": obj.broadcast.translations,
                 "base_language": obj.broadcast.base_language,
                 # additional properties
+                "created_by": _user(obj.broadcast.created_by) if obj.broadcast.created_by else None,
                 "msg": _msg_out(obj),
+                "optin": _optin(obj.optin) if obj.optin else None,
                 "status": obj.status,
                 "recipient_count": obj.broadcast.get_message_count(),
                 "logs_url": logs_url,
             }
         else:
-            msg_event = {
-                "type": cls.TYPE_IVR_CREATED if obj.msg_type == Msg.TYPE_IVR else cls.TYPE_MSG_CREATED,
-                "created_on": get_event_time(obj).isoformat(),
-                "msg": _msg_out(obj),
-                # additional properties
-                "status": obj.status,
-                "logs_url": logs_url,
-            }
+            created_by = obj.broadcast.created_by if obj.broadcast else obj.created_by
+
+            if obj.msg_type == Msg.TYPE_VOICE:
+                msg_event = {
+                    "type": cls.TYPE_IVR_CREATED,
+                    "created_on": get_event_time(obj).isoformat(),
+                    "msg": _msg_out(obj),
+                }
+            elif obj.msg_type == Msg.TYPE_OPTIN and obj.optin:
+                msg_event = {
+                    "type": cls.TYPE_OPTIN_REQUESTED,
+                    "created_on": get_event_time(obj).isoformat(),
+                    "optin": _optin(obj.optin),
+                    "channel": _channel(obj.channel),
+                    "urn": str(obj.contact_urn),
+                }
+            else:
+                msg_event = {
+                    "type": cls.TYPE_MSG_CREATED,
+                    "created_on": get_event_time(obj).isoformat(),
+                    "msg": _msg_out(obj),
+                    "optin": _optin(obj.optin) if obj.optin else None,
+                }
+
+            # add additional properties
+            msg_event["created_by"] = _user(created_by) if created_by else None
+            msg_event["status"] = obj.status
+            msg_event["logs_url"] = logs_url
 
             if obj.status == Msg.STATUS_FAILED:
                 msg_event["failed_reason"] = obj.failed_reason
                 msg_event["failed_reason_display"] = obj.get_failed_reason_display()
-
-            if obj.broadcast and obj.broadcast.created_by:
-                user = obj.broadcast.created_by
-                msg_event["msg"]["created_by"] = {
-                    "id": user.id,
-                    "first_name": user.first_name,
-                    "last_name": user.last_name,
-                    "email": user.email,
-                }
 
             return msg_event
 
@@ -154,10 +171,14 @@ class Event:
         }
 
     @classmethod
-    def from_ivr_call(cls, org: Org, user: User, obj: IVRCall) -> dict:
-        logs_url = (
-            _url_for_user(org, user, "channels.channellog_connection", args=[obj.id]) if obj.has_logs() else None
-        )
+    def from_ivr_call(cls, org: Org, user: User, obj: Call) -> dict:
+        obj_age = timezone.now() - obj.created_on
+
+        logs_url = None
+        if obj_age < settings.RETENTION_PERIODS["channellog"]:
+            logs_url = _url_for_user(
+                org, user, "channels.channellog_call", args=[obj.channel.uuid, obj.id], perm="channels.channellog_read"
+            )
 
         return {
             "type": cls.TYPE_CALL_STARTED,
@@ -198,7 +219,6 @@ class Event:
                 "topic": _topic(ticket.topic) if ticket.topic else None,
                 "status": ticket.status,
                 "body": ticket.body,
-                "ticketer": {"uuid": str(ticket.ticketer.uuid), "name": ticket.ticketer.name},
             },
             "created_on": get_event_time(obj).isoformat(),
             "created_by": _user(obj.created_by) if obj.created_by else None,
@@ -225,16 +245,24 @@ class Event:
     @classmethod
     def from_channel_event(cls, org: Org, user: User, obj: ChannelEvent) -> dict:
         extra = obj.extra or {}
+        ch_event = {"type": obj.event_type, "channel": _channel(obj.channel)}
+
+        if obj.event_type in ChannelEvent.CALL_TYPES:
+            ch_event["duration"] = extra.get("duration")
+        elif obj.event_type in (ChannelEvent.TYPE_OPTIN, ChannelEvent.TYPE_OPTOUT):
+            ch_event["optin"] = _optin(obj.optin) if obj.optin else None
+
         return {
             "type": cls.TYPE_CHANNEL_EVENT,
             "created_on": get_event_time(obj).isoformat(),
-            "channel_event_type": obj.event_type,
-            "duration": extra.get("duration"),
+            "event": ch_event,
+            "channel_event_type": obj.event_type,  # deprecated
+            "duration": extra.get("duration"),  # deprecated
         }
 
 
-def _url_for_user(org: Org, user: User, view_name: str, args: list) -> str:
-    return reverse(view_name, args=args) if user.has_org_perm(org, view_name) else None
+def _url_for_user(org: Org, user: User, view_name: str, args: list, perm: str = None) -> str:
+    return reverse(view_name, args=args) if user.has_org_perm(org, perm or view_name) else None
 
 
 def _msg_in(obj) -> dict:
@@ -263,10 +291,9 @@ def _base_msg(obj) -> dict:
         "uuid": str(obj.uuid),
         "id": obj.id,
         "urn": str(obj.contact_urn) if obj.contact_urn else None,
+        "channel": _channel(obj.channel) if obj.channel else None,
         "text": obj.text if not redact else "",
     }
-    if obj.channel:
-        d["channel"] = {"uuid": str(obj.channel.uuid), "name": obj.channel.name}
     if obj.attachments:
         d["attachments"] = obj.attachments if not redact else []
 
@@ -282,8 +309,16 @@ def _user(user: User) -> dict:
     }
 
 
+def _channel(channel: Channel) -> dict:
+    return {"uuid": str(channel.uuid), "name": channel.name}
+
+
 def _topic(topic: Topic) -> dict:
     return {"uuid": str(topic.uuid), "name": topic.name}
+
+
+def _optin(optin: OptIn) -> dict:
+    return {"uuid": str(optin.uuid), "name": optin.name}
 
 
 # map of history item types to methods to render them as events
@@ -293,7 +328,7 @@ event_renderers = {
     EventFire: Event.from_event_fire,
     FlowExit: Event.from_flow_exit,
     FlowRun: Event.from_flow_run,
-    IVRCall: Event.from_ivr_call,
+    Call: Event.from_ivr_call,
     Msg: Event.from_msg,
     TicketEvent: Event.from_ticket_event,
 }

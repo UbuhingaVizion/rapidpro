@@ -1,4 +1,3 @@
-from django.http import JsonResponse
 from django.utils.translation import gettext_lazy as _
 from smartmin.views import SmartCRUDL, SmartListView
 
@@ -28,35 +27,6 @@ class NotificationTargetMixin:
         return response
 
 
-class NotificationCRUDL(SmartCRUDL):
-    model = Notification
-    actions = ("list",)
-
-    class List(OrgPermsMixin, SmartListView):
-        default_order = "-id"
-        select_related = ("org",)
-        prefetch_related = (
-            "contact_import",
-            "contact_export",
-            "message_export",
-            "results_export",
-            "incident",
-        )
-
-        def get_queryset(self, **kwargs):
-            return (
-                super()
-                .get_queryset(**kwargs)
-                .filter(org=self.org, user=self.request.user)
-                .prefetch_related(*self.prefetch_related)
-            )
-
-        def render_to_response(self, context, **response_kwargs):
-            return JsonResponse(
-                {"results": [n.as_json() for n in context["object_list"]]}, json_dumps_params={"indent": 2}
-            )
-
-
 class IncidentCRUDL(SmartCRUDL):
     model = Incident
     actions = ("list",)
@@ -64,7 +34,7 @@ class IncidentCRUDL(SmartCRUDL):
     class List(OrgPermsMixin, NotificationTargetMixin, SmartListView):
         default_order = "-started_on"
         title = _("Incidents")
-        select_related = ("channel",)
+        menu_path = "/settings/workspace"
         notification_type = "incident:started"
         notification_scope = None  # clear all incident started notifications
 
@@ -75,7 +45,7 @@ class IncidentCRUDL(SmartCRUDL):
             context = super().get_context_data(**kwargs)
             context["ongoing"] = (
                 Incident.objects.filter(org=self.request.org, ended_on=None)
-                .select_related(*self.select_related)
+                .select_related("org", "channel")
                 .order_by("-started_on")
             )
             return context

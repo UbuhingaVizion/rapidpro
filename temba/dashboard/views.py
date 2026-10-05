@@ -4,20 +4,45 @@ from datetime import datetime, timedelta
 from django.db.models import Q, Sum
 from django.http import JsonResponse
 from django.utils import timezone
+from django.utils.translation import gettext_lazy as _
 from smartmin.views import SmartTemplateView
 
 from temba.channels.models import Channel, ChannelCount
 from temba.orgs.models import Org
 from temba.orgs.views import OrgPermsMixin
+from temba.utils.views import SpaMixin
+
+flattened_colors = [
+    "#335c81",
+    "#65afff",
+    "#1b2845",
+    "#50ffb1",
+    "#3c896d",
+    "#546d64",
+    "#ddb892",
+    "#7f5539",
+    "#9c6644",
+    "#b5c99a",
+    "#87986a",
+    "#718355",
+    "#ff5858",
+    "#ff9090",
+    "#ffb5b5",
+    "#cc9c00",
+    "#ffcb1f",
+    "#ffe285",
+]
 
 
-class Home(OrgPermsMixin, SmartTemplateView):
+class Home(SpaMixin, OrgPermsMixin, SmartTemplateView):
     """
     The main dashboard view
     """
 
+    title = _("Dashboard")
     permission = "orgs.org_dashboard"
-    template_name = "dashboard/home.haml"
+    template_name = "dashboard/home.html"
+    menu_path = "/settings/dashboard"
 
 
 class MessageHistory(OrgPermsMixin, SmartTemplateView):
@@ -38,8 +63,6 @@ class MessageHistory(OrgPermsMixin, SmartTemplateView):
             count_type__in=[
                 ChannelCount.INCOMING_MSG_TYPE,
                 ChannelCount.OUTGOING_MSG_TYPE,
-                ChannelCount.INCOMING_IVR_TYPE,
-                ChannelCount.OUTGOING_IVR_TYPE,
             ]
         )
 
@@ -98,15 +121,74 @@ class MessageHistory(OrgPermsMixin, SmartTemplateView):
             [
                 dict(name="Incoming", type="column", data=msgs_in, showInNavigator=False),
                 dict(name="Outgoing", type="column", data=msgs_out, showInNavigator=False),
-                dict(
-                    name="Total",
-                    type="column",
-                    data=msgs_total,
-                    showInNavigator=True,
-                    showInLegend=False,
-                    visible=False,
-                ),
             ],
+            safe=False,
+        )
+
+
+class WorkspaceStats(OrgPermsMixin, SmartTemplateView):
+    permission = "orgs.org_dashboard"
+
+    def render_to_response(self, context, **response_kwargs):
+        orgs = []
+        org = self.derive_org()
+        if org:
+            orgs = Org.objects.filter(Q(id=org.id) | Q(parent=org))
+
+        min_date = self.request.GET.get("min", datetime(2013, 1, 1).timestamp())
+        max_date = self.request.GET.get("max", datetime.now().timestamp())
+
+        if min_date and max_date:
+            min_date = datetime.utcfromtimestamp(float(min_date)).strftime("%Y-%m-%d")
+            max_date = datetime.utcfromtimestamp(float(max_date)).strftime("%Y-%m-%d")
+
+        # get all our counts for that period
+        daily_counts = ChannelCount.objects.filter(
+            count_type__in=[
+                ChannelCount.INCOMING_MSG_TYPE,
+                ChannelCount.OUTGOING_MSG_TYPE,
+            ]
+        )
+
+        daily_counts = daily_counts.filter(day__gte=min_date).filter(day__lte=max_date)
+
+        if orgs or not self.request.user.is_support:
+            daily_counts = daily_counts.filter(channel__org__in=orgs)
+
+        categories = [org.name for org in orgs]
+
+        inbound = []
+        outbound = []
+
+        for org in orgs:
+            org_daily_counts = list(
+                daily_counts.filter(channel__org_id=org.id)
+                .values("count_type")
+                .order_by("count_type")
+                .annotate(count_sum=Sum("count"))
+            )
+
+            for count in org_daily_counts:
+                if count["count_type"] == ChannelCount.INCOMING_MSG_TYPE:
+                    inbound.append(count["count_sum"])
+                elif count["count_type"] == ChannelCount.OUTGOING_MSG_TYPE:
+                    outbound.append(count["count_sum"])
+
+            # make sure inbound and outbound lengths remain the same in case
+            # we catch a window where there is an outbound without an inbound, etc
+            inbound_count = len(inbound)
+            outbound_count = len(outbound)
+            if inbound_count != outbound_count:  # pragma: no cover
+                if inbound_count < outbound_count:
+                    inbound.append(0)
+                elif outbound_count < inbound_count:
+                    outbound.append(0)
+
+        return JsonResponse(
+            dict(
+                series=[{"name": "Incoming", "data": inbound}, {"name": "Outgoing", "data": outbound}],
+                categories=categories,
+            ),
             safe=False,
         )
 
@@ -117,7 +199,7 @@ class RangeDetails(OrgPermsMixin, SmartTemplateView):
     """
 
     permission = "orgs.org_dashboard"
-    template_name = "dashboard/range_details.haml"
+    template_name = "dashboard/range_details.html"
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)

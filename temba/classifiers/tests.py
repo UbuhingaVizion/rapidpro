@@ -5,6 +5,7 @@ from django.utils import timezone
 
 from temba.request_logs.models import HTTPLog
 from temba.tests import CRUDLTestMixin, MockResponse, TembaTest
+from temba.utils.views import TEMBA_MENU_SELECTION
 
 from .models import Classifier
 from .types.luis import LuisType
@@ -105,45 +106,27 @@ class ClassifierCRUDLTest(TembaTest, CRUDLTestMixin):
         self.flow = self.create_flow("Color Flow")
         self.flow.classifier_dependencies.add(self.c1)
 
-    def test_menu(self):
-        menu_url = reverse("classifiers.classifier_menu")
-        response = self.assertListFetch(menu_url, allow_viewers=True, allow_editors=True, allow_agents=False)
-        menu = response.json()["results"]
-        self.assertEqual(3, len(menu))
-
     def test_views(self):
-        # fetch org home page
+        # fetch workspace menu
         self.login(self.admin)
-        response = self.client.get(reverse("orgs.org_home"))
-
-        # should contain classifier
-        self.assertContains(response, "Booker")
-        self.assertContains(response, "Feelings")
-        self.assertNotContains(response, "Old Booker")
-        self.assertNotContains(response, "Org 2 Booker")
-
-        connect_url = reverse("classifiers.classifier_connect")
-        response = self.client.get(reverse("orgs.org_home"))
-        self.assertContains(response, connect_url)
+        self.assertContentMenu(
+            reverse("orgs.org_workspace"),
+            self.admin,
+            ["New Channel", "New Classifier", "-", "Export", "Import"],
+        )
 
         read_url = reverse("classifiers.classifier_read", args=[self.c1.uuid])
-        self.assertContains(response, read_url)
 
         # read page
         response = self.client.get(read_url)
+        self.assertEqual(f"/settings/classifiers/{self.c1.uuid}", response.headers[TEMBA_MENU_SELECTION])
 
         # contains intents
         self.assertContains(response, "book_flight")
         self.assertNotContains(response, "book_hotel")
         self.assertContains(response, "book_car")
 
-        # a link to logs
-        log_url = reverse("request_logs.httplog_classifier", args=[self.c1.uuid])
-        self.assertContains(response, log_url)
-
-        # and buttons for delete and sync
-        self.assertContains(response, reverse("classifiers.classifier_sync", args=[self.c1.id]))
-        self.assertContains(response, reverse("classifiers.classifier_delete", args=[self.c1.uuid]))
+        self.assertContentMenu(read_url, self.admin, ["Log", "Sync", "Delete"])
 
         self.c1.intents.all().delete()
 
@@ -171,6 +154,8 @@ class ClassifierCRUDLTest(TembaTest, CRUDLTestMixin):
         self.assertNotContains(response, "book_hotel")
         self.assertContains(response, "book_car")
 
+        self.assertContentMenu(read_url, self.admin, ["Log", "Sync", "Delete"])
+
     def test_delete(self):
         delete_url = reverse("classifiers.classifier_delete", args=[self.c2.uuid])
 
@@ -179,7 +164,7 @@ class ClassifierCRUDLTest(TembaTest, CRUDLTestMixin):
         self.assertContains(response, "You are about to delete")
 
         response = self.assertDeleteSubmit(delete_url, object_deactivated=self.c2, success_status=200)
-        self.assertEqual("/org/home/", response["Temba-Success"])
+        self.assertEqual("/org/workspace/", response["Temba-Success"])
 
         # should see warning if global is being used
         delete_url = reverse("classifiers.classifier_delete", args=[self.c1.uuid])
@@ -191,7 +176,7 @@ class ClassifierCRUDLTest(TembaTest, CRUDLTestMixin):
         self.assertContains(response, "Color Flow")
 
         response = self.assertDeleteSubmit(delete_url, object_deactivated=self.c1, success_status=200)
-        self.assertEqual("/org/home/", response["Temba-Success"])
+        self.assertEqual("/org/workspace/", response["Temba-Success"])
 
         self.flow.refresh_from_db()
         self.assertTrue(self.flow.has_issues)

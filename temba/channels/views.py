@@ -1,29 +1,24 @@
-import base64
-import hashlib
-import hmac
 import logging
-import time
 from collections import defaultdict
-from datetime import datetime, timedelta
+from datetime import timedelta
+from typing import Any
 
 import nexmo
 import phonenumbers
-import pytz
 import requests
 import twilio.base.exceptions
 from django import forms
 from django.conf import settings
 from django.contrib import messages
 from django.core.exceptions import ValidationError
-from django.db.models import Count, Sum
-from django.http import Http404, HttpResponse, HttpResponseRedirect, JsonResponse
+from django.db.models import Sum
+from django.http import HttpResponse, HttpResponseRedirect, JsonResponse
 from django.shortcuts import get_object_or_404
+from django.template import Context, Engine, TemplateDoesNotExist
 from django.urls import reverse
 from django.utils import timezone
-from django.utils.encoding import force_bytes, force_str
 from django.utils.functional import cached_property
 from django.utils.translation import gettext_lazy as _
-from django.views.decorators.csrf import csrf_exempt
 from smartmin.views import (
     SmartCRUDL,
     SmartFormView,
@@ -36,25 +31,17 @@ from smartmin.views import (
 from twilio.base.exceptions import TwilioRestException
 
 from temba.contacts.models import URN
-from temba.msgs.models import Msg, SystemLabel
-from temba.msgs.views import InboxView
-from temba.orgs.models import Org
-from temba.orgs.views import AnonMixin, DependencyDeleteModal, MenuMixin, ModalMixin, OrgObjPermsMixin, OrgPermsMixin
-from temba.utils import analytics, countries, json
+from temba.ivr.models import Call
+from temba.msgs.models import Msg
+from temba.notifications.views import NotificationTargetMixin
+from temba.orgs.views import DependencyDeleteModal, ModalMixin, OrgObjPermsMixin, OrgPermsMixin
+from temba.utils import countries
 from temba.utils.fields import SelectWidget
+from temba.utils.json import EpochEncoder
 from temba.utils.models import patch_queryset_count
-from temba.utils.views import ComponentFormMixin, SpaMixin
+from temba.utils.views import ComponentFormMixin, ContentMenuMixin, SpaMixin
 
-from .models import (
-    Alert,
-    Channel,
-    ChannelConnection,
-    ChannelCount,
-    ChannelEvent,
-    ChannelLog,
-    SyncEvent,
-    UnsupportedAndroidChannelError,
-)
+from .models import Channel, ChannelCount, ChannelLog
 
 logger = logging.getLogger(__name__)
 
@@ -65,279 +52,22 @@ def get_channel_read_url(channel):
     return reverse("channels.channel_read", args=[channel.uuid])
 
 
-def channel_status_processor(request):
-    status = dict()
-    user = request.user
-    org = request.org
-
-    if user.is_superuser or user.is_anonymous:
-        return status
-
-    allowed = False
-    if org:
-        allowed = user.has_org_perm(org, "channels.channel_claim")
-
-    if allowed:
-        # only care about channels that are older than an hour
-        cutoff = timezone.now() - timedelta(hours=1)
-        send_channel = org.get_send_channel()
-        call_channel = org.get_call_channel()
-
-        status["send_channel"] = send_channel
-        status["call_channel"] = call_channel
-        status["has_outgoing_channel"] = send_channel or call_channel
-
-        channels = org.channels.filter(is_active=True)
-        for channel in channels:
-            if channel.created_on > cutoff:
-                continue
-
-            if not channel.is_new():
-                # delayed out going messages
-                if channel.get_delayed_outgoing_messages().exists():
-                    status["unsent_msgs"] = True
-
-                # see if it hasn't synced in a while
-                if not channel.get_recent_syncs().exists():
-                    status["delayed_syncevents"] = True
-
-                # don't have to keep looking if they've both failed
-                if "delayed_syncevents" in status and "unsent_msgs" in status:
-                    break
-
-    return status
-
-
-def get_commands(channel, commands, sync_event=None):
+class ChannelTypeMixin(SpaMixin):
     """
-    Generates sync commands for all queued messages on the given channel
+    Mixin for views owned by a specific channel type
     """
-    msgs = Msg.objects.filter(
-        status__in=(Msg.STATUS_PENDING, Msg.STATUS_QUEUED, Msg.STATUS_WIRED),
-        channel=channel,
-        direction=Msg.DIRECTION_OUT,
-    )
 
-    if sync_event:
-        pending_msgs = sync_event.get_pending_messages()
-        retry_msgs = sync_event.get_retry_messages()
-        msgs = msgs.exclude(id__in=pending_msgs).exclude(id__in=retry_msgs)
-
-    commands += Msg.get_sync_commands(msgs=msgs)
-
-    # TODO: add in other commands for the channel
-    # We need a queueable model similar to messages for sending arbitrary commands to the client
-
-    return commands
-
-
-@csrf_exempt
-def sync(request, channel_id):
-    start = time.time()
-
-    if request.method != "POST":
-        return HttpResponse(status=500, content="POST Required")
-
-    commands = []
-    channel = Channel.objects.filter(id=channel_id, is_active=True).first()
-    if not channel:
-        return JsonResponse(dict(cmds=[dict(cmd="rel", relayer_id=channel_id)]))
-
-    request_time = request.GET.get("ts", "")
-    request_signature = force_bytes(request.GET.get("signature", ""))
-
-    if not channel.secret:
-        return JsonResponse({"error_id": 4, "error": "Can't sync unclaimed channel", "cmds": []}, status=401)
-
-    # check that the request isn't too old (15 mins)
-    now = time.time()
-    if abs(now - int(request_time)) > 60 * 15:
-        return JsonResponse({"error_id": 3, "error": "Old Request", "cmds": []}, status=401)
-
-    # sign the request
-    signature = hmac.new(
-        key=force_bytes(str(channel.secret + request_time)), msg=force_bytes(request.body), digestmod=hashlib.sha256
-    ).digest()
-
-    # base64 and url sanitize
-    signature = base64.urlsafe_b64encode(signature).strip()
-
-    if request_signature != signature:
-        return JsonResponse(
-            {"error_id": 1, "error": f"Invalid signature: '{request_signature}'", "cmds": []},
-            status=401,
-        )
-
-    # update our last seen on our channel if we haven't seen this channel in a bit
-    if not channel.last_seen or timezone.now() - channel.last_seen > timedelta(minutes=5):
-        channel.last_seen = timezone.now()
-        channel.save(update_fields=["last_seen"])
-
-    sync_event = None
-
-    # Take the update from the client
-    cmds = []
-    if request.body:
-        body_parsed = json.loads(request.body)
-
-        # all valid requests have to begin with a FCM command
-        if "cmds" not in body_parsed or len(body_parsed["cmds"]) < 1 or body_parsed["cmds"][0]["cmd"] != "fcm":
-            return JsonResponse({"error_id": 4, "error": "Missing FCM command", "cmds": []}, status=401)
-
-        cmds = body_parsed["cmds"]
-
-    if not channel.org and channel.uuid == cmds[0].get("uuid"):
-        # Unclaimed channel with same UUID resend the registration commmands
-        cmd = dict(
-            cmd="reg", relayer_claim_code=channel.claim_code, relayer_secret=channel.secret, relayer_id=channel.id
-        )
-        return JsonResponse(dict(cmds=[cmd]))
-    elif not channel.org:
-        return JsonResponse({"error_id": 4, "error": "Can't sync unclaimed channel", "cmds": []}, status=401)
-
-    unique_calls = set()
-
-    for cmd in cmds:
-        handled = False
-        extra = None
-
-        if "cmd" in cmd:
-            keyword = cmd["cmd"]
-
-            # catchall for commands that deal with a single message
-            if "msg_id" in cmd:
-                # make sure the negative ids are converted to long
-                msg_id = cmd["msg_id"]
-                if msg_id < 0:
-                    msg_id = 4294967296 + msg_id
-
-                msg = Msg.objects.filter(id=msg_id, org=channel.org).first()
-                if msg:
-                    if msg.direction == Msg.DIRECTION_OUT:
-                        handled = msg.update(cmd)
-                    else:
-                        handled = True
-
-            # creating a new message
-            elif keyword == "mo_sms":
-                date = datetime.fromtimestamp(int(cmd["ts"]) // 1000).replace(tzinfo=pytz.utc)
-
-                # it is possible to receive spam SMS messages from no number on some carriers
-                tel = cmd["phone"] if cmd["phone"] else "empty"
-                try:
-                    urn = URN.normalize(URN.from_tel(tel), channel.country.code)
-
-                    if "msg" in cmd:
-                        msg = Msg.create_relayer_incoming(channel.org, channel, urn, cmd["msg"], date)
-                        extra = dict(msg_id=msg.id)
-                except ValueError:
-                    pass
-
-                handled = True
-
-            # phone event
-            elif keyword == "call":
-                call_tuple = (cmd["ts"], cmd["type"], cmd["phone"])
-                date = datetime.fromtimestamp(int(cmd["ts"]) // 1000).replace(tzinfo=pytz.utc)
-
-                duration = 0
-                if cmd["type"] != "miss":
-                    duration = cmd["dur"]
-
-                # Android sometimes will pass us a call from an 'unknown number', which is null
-                # ignore these events on our side as they have no purpose and break a lot of our
-                # assumptions
-                if cmd["phone"] and call_tuple not in unique_calls:
-                    urn = URN.from_tel(cmd["phone"])
-                    try:
-                        ChannelEvent.create_relayer_event(
-                            channel, urn, cmd["type"], date, extra={"duration": duration}
-                        )
-                    except ValueError:
-                        # in some cases Android passes us invalid URNs, in those cases just ignore them
-                        pass
-
-                    unique_calls.add(call_tuple)
-                handled = True
-
-            elif keyword == "fcm":
-                # update our fcm and uuid
-
-                config = channel.config
-                config.update({Channel.CONFIG_FCM_ID: cmd["fcm_id"]})
-                channel.config = config
-                channel.uuid = cmd.get("uuid", None)
-                channel.save(update_fields=["uuid", "config"])
-
-                # no acking the fcm
-                handled = False
-
-            elif keyword == "reset":
-                # release this channel
-                channel.release(channel.modified_by, trigger_sync=False)
-                channel.save()
-
-                # ack that things got handled
-                handled = True
-
-            elif keyword == "status":
-                sync_event = SyncEvent.create(channel, cmd, cmds)
-                Alert.check_power_alert(sync_event)
-
-                # tell the channel to update its org if this channel got moved
-                if channel.org and "org_id" in cmd and channel.org.pk != cmd["org_id"]:
-                    commands.append(dict(cmd="claim", org_id=channel.org.pk))
-
-                # we don't ack status messages since they are always included
-                handled = False
-
-        # is this something we can ack?
-        if "p_id" in cmd and handled:
-            ack = dict(p_id=cmd["p_id"], cmd="ack")
-            if extra:
-                ack["extra"] = extra
-
-            commands.append(ack)
-
-    outgoing_cmds = get_commands(channel, commands, sync_event)
-    result = dict(cmds=outgoing_cmds)
-
-    if sync_event:
-        sync_event.outgoing_command_count = len([_ for _ in outgoing_cmds if _["cmd"] != "ack"])
-        sync_event.save()
-
-    # keep track of how long a sync takes
-    analytics.gauge("temba.relayer_sync", time.time() - start)
-
-    return JsonResponse(result)
-
-
-@csrf_exempt
-def register(request):
-    """
-    Endpoint for Android devices registering with this server
-    """
-    if request.method != "POST":
-        return HttpResponse(status=500, content=_("POST Required"))
-
-    client_payload = json.loads(force_str(request.body))
-    cmds = client_payload["cmds"]
-
-    try:
-        # look up a channel with that id
-        channel = Channel.get_or_create_android(cmds[0], cmds[1])
-        cmd = dict(
-            cmd="reg", relayer_claim_code=channel.claim_code, relayer_secret=channel.secret, relayer_id=channel.id
-        )
-    except UnsupportedAndroidChannelError:
-        cmd = dict(cmd="reg", relayer_claim_code="*********", relayer_secret="0" * 64, relayer_id=-1)
-
-    return JsonResponse(dict(cmds=[cmd]))
-
-
-class ClaimViewMixin(SpaMixin, OrgPermsMixin, ComponentFormMixin):
-    permission = "channels.channel_claim"
     channel_type = None
+
+    def __init__(self, channel_type):
+        self.channel_type = channel_type
+
+        super().__init__()
+
+
+class ClaimViewMixin(ChannelTypeMixin, OrgPermsMixin, ComponentFormMixin):
+    permission = "channels.channel_claim"
+    menu_path = "/settings/workspace"
 
     class Form(forms.Form):
         def __init__(self, **kwargs):
@@ -346,7 +76,7 @@ class ClaimViewMixin(SpaMixin, OrgPermsMixin, ComponentFormMixin):
             super().__init__(**kwargs)
 
         def clean(self):
-            count, limit = Channel.get_org_limit_progress(self.request.user.get_org())
+            count, limit = Channel.get_org_limit_progress(self.request.org)
             if limit is not None and count >= limit:
                 raise forms.ValidationError(
                     _(
@@ -355,11 +85,22 @@ class ClaimViewMixin(SpaMixin, OrgPermsMixin, ComponentFormMixin):
                     ),
                     params={"limit": limit},
                 )
-            return super().clean()
 
-    def __init__(self, channel_type):
-        self.channel_type = channel_type
-        super().__init__()
+            if self.channel_type.unique_addresses:
+                assert self.cleaned_data.get("address"), "channel type should specify an address in Form.clean method"
+
+                # don't add the same channel address twice
+                existing = Channel.objects.filter(
+                    is_active=True,
+                    address=self.cleaned_data["address"],
+                    schemes__overlap=list(self.channel_type.schemes),
+                ).first()
+                if existing:
+                    if existing.org == self.request.org:
+                        raise forms.ValidationError(_("This channel is already connected in this workspace."))
+                    raise forms.ValidationError(_("This channel is already connected in another workspace."))
+
+            return super().clean()
 
     def get_template_names(self):
         return (
@@ -378,7 +119,7 @@ class ClaimViewMixin(SpaMixin, OrgPermsMixin, ComponentFormMixin):
         return kwargs
 
     def get_success_url(self):
-        if self.channel_type.show_config_page:
+        if self.channel_type.config_ui:
             return reverse("channels.channel_configuration", args=[self.object.uuid])
         else:
             return reverse("channels.channel_read", args=[self.object.uuid])
@@ -474,7 +215,7 @@ class AuthenticatedExternalClaimView(ClaimViewMixin, SmartFormView):
         return context
 
     def form_valid(self, form):
-        org = self.request.user.get_org()
+        org = self.request.org
 
         data = form.cleaned_data
         extra_config = self.get_channel_config(org, data)
@@ -504,7 +245,7 @@ class BaseClaimNumberMixin(ClaimViewMixin):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        org = self.request.user.get_org()
+        org = self.request.org
 
         try:
             context["account_numbers"] = self.get_existing_numbers(org)
@@ -588,9 +329,8 @@ class BaseClaimNumberMixin(ClaimViewMixin):
         pass
 
     def form_valid(self, form, *args, **kwargs):
-
         # must have an org
-        org = self.request.user.get_org()
+        org = self.request.org
         if not org:  # pragma: needs cover
             form._errors["upgrade"] = True
             form._errors["phone_number"] = form.error_class(
@@ -619,30 +359,6 @@ class BaseClaimNumberMixin(ClaimViewMixin):
                     ]
                 )
                 return self.form_invalid(form)
-
-        # don't add the same number twice to the same account
-        existing = org.channels.filter(
-            is_active=True, address=data["phone_number"], schemes__overlap=list(self.channel_type.schemes)
-        ).first()
-        if existing:  # pragma: needs cover
-            form._errors["phone_number"] = form.error_class(
-                [_(f"That number is already connected ({data['phone_number']})")]
-            )
-            return self.form_invalid(form)
-
-        existing = Channel.objects.filter(
-            is_active=True, address=data["phone_number"], schemes__overlap=list(self.channel_type.schemes)
-        ).first()
-        if existing:  # pragma: needs cover
-            form._errors["phone_number"] = form.error_class(
-                [
-                    _(
-                        "That number is already connected to another account - %(org)s (%(user)s)"
-                        % dict(org=existing.org, user=existing.created_by.username)
-                    )
-                ]
-            )
-            return self.form_invalid(form)
 
         error_message = None
 
@@ -692,21 +408,18 @@ class UpdateChannelForm(forms.ModelForm):
     )
 
     def __init__(self, *args, **kwargs):
-        self.object = kwargs["object"]
-        del kwargs["object"]
-
         super().__init__(*args, **kwargs)
 
         self.config_fields = []
 
-        if URN.TEL_SCHEME in self.object.schemes:
+        if URN.TEL_SCHEME in self.instance.schemes:
             self.add_config_field(
                 Channel.CONFIG_ALLOW_INTERNATIONAL,
                 forms.BooleanField(required=False, help_text=_("Allow sending to and calling international numbers.")),
                 default=False,
             )
 
-        if Channel.ROLE_CALL in self.object.role:
+        if Channel.ROLE_CALL in self.instance.role:
             self.add_config_field(
                 Channel.CONFIG_MACHINE_DETECTION,
                 forms.BooleanField(
@@ -721,9 +434,20 @@ class UpdateChannelForm(forms.ModelForm):
         self.fields[config_key] = field
         self.config_fields.append(config_key)
 
+    def get_config_values(self):
+        return {k: v for k, v in self.cleaned_data.items() if k in self.config_fields}
+
+    def clean(self) -> dict[str, Any]:
+        cleaned_data = super().clean()
+        updated_config = self.instance.config | self.get_config_values()
+
+        if not Channel.get_type_from_code(self.instance.channel_type).check_credentials(updated_config):
+            raise ValidationError(_("Credentials don't appear to be valid."))
+        return cleaned_data
+
     class Meta:
         model = Channel
-        fields = ("name", "alert_email")
+        fields = ("name", "log_policy")
         readonly = ()
         labels = {}
         helps = {}
@@ -738,310 +462,78 @@ class ChannelCRUDL(SmartCRUDL):
     model = Channel
     actions = (
         "list",
+        "chart",
         "claim",
         "claim_all",
-        "menu",
         "update",
         "read",
         "delete",
         "configuration",
-        "bulk_sender_options",
-        "create_bulk_sender",
-        "create_caller",
         "facebook_whitelist",
     )
-    permissions = True
 
-    class Menu(MenuMixin, OrgPermsMixin, SmartTemplateView):  # pragma: no cover
-        def derive_menu(self):
-            org = self.request.user.get_org()
-
-            menu = []
-            if self.has_org_perm("channels.channel_read"):
-                from temba.channels.views import get_channel_read_url
-
-                channels = Channel.objects.filter(org=org, is_active=True, parent=None).order_by("-role")
-                for channel in channels:
-                    icon = channel.type.icon.replace("icon-", "")
-                    icon = icon.replace("power-cord", "box")
-
-                    menu.append(
-                        self.create_menu_item(
-                            menu_id=channel.uuid,
-                            name=channel.name,
-                            href=get_channel_read_url(channel),
-                            icon=icon,
-                        )
-                    )
-
-            menu.append(self.create_menu_item(menu_id="claim", name=_("Add Channel"), href="channels.channel_claim"))
-
-            return menu
-
-    class Read(SpaMixin, OrgObjPermsMixin, SmartReadView):
+    class Read(SpaMixin, OrgObjPermsMixin, ContentMenuMixin, NotificationTargetMixin, SmartReadView):
         slug_url_kwarg = "uuid"
         exclude = ("id", "is_active", "created_by", "modified_by", "modified_on")
+
+        def derive_menu_path(self):
+            return f"/settings/channels/{self.get_object().uuid}"
 
         def get_queryset(self):
             return Channel.objects.filter(is_active=True)
 
-        def get_gear_links(self):
-            links = []
+        def get_notification_scope(self) -> tuple:
+            return "incident:started", str(self.object.id)
 
-            extra_links = self.object.type.extra_links
-            if extra_links:
-                for extra in extra_links:
-                    links.append(dict(title=extra["name"], href=reverse(extra["link"], args=[self.object.uuid])))
+        def build_content_menu(self, menu):
+            obj = self.get_object()
 
-            if self.object.parent:
-                links.append(
-                    dict(
-                        title=_("Android Channel"),
-                        style="button-primary",
-                        href=reverse("channels.channel_read", args=[self.object.parent.uuid]),
-                    )
-                )
+            for item in obj.type.menu_items:
+                menu.add_link(item["label"], reverse(item["view_name"], args=[obj.uuid]))
 
-            if self.object.type.show_config_page:
-                links.append(
-                    dict(title=_("Settings"), href=reverse("channels.channel_configuration", args=[self.object.uuid]))
-                )
+            if obj.type.config_ui:
+                menu.add_link(_("Configuration"), reverse("channels.channel_configuration", args=[obj.uuid]))
 
-            if not self.object.is_android():
-                sender = self.object.get_sender()
-                caller = self.object.get_caller()
-
-                if sender:
-                    links.append(
-                        dict(title=_("Channel Log"), href=reverse("channels.channellog_list", args=[sender.uuid]))
-                    )
-                elif Channel.ROLE_RECEIVE in self.object.role:
-                    links.append(
-                        dict(title=_("Channel Log"), href=reverse("channels.channellog_list", args=[self.object.uuid]))
-                    )
-
-                if caller and caller != sender:
-                    links.append(
-                        dict(
-                            title=_("Call Log"),
-                            href=f"{reverse('channels.channellog_list', args=[caller.uuid])}?sessions=1",
-                        )
-                    )
+            menu.add_link(_("Logs"), reverse("channels.channellog_list", args=[obj.uuid]))
 
             if self.has_org_perm("channels.channel_update"):
-                links.append(
-                    dict(
-                        id="update-channel",
-                        title=_("Edit"),
-                        href=reverse("channels.channel_update", args=[self.object.id]),
-                        modax=_("Edit Channel"),
-                    )
+                menu.add_modax(
+                    _("Edit"),
+                    "update-channel",
+                    reverse("channels.channel_update", args=[obj.id]),
+                    title=_("Edit Channel"),
                 )
-
-                if self.object.is_android() or (self.object.parent and self.object.parent.is_android()):
-                    sender = self.object.get_sender()
-                    if sender and sender.is_delegate_sender():
-                        links.append(
-                            dict(
-                                id="disable-sender",
-                                title=_("Disable Bulk Sending"),
-                                modax=_("Disable Bulk Sending"),
-                                href=reverse("channels.channel_delete", args=[sender.uuid]),
-                            )
-                        )
-                    elif self.object.is_android():
-                        links.append(
-                            dict(
-                                title=_("Enable Bulk Sending"),
-                                href="%s?channel=%d"
-                                % (reverse("channels.channel_bulk_sender_options"), self.object.id),
-                            )
-                        )
-
-                    caller = self.object.get_caller()
-                    if caller and caller.is_delegate_caller():
-                        links.append(
-                            dict(
-                                id="disable-voice",
-                                title=_("Disable Voice Calling"),
-                                modax=_("Disable Voice Calling"),
-                                href=reverse("channels.channel_delete", args=[caller.uuid]),
-                            )
-                        )
-                    elif self.object.org.is_connected_to_twilio():
-                        links.append(
-                            dict(
-                                id="enable-voice",
-                                title=_("Enable Voice Calling"),
-                                js_class="posterize",
-                                href=f"{reverse('channels.channel_create_caller')}?channel={self.object.id}",
-                            )
-                        )
-
             if self.has_org_perm("channels.channel_delete"):
-                links.append(
-                    dict(
-                        id="delete-channel",
-                        title=_("Delete Channel"),
-                        modax=_("Delete Channel"),
-                        href=reverse("channels.channel_delete", args=[self.object.uuid]),
-                    )
-                )
+                menu.add_modax(_("Delete"), "delete-channel", reverse("channels.channel_delete", args=[obj.uuid]))
 
-            if self.object.channel_type == "FB" and self.has_org_perm("channels.channel_facebook_whitelist"):
-                links.append(
-                    dict(
-                        id="fb-whitelist",
-                        title=_("Whitelist Domain"),
-                        modax=_("Whitelist Domain"),
-                        href=reverse("channels.channel_facebook_whitelist", args=[self.object.uuid]),
-                    )
+            if obj.channel_type == "FB" and self.has_org_perm("channels.channel_facebook_whitelist"):
+                menu.add_modax(
+                    _("Whitelist Domain"),
+                    "fb-whitelist",
+                    reverse("channels.channel_facebook_whitelist", args=[obj.uuid]),
                 )
-
-            user = self.get_user()
-            if user.is_superuser or user.is_staff:
-                links.append(
-                    dict(
-                        title=_("Service"),
-                        posterize=True,
-                        href=f"{reverse('orgs.org_service')}?organization={self.object.org_id}&redirect_url={reverse('channels.channel_read', args=[self.object.uuid])}",
-                    )
-                )
-
-            return links
 
         def get_context_data(self, **kwargs):
             context = super().get_context_data(**kwargs)
             channel = self.object
 
-            sync_events = SyncEvent.objects.filter(channel=channel.id).order_by("-created_on")
-            context["last_sync"] = sync_events.first()
-
-            if "x-formax" in self.request.headers:  # no additional data needed if request is only for formax
-                return context
-
-            if not channel.is_active:  # pragma: needs cover
-                raise Http404("No active channel with that id")
-
+            context["last_sync"] = channel.last_sync
             context["msg_count"] = channel.get_msg_count()
             context["ivr_count"] = channel.get_ivr_count()
 
-            # power source stats data
-            source_stats = [
-                [event["power_source"], event["count"]]
-                for event in sync_events.order_by("power_source")
-                .values("power_source")
-                .annotate(count=Count("power_source"))
-            ]
-            context["source_stats"] = source_stats
+            if channel.is_android():
+                context["latest_sync_events"] = channel.sync_events.order_by("-created_on")[:10]
 
-            # network connected to stats
-            network_stats = [
-                [event["network_type"], event["count"]]
-                for event in sync_events.order_by("network_type")
-                .values("network_type")
-                .annotate(count=Count("network_type"))
-            ]
-            context["network_stats"] = network_stats
-
-            total_network = 0
-            network_share = []
-
-            for net in network_stats:
-                total_network += net[1]
-
-            total_share = 0
-            for net_stat in network_stats:
-                share = int(round((100 * net_stat[1]) / float(total_network)))
-                net_name = net_stat[0]
-
-                if net_name != "NONE" and net_name != "UNKNOWN" and share > 0:
-                    network_share.append([net_name, share])
-                    total_share += share
-
-            other_share = 100 - total_share
-            if other_share > 0:
-                network_share.append(["OTHER", other_share])
-
-            context["network_share"] = sorted(network_share, key=lambda _: _[1], reverse=True)
-
-            # add to context the latest sync events to display in a table
-            context["latest_sync_events"] = sync_events[:10]
-
-            # delayed sync event
             if not channel.is_new():
-                if sync_events:
-                    latest_sync_event = sync_events[0]
-                    interval = timezone.now() - latest_sync_event.created_on
-                    seconds = interval.seconds + interval.days * 24 * 3600
-                    if seconds > 3600:
-                        context["delayed_sync_event"] = latest_sync_event
+                # if the last sync event was more than an hour ago, we have a problem
+                if channel.last_sync and (timezone.now() - channel.last_sync.created_on).total_seconds() > 3600:
+                    context["delayed_sync_event"] = True
 
                 # unsent messages
                 unsent_msgs = channel.get_delayed_outgoing_messages()
 
                 if unsent_msgs:
                     context["unsent_msgs_count"] = unsent_msgs.count()
-
-            end_date = (timezone.now() + timedelta(days=1)).date()
-            start_date = end_date - timedelta(days=30)
-
-            context["start_date"] = start_date
-            context["end_date"] = end_date
-
-            message_stats = []
-
-            # build up the channels we care about for outgoing messages
-            channels = [channel]
-            for sender in Channel.objects.filter(parent=channel):
-                channels.append(sender)
-
-            msg_in = []
-            msg_out = []
-            ivr_in = []
-            ivr_out = []
-
-            message_stats.append(dict(name=_("Incoming Text"), data=msg_in))
-            message_stats.append(dict(name=_("Outgoing Text"), data=msg_out))
-
-            if context["ivr_count"]:
-                message_stats.append(dict(name=_("Incoming IVR"), data=ivr_in))
-                message_stats.append(dict(name=_("Outgoing IVR"), data=ivr_out))
-
-            # get all our counts for that period
-            daily_counts = list(
-                ChannelCount.objects.filter(channel__in=channels, day__gte=start_date)
-                .filter(
-                    count_type__in=[
-                        ChannelCount.INCOMING_MSG_TYPE,
-                        ChannelCount.OUTGOING_MSG_TYPE,
-                        ChannelCount.INCOMING_IVR_TYPE,
-                        ChannelCount.OUTGOING_IVR_TYPE,
-                    ]
-                )
-                .values("day", "count_type")
-                .order_by("day", "count_type")
-                .annotate(count_sum=Sum("count"))
-            )
-
-            current = start_date
-            while current <= end_date:
-                # for every date we care about
-                while daily_counts and daily_counts[0]["day"] == current:
-                    daily_count = daily_counts.pop(0)
-                    if daily_count["count_type"] == ChannelCount.INCOMING_MSG_TYPE:
-                        msg_in.append(dict(date=daily_count["day"], count=daily_count["count_sum"]))
-                    elif daily_count["count_type"] == ChannelCount.OUTGOING_MSG_TYPE:
-                        msg_out.append(dict(date=daily_count["day"], count=daily_count["count_sum"]))
-                    elif daily_count["count_type"] == ChannelCount.INCOMING_IVR_TYPE:
-                        ivr_in.append(dict(date=daily_count["day"], count=daily_count["count_sum"]))
-                    elif daily_count["count_type"] == ChannelCount.OUTGOING_IVR_TYPE:
-                        ivr_out.append(dict(date=daily_count["day"], count=daily_count["count_sum"]))
-
-                current = current + timedelta(days=1)
-
-            context["message_stats"] = message_stats
-            context["has_messages"] = len(msg_in) or len(msg_out) or len(ivr_in) or len(ivr_out)
 
             message_stats_table = []
 
@@ -1065,7 +557,6 @@ class ChannelCRUDL(SmartCRUDL):
                 .annotate(count_sum=Sum("count"))
             )
 
-            # calculate our summary table for last 12 months
             now = timezone.now()
             while month_start < now:
                 msg_in = 0
@@ -1102,6 +593,72 @@ class ChannelCRUDL(SmartCRUDL):
 
             return context
 
+    class Chart(OrgObjPermsMixin, SmartReadView):
+        permission = "channels.channel_read"
+        slug_url_kwarg = "uuid"
+
+        def get_queryset(self):
+            return Channel.objects.filter(is_active=True)
+
+        def render_to_response(self, context, **response_kwargs):
+            channel = self.object
+
+            end_date = (timezone.now() + timedelta(days=1)).date()
+            start_date = end_date - timedelta(days=30)
+
+            message_stats = []
+            msg_in = []
+            msg_out = []
+            ivr_in = []
+            ivr_out = []
+
+            message_stats.append(dict(name=_("Incoming Text"), data=msg_in, yAxis=1))
+            message_stats.append(dict(name=_("Outgoing Text"), data=msg_out, yAxis=1))
+
+            ivr_count = channel.get_ivr_count()
+            if ivr_count:
+                message_stats.append(dict(name=_("Incoming IVR"), data=ivr_in, yAxis=1))
+                message_stats.append(dict(name=_("Outgoing IVR"), data=ivr_out, yAxis=1))
+
+            # get all our counts for that period
+            daily_counts = list(
+                channel.counts.filter(
+                    day__gte=start_date,
+                    count_type__in=[
+                        ChannelCount.INCOMING_MSG_TYPE,
+                        ChannelCount.OUTGOING_MSG_TYPE,
+                        ChannelCount.INCOMING_IVR_TYPE,
+                        ChannelCount.OUTGOING_IVR_TYPE,
+                    ],
+                )
+                .values("day", "count_type")
+                .order_by("day", "count_type")
+                .annotate(count_sum=Sum("count"))
+            )
+
+            current = start_date
+            while current <= end_date:
+                # for every date we care about
+                while daily_counts and daily_counts[0]["day"] == current:
+                    daily_count = daily_counts.pop(0)
+
+                    point = [daily_count["day"], daily_count["count_sum"]]
+                    if daily_count["count_type"] == ChannelCount.INCOMING_MSG_TYPE:
+                        msg_in.append(point)
+                    elif daily_count["count_type"] == ChannelCount.OUTGOING_MSG_TYPE:
+                        msg_out.append(point)
+                    elif daily_count["count_type"] == ChannelCount.INCOMING_IVR_TYPE:
+                        ivr_in.append(point)
+                    elif daily_count["count_type"] == ChannelCount.OUTGOING_IVR_TYPE:
+                        ivr_out.append(point)
+                current = current + timedelta(days=1)
+
+            return JsonResponse(
+                {"start_date": start_date, "end_date": end_date, "series": message_stats},
+                json_dumps_params={"indent": 2},
+                encoder=EpochEncoder,
+            )
+
     class FacebookWhitelist(ComponentFormMixin, ModalMixin, OrgObjPermsMixin, SmartModelActionView):
         class DomainForm(forms.Form):
             whitelisted_domain = forms.URLField(
@@ -1115,7 +672,7 @@ class ChannelCRUDL(SmartCRUDL):
         form_class = DomainForm
 
         def get_queryset(self):
-            return Channel.objects.filter(is_active=True, org=self.request.user.get_org(), channel_type="FB")
+            return self.request.org.channels.filter(is_active=True, channel_type="FB")
 
         def execute_action(self):
             # curl -X POST -H "Content-Type: application/json" -d '{
@@ -1138,31 +695,14 @@ class ChannelCRUDL(SmartCRUDL):
                 default_error = dict(message=_("An error occured contacting the Facebook API"))
                 raise ValidationError(response_json.get("error", default_error)["message"])
 
-    class Delete(DependencyDeleteModal):
+    class Delete(DependencyDeleteModal, SpaMixin):
         cancel_url = "uuid@channels.channel_read"
+        success_url = "@orgs.org_workspace"
         success_message = _("Your channel has been removed.")
         success_message_twilio = _(
             "We have disconnected your Twilio number. "
             "If you do not need this number you can delete it from the Twilio website."
         )
-
-        def get_success_url(self):
-            # if we're deleting a child channel, redirect to parent afterwards
-            channel = self.get_object()
-            if channel.parent:
-                return reverse("channels.channel_read", args=[channel.parent.uuid])
-
-            return reverse("orgs.org_home")
-
-        def derive_submit_button_name(self):
-            channel = self.get_object()
-
-            if channel.is_delegate_caller():
-                return _("Disable Voice Calling")
-            if channel.is_delegate_sender():
-                return _("Disable Bulk Sending")
-
-            return super().derive_submit_button_name()
 
         def post(self, request, *args, **kwargs):
             channel = self.get_object()
@@ -1182,7 +722,7 @@ class ChannelCRUDL(SmartCRUDL):
                 return response
 
             # override success message for Twilio channels
-            if channel.channel_type == "T" and not channel.is_delegate_sender():
+            if channel.channel_type == "T":
                 messages.info(request, self.success_message_twilio)
             else:
                 messages.info(request, self.success_message)
@@ -1197,6 +737,9 @@ class ChannelCRUDL(SmartCRUDL):
 
         def derive_title(self):
             return _("%s Channel") % self.object.get_channel_type_display()
+
+        def derive_exclude(self):
+            return [] if self.request.user.is_staff else ["log_policy"]
 
         def derive_readonly(self):
             return self.form.Meta.readonly if hasattr(self, "form") else []
@@ -1217,49 +760,30 @@ class ChannelCRUDL(SmartCRUDL):
         def get_form_class(self):
             return Channel.get_type_from_code(self.object.channel_type).get_update_form()
 
-        def get_form_kwargs(self):
-            kwargs = super().get_form_kwargs()
-            kwargs["object"] = self.object
-            return kwargs
-
         def derive_initial(self):
             initial = super().derive_initial()
             initial["role"] = [char for char in self.object.role]
             return initial
 
         def pre_save(self, obj):
-            for field in self.form.config_fields:
-                obj.config[field] = self.form.cleaned_data[field]
-            return obj
-
-        def post_save(self, obj):
-            # update our delegate channels with the new number
-            if not obj.parent and URN.TEL_SCHEME in obj.schemes:
-                e164_phone_number = None
-                try:
-                    parsed = phonenumbers.parse(obj.address, None)
-                    e164_phone_number = phonenumbers.format_number(parsed, phonenumbers.PhoneNumberFormat.E164).strip(
-                        "+"
-                    )
-                except Exception:  # pragma: needs cover
-                    pass
-                for channel in obj.get_delegate_channels():  # pragma: needs cover
-                    channel.address = obj.address
-                    channel.bod = e164_phone_number
-                    channel.save(update_fields=("address", "bod"))
+            obj.config.update(self.form.get_config_values())
             return obj
 
     class Claim(SpaMixin, OrgPermsMixin, SmartTemplateView):
+        title = _("New Channel")
+        menu_path = "/settings/workspace"
+
         def channel_types_groups(self):
+            org = self.request.org
             user = self.request.user
 
             # fetch channel types, sorted by category and name
             types_by_category = defaultdict(list)
             recommended_channels = []
             for ch_type in list(Channel.get_types()):
-                region_aware_visible, region_ignore_visible = ch_type.is_available_to(user)
+                region_aware_visible, region_ignore_visible = ch_type.is_available_to(org, user)
 
-                if ch_type.is_recommended_to(user):
+                if ch_type.is_recommended_to(org, user):
                     recommended_channels.append(ch_type)
                 elif region_ignore_visible and region_aware_visible and ch_type.category:
                     types_by_category[ch_type.category.name].append(ch_type)
@@ -1268,11 +792,9 @@ class ChannelCRUDL(SmartCRUDL):
 
         def get_context_data(self, **kwargs):
             context = super().get_context_data(**kwargs)
-            user = self.request.user
+            org = self.request.org
 
-            org = user.get_org()
             context["org_timezone"] = str(org.timezone)
-            context["brand"] = org.get_branding()
 
             channel_count, org_limit = Channel.get_org_limit_progress(org)
             context["total_count"] = channel_count
@@ -1288,127 +810,59 @@ class ChannelCRUDL(SmartCRUDL):
 
     class ClaimAll(Claim):
         def channel_types_groups(self):
+            org = self.request.org
             user = self.request.user
 
             types_by_category = defaultdict(list)
             recommended_channels = []
             for ch_type in list(Channel.get_types()):
-                region_aware_visible, region_ignore_visible = ch_type.is_available_to(user)
-                if ch_type.is_recommended_to(user):
+                _, region_ignore_visible = ch_type.is_available_to(org, user)
+                if ch_type.is_recommended_to(org, user):
                     recommended_channels.append(ch_type)
                 elif region_ignore_visible and ch_type.category:
                     types_by_category[ch_type.category.name].append(ch_type)
 
             return recommended_channels, types_by_category, False
 
-    class BulkSenderOptions(OrgPermsMixin, SmartTemplateView):
-        pass
-
-    class CreateBulkSender(OrgPermsMixin, SmartFormView):
-        class BulkSenderForm(forms.Form):
-            connection = forms.CharField(max_length=2, widget=forms.HiddenInput, required=False)
-            channel = forms.IntegerField(widget=forms.HiddenInput, required=False)
-
-            def __init__(self, org, *args, **kwargs):
-                self.org = org
-
-                super().__init__(*args, **kwargs)
-
-            def clean_connection(self):
-                connection = self.cleaned_data["connection"]
-                if connection == "NX" and not self.org.is_connected_to_vonage():
-                    raise forms.ValidationError(_("A connection to a Vonage account is required"))
-                return connection
-
-            def clean_channel(self):
-                channel = self.cleaned_data["channel"]
-                channel = self.org.channels.filter(pk=channel).first()
-                if not channel:
-                    raise forms.ValidationError("Can't add sender for that number")
-                return channel
-
-        form_class = BulkSenderForm
-        fields = ("connection", "channel")
-
-        def get_form_kwargs(self, *args, **kwargs):
-            form_kwargs = super().get_form_kwargs(*args, **kwargs)
-            form_kwargs["org"] = self.request.org
-            return form_kwargs
-
-        def form_valid(self, form):
-            channel = form.cleaned_data["channel"]
-            Channel.add_vonage_bulk_sender(self.request.org, self.request.user, channel)
-            return super().form_valid(form)
-
-        def form_invalid(self, form):
-            return super().form_invalid(form)
-
-        def get_success_url(self):
-            channel = self.form.cleaned_data["channel"]
-            return reverse("channels.channel_read", args=[channel.uuid])
-
-    class CreateCaller(OrgPermsMixin, SmartFormView):
-        class CallerForm(forms.Form):
-            connection = forms.CharField(max_length=2, widget=forms.HiddenInput, required=False)
-            channel = forms.IntegerField(widget=forms.HiddenInput, required=False)
-
-            def __init__(self, *args, **kwargs):
-                self.org = kwargs["org"]
-                del kwargs["org"]
-                super().__init__(*args, **kwargs)
-
-            def clean_connection(self):
-                connection = self.cleaned_data["connection"]
-                if connection == "T" and not self.org.is_connected_to_twilio():
-                    raise forms.ValidationError(_("A connection to a Twilio account is required"))
-                return connection
-
-            def clean_channel(self):
-                channel = self.cleaned_data["channel"]
-                channel = self.org.channels.filter(pk=channel).first()
-                if not channel:
-                    raise forms.ValidationError(_("A caller cannot be added for that number"))
-                if channel.get_caller():
-                    raise forms.ValidationError(_("A caller has already been added for that number"))
-                return channel
-
-        form_class = CallerForm
-        fields = ("connection", "channel")
-
-        def get_form_kwargs(self, *args, **kwargs):
-            form_kwargs = super().get_form_kwargs(*args, **kwargs)
-            form_kwargs["org"] = Org.objects.get(pk=self.request.user.get_org().pk)
-            return form_kwargs
-
-        def form_valid(self, form):
-            user = self.request.user
-            org = user.get_org()
-
-            channel = form.cleaned_data["channel"]
-            Channel.add_call_channel(org, user, channel)
-            return super().form_valid(form)
-
-        def form_invalid(self, form):
-            return super().form_invalid(form)
-
-        def get_success_url(self):
-            channel = self.form.cleaned_data["channel"]
-            return reverse("channels.channel_read", args=[channel.uuid])
-
     class Configuration(SpaMixin, OrgObjPermsMixin, SmartReadView):
         slug_url_kwarg = "uuid"
 
+        def pre_process(self, *args, **kwargs):
+            channel = self.get_object()
+            if not channel.type.config_ui:
+                return HttpResponseRedirect(reverse("channels.channel_read", args=[channel.uuid]))
+
+            return super().pre_process(*args, **kwargs)
+
+        def derive_menu_path(self):
+            return f"/settings/channels/{self.object.uuid}"
+
+        def get_blurb_from_template(self, channel) -> str:
+            try:
+                return (
+                    Engine.get_default()
+                    .get_template(f"channels/types/{channel.type.slug}/config.html")
+                    .render(context=Context(channel.type.get_config_ui_context(channel)))
+                )
+            except TemplateDoesNotExist:
+                return None
+
         def get_context_data(self, **kwargs):
             context = super().get_context_data(**kwargs)
-            context["domain"] = self.object.callback_domain
-            context["ip_addresses"] = settings.IP_ADDRESSES
 
-            # populate with our channel type
-            channel_type = Channel.get_type_from_code(self.object.channel_type)
-            context["configuration_template"] = channel_type.get_configuration_template(self.object)
-            context["configuration_blurb"] = channel_type.get_configuration_blurb(self.object)
-            context["configuration_urls"] = channel_type.get_configuration_urls(self.object)
-            context["show_public_addresses"] = channel_type.show_public_addresses
+            endpoints = []
+            for endpoint in self.object.type.config_ui.get_used_endpoints(self.object):
+                endpoints.append(dict(url=endpoint.get_url(self.object), label=endpoint.label, help=endpoint.help))
+
+            if self.object.type.config_ui.show_secret:
+                secret = self.object.secret or self.object.config.get("secret")
+            else:
+                secret = None
+
+            context["blurb"] = self.get_blurb_from_template(self.object) or self.object.type.config_ui.blurb
+            context["endpoints"] = endpoints
+            context["secret"] = secret
+            context["ip_addresses"] = settings.IP_ADDRESSES if self.object.type.config_ui.show_public_ips else None
 
             return context
 
@@ -1421,23 +875,11 @@ class ChannelCRUDL(SmartCRUDL):
             return reverse("channels.channel_read", args=[obj.uuid])
 
         def get_queryset(self, **kwargs):
-            queryset = super().get_queryset(**kwargs)
-
-            # org users see channels for their org, superuser sees all
-            if not self.request.user.is_superuser:
-                org = self.request.user.get_org()
-                queryset = queryset.filter(org=org)
-
-            return queryset.filter(is_active=True)
+            return super().get_queryset(**kwargs).filter(org=self.request.org, is_active=True)
 
         def pre_process(self, *args, **kwargs):
-            # superuser sees things as they are
-            if self.request.user.is_superuser:
-                return super().pre_process(*args, **kwargs)
-
             # everybody else goes to a different page depending how many channels there are
-            org = self.request.user.get_org()
-            channels = list(Channel.objects.filter(org=org, is_active=True))
+            channels = list(self.request.org.channels.filter(is_active=True).only("uuid"))
 
             if len(channels) == 0:
                 return HttpResponseRedirect(reverse("channels.channel_claim"))
@@ -1453,77 +895,22 @@ class ChannelCRUDL(SmartCRUDL):
             return obj.address if obj.address else _("Unknown")
 
 
-class ChannelEventCRUDL(SmartCRUDL):
-    model = ChannelEvent
-    actions = ("calls",)
-
-    class Calls(InboxView):
-        title = _("Calls")
-        fields = ("contact", "event_type", "channel", "occurred_on")
-        default_order = ("-occurred_on",)
-        search_fields = ("contact__urns__path__icontains", "contact__name__icontains")
-        system_label = SystemLabel.TYPE_CALLS
-        select_related = ("contact", "channel")
-
-        @classmethod
-        def derive_url_pattern(cls, path, action):
-            return r"^calls/$"
-
-        def get_context_data(self, *args, **kwargs):
-            context = super().get_context_data(*args, **kwargs)
-            context["actions"] = []
-            return context
-
-
 class ChannelLogCRUDL(SmartCRUDL):
     model = ChannelLog
-    actions = ("list", "read", "connection")
+    path = "logs"  # urls like /channels/logs/
+    actions = ("list", "read", "msg", "call")
 
     class List(SpaMixin, OrgPermsMixin, SmartListView):
         fields = ("channel", "description", "created_on")
         link_fields = ("channel", "description", "created_on")
         paginate_by = 50
 
-        FOLDER_MESSAGES = "messages"
-        FOLDER_CALLS = "calls"
-        FOLDER_OTHERS = "others"
-        FOLDER_ERRORS = "errors"
-
-        @property
-        def folder(self) -> str:
-            if self.request.GET.get("calls") or self.request.GET.get("connections"):
-                return self.FOLDER_CALLS
-            elif self.request.GET.get("others"):
-                return self.FOLDER_OTHERS
-            elif self.request.GET.get("errors"):
-                return self.FOLDER_ERRORS
-            else:
-                return self.FOLDER_MESSAGES
-
-        def get_gear_links(self):
-            list_url = reverse("channels.channellog_list", args=[self.channel.uuid])
-            links = []
-
-            if self.folder != self.FOLDER_MESSAGES:
-                links.append(dict(title=_("Messages"), href=list_url))
-            if self.folder != self.FOLDER_CALLS and self.channel.supports_ivr():
-                links.append(dict(title=_("Calls"), href=f"{list_url}?calls=1"))
-            if self.folder != self.FOLDER_OTHERS:
-                links.append(dict(title=_("Other Interactions"), href=f"{list_url}?others=1"))
-            if self.folder != self.FOLDER_ERRORS:
-                links.append(dict(title=_("Errors"), href=f"{list_url}?errors=1"))
-
-            return links
+        def derive_menu_path(self):
+            return f"/settings/channels/{self.channel.uuid}"
 
         @classmethod
         def derive_url_pattern(cls, path, action):
             return rf"^{path}/(?P<channel_uuid>[^/]+)/$"
-
-        def get_template_names(self):
-            if self.folder == self.FOLDER_CALLS:
-                return ("channels/channellog_calls.haml",)
-            else:
-                return super().get_template_names()
 
         @cached_property
         def channel(self):
@@ -1533,67 +920,91 @@ class ChannelLogCRUDL(SmartCRUDL):
             return self.channel.org
 
         def derive_queryset(self, **kwargs):
-            if self.folder == self.FOLDER_CALLS:
-                logs = self.channel.logs.exclude(connection=None).values_list("connection_id", flat=True)
-                events = ChannelConnection.objects.filter(id__in=logs).order_by("-created_on")
+            qs = self.channel.logs.order_by("-created_on")
 
-            elif self.folder == self.FOLDER_OTHERS:
-                events = self.channel.logs.filter(connection=None, msg=None).order_by("-created_on")
+            patch_queryset_count(qs, self.channel.get_log_count)
 
-            else:
-                if self.folder == self.FOLDER_ERRORS:
-                    logs = self.channel.logs.filter(connection=None, is_error=True)
-                else:
-                    logs = self.channel.logs.filter(connection=None).exclude(msg=None)
-
-                events = logs.order_by("-created_on").select_related(
-                    "msg", "msg__contact", "msg__contact_urn", "channel", "channel__org"
-                )
-
-                if self.request.GET.get("errors"):
-                    patch_queryset_count(events, self.channel.get_error_log_count)
-                else:
-                    patch_queryset_count(events, self.channel.get_non_ivr_log_count)
-
-            return events
+            return qs
 
         def get_context_data(self, **kwargs):
             context = super().get_context_data(**kwargs)
             context["channel"] = self.channel
             return context
 
-    class Connection(AnonMixin, SmartReadView):
-        model = ChannelConnection
-
-        def get_gear_links(self):
-            return [
-                dict(
-                    title=_("More Calls"),
-                    style="button-light",
-                    href=reverse("channels.channellog_list", args=[self.get_object().channel.uuid]) + "?connections=1",
-                )
-            ]
-
     class Read(SpaMixin, OrgObjPermsMixin, SmartReadView):
-        fields = ("description", "created_on")
-        slug_url_kwarg = "pk"
+        """
+        Detail view for a single channel log (that is in the database rather than S3).
+        """
 
-        @classmethod
-        def derive_url_pattern(cls, path, action):
-            return rf"^{path}/{action}/(?P<channel_uuid>[0-9a-f-]+)/(?P<pk>\d+)/$"
-
-        def get_gear_links(self):
-            return [
-                dict(
-                    title=_("Channel Log"),
-                    style="button-light",
-                    href=reverse("channels.channellog_list", args=[self.get_object().channel.uuid]),
-                )
-            ]
+        def derive_menu_path(self):
+            return f"/settings/channels/{self.object.channel.uuid}"
 
         def get_object_org(self):
             return self.get_object().channel.org
 
+        def get_context_data(self, **kwargs):
+            context = super().get_context_data(**kwargs)
+
+            anonymize = self.request.org.is_anon and not (self.request.GET.get("break") and self.request.user.is_staff)
+
+            context["log"] = self.object.get_display(anonymize=anonymize, urn=None)
+            return context
+
+    class BaseOwned(SpaMixin, OrgObjPermsMixin, SmartListView):
+        permission = "channels.channellog_read"
+
+        @classmethod
+        def derive_url_pattern(cls, path, action):
+            return rf"^(?P<channel_uuid>[0-9a-f-]+)/{path}/{action}/(?P<owner_id>\d+)/$"
+
+        def derive_menu_path(self):
+            return f"/settings/channels/{self.owner.channel.uuid}"
+
+        def get_object_org(self):
+            return self.owner.org
+
         def derive_queryset(self, **kwargs):
-            queryset = super().derive_queryset(**kwargs)
-            return queryset.order_by("-created_on")
+            return ChannelLog.objects.none()  # not used as logs may be in S3
+
+        def get_context_data(self, **kwargs):
+            context = super().get_context_data(**kwargs)
+
+            anonymize = self.request.org.is_anon and not (self.request.GET.get("break") and self.request.user.is_staff)
+            logs = []
+            for log in self.owner.get_logs():
+                logs.append(
+                    ChannelLog.display(
+                        log, anonymize=anonymize, channel=self.owner.channel, urn=self.owner.contact_urn
+                    )
+                )
+
+            context["logs"] = logs
+            return context
+
+    class Msg(BaseOwned):
+        """
+        All channel logs for a message
+        """
+
+        @cached_property
+        def owner(self):
+            return get_object_or_404(Msg, id=self.kwargs["owner_id"])
+
+        def get_context_data(self, **kwargs):
+            context = super().get_context_data(**kwargs)
+            context["msg"] = self.owner
+            return context
+
+    class Call(BaseOwned):
+        """
+        All channel logs for a call
+        """
+
+        @cached_property
+        def owner(self):
+            return get_object_or_404(Call, id=self.kwargs["owner_id"])
+
+        def get_context_data(self, **kwargs):
+            context = super().get_context_data(**kwargs)
+            context["call"] = self.owner
+            return context

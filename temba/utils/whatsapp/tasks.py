@@ -1,6 +1,7 @@
 import logging
 import re
 import time
+from collections import defaultdict
 
 import requests
 from celery import shared_task
@@ -12,14 +13,20 @@ from temba.contacts.models import URN, Contact, ContactURN
 from temba.request_logs.models import HTTPLog
 from temba.templates.models import TemplateTranslation
 from temba.utils import chunk_list
+from temba.utils.languages import alpha2_to_alpha3
 
 from . import update_api_version
-from .constants import LANGUAGE_MAPPING, STATUS_MAPPING
 
 logger = logging.getLogger(__name__)
 
+STATUS_MAPPING = dict(
+    PENDING=TemplateTranslation.STATUS_PENDING,
+    APPROVED=TemplateTranslation.STATUS_APPROVED,
+    REJECTED=TemplateTranslation.STATUS_REJECTED,
+)
 
-@shared_task(track_started=True, name="refresh_whatsapp_contacts")
+
+@shared_task
 def refresh_whatsapp_contacts(channel_id):
     r = get_redis_connection()
     key = "refresh_whatsapp_contacts_%d" % channel_id
@@ -60,11 +67,8 @@ def refresh_whatsapp_contacts(channel_id):
 
             start = timezone.now()
             resp = requests.post(url, json=payload, headers=headers)
-            elapsed = (timezone.now() - start).total_seconds() * 1000
 
-            HTTPLog.create_from_response(
-                HTTPLog.WHATSAPP_CONTACTS_REFRESHED, url, resp, channel=channel, request_time=elapsed
-            )
+            HTTPLog.from_response(HTTPLog.WHATSAPP_CONTACTS_REFRESHED, resp, start, timezone.now(), channel=channel)
 
             # if we had an error, break out
             if resp.status_code != 200:
@@ -91,8 +95,31 @@ def _calculate_variable_count(content):
     return count
 
 
-def update_local_templates(channel, templates_data):
+def _extract_template_params(components):
+    params = defaultdict(list)
 
+    for component in components:
+        component_type = component["type"].lower()
+
+        if component_type == "header":
+            if component.get("format", "text").upper() == "TEXT":
+                for match in VARIABLE_RE.findall(component.get("text", "")):
+                    params[component_type].append({"type": "text"})
+            else:
+                params[component_type].append({"type": component["format"].lower()})
+        if component_type == "body":
+            for match in VARIABLE_RE.findall(component.get("text", "")):
+                params[component_type].append({"type": "text"})
+        if component_type == "buttons":
+            buttons = component["buttons"]
+            for idx, button in enumerate(buttons):
+                if button["type"].lower() == "url":
+                    for match in VARIABLE_RE.findall(button.get("url", "")):
+                        params[f"button.{idx}"].append({"type": "text"})
+    return params
+
+
+def update_local_templates(channel, templates_data):
     channel_namespace = channel.config.get("fb_namespace", "")
     # run through all our templates making sure they are present in our DB
     seen = []
@@ -106,10 +133,13 @@ def update_local_templates(channel, templates_data):
 
         status = STATUS_MAPPING[template_status]
 
+        components = template["components"]
+
+        params = _extract_template_params(components)
         content_parts = []
 
         all_supported = True
-        for component in template["components"]:
+        for component in components:
             if component["type"] not in ["HEADER", "BODY", "FOOTER"]:
                 continue
 
@@ -121,30 +151,25 @@ def update_local_templates(channel, templates_data):
 
             content_parts.append(component["text"])
 
-        if not content_parts or not all_supported:
-            continue
-
         content = "\n\n".join(content_parts)
         variable_count = _calculate_variable_count(content)
 
-        language, country = LANGUAGE_MAPPING.get(template["language"], (None, None))
-
-        # its a (non fatal) error if we see a language we don't know
-        if language is None:
-            status = TemplateTranslation.STATUS_UNSUPPORTED_LANGUAGE
-            language = template["language"]
+        if not content_parts or not all_supported:
+            status = TemplateTranslation.STATUS_UNSUPPORTED_COMPONENTS
 
         missing_external_id = f"{template['language']}/{template['name']}"
         translation = TemplateTranslation.get_or_create(
-            channel=channel,
-            name=template["name"],
-            language=language,
-            country=country,
+            channel,
+            template["name"],
+            locale=parse_whatsapp_language(template["language"]),
             content=content,
             variable_count=variable_count,
             status=status,
-            external_id=template.get("id", missing_external_id),
+            external_locale=template["language"],
+            external_id=template.get("id", missing_external_id[:64]),
             namespace=template.get("namespace", channel_namespace),
+            components=components,
+            params=params,
         )
 
         seen.append(translation)
@@ -153,7 +178,19 @@ def update_local_templates(channel, templates_data):
     TemplateTranslation.trim(channel, seen)
 
 
-@shared_task(track_started=True, name="refresh_whatsapp_templates")
+def parse_whatsapp_language(lang) -> str:
+    """
+    Converts a WhatsApp language code which can be alpha2 ('en') or alpha2_country ('en_US') or alpha3 ('fil')
+    to our locale format ('eng' or 'eng-US').
+    """
+    language, country = lang.split("_") if "_" in lang else [lang, None]
+    if len(language) == 2:
+        language = alpha2_to_alpha3(language)
+
+    return f"{language}-{country}" if country else language
+
+
+@shared_task
 def refresh_whatsapp_templates():
     """
     Runs across all WhatsApp templates that have connected FB accounts and syncs the templates which are active.
@@ -165,7 +202,7 @@ def refresh_whatsapp_templates():
 
     with r.lock("refresh_whatsapp_templates", 1800):
         # for every whatsapp channel
-        for channel in Channel.objects.filter(is_active=True, channel_type__in=["WA", "D3", "WAC"]):
+        for channel in Channel.objects.filter(is_active=True, channel_type__in=["WA", "D3", "D3C", "WAC"]):
             # update the version only when have it set in the config
             if channel.config.get("version"):
                 # fetches API version and saves on channel.config

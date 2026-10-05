@@ -5,15 +5,35 @@ from django.http import HttpResponseServerError
 from rest_framework import exceptions, status
 from rest_framework.authentication import BasicAuthentication, SessionAuthentication, TokenAuthentication
 from rest_framework.exceptions import APIException
+from rest_framework.pagination import CursorPagination
 from rest_framework.renderers import BrowsableAPIRenderer
 from rest_framework.throttling import ScopedRateThrottle
+
+from temba.utils import str_to_bool
 
 from .models import APIToken
 
 logger = logging.getLogger(__name__)
 
 
-class APITokenAuthentication(TokenAuthentication):
+class RequestAttributesMixin:
+    """
+    DRF authentication happens in the view level so request.org won't have been set by OrgMiddleware and needs to be
+    passed back here.
+    """
+
+    def authenticate(self, request):
+        result = super().authenticate(request)
+
+        # result is either tuple of (user,token) or None
+        org = result[1].org if result else None
+
+        # set org on the original wrapped request object
+        request._request.org = org
+        return result
+
+
+class APITokenAuthentication(RequestAttributesMixin, TokenAuthentication):
     """
     Simple token based authentication.
 
@@ -32,16 +52,12 @@ class APITokenAuthentication(TokenAuthentication):
             raise exceptions.AuthenticationFailed("Invalid token")
 
         if token.user.is_active:
-            # set the org on this user
-            token.user.set_org(token.org)
-            token.user.using_token = True
-
             return token.user, token
 
         raise exceptions.AuthenticationFailed("Invalid token")
 
 
-class APIBasicAuthentication(BasicAuthentication):
+class APIBasicAuthentication(RequestAttributesMixin, BasicAuthentication):
     """
     Basic authentication.
 
@@ -60,10 +76,6 @@ class APIBasicAuthentication(BasicAuthentication):
             raise exceptions.AuthenticationFailed("Invalid token or email")
 
         if token.user.is_active:
-            # set the org on this user
-            token.user.set_org(token.org)
-            token.user.using_token = True
-
             return token.user, token
 
         raise exceptions.AuthenticationFailed("Invalid token or email")
@@ -74,45 +86,40 @@ class APISessionAuthentication(SessionAuthentication):
     Session authentication as used by the editor, explorer
     """
 
-    def authenticate(self, request):
-        result = super().authenticate(request)
-        if result:
-            result[0].using_token = False
-        return result
-
 
 class OrgUserRateThrottle(ScopedRateThrottle):
     """
     Throttle class which rate limits at an org level or user level for staff users
     """
 
-    def get_org_rate(self, request):
+    def get_org_rate(self, request, by_token: bool):
         default_rates = settings.REST_FRAMEWORK.get("DEFAULT_THROTTLE_RATES", {})
         org_rates = {}
-        if request.user.is_authenticated and request.user.using_token:
-            org = request.user.get_org()
-            org_rates = org.api_rates
+        if request.user.is_authenticated and by_token:
+            org_rates = request.org.api_rates
         return {**default_rates, **org_rates}.get(self.scope)
 
     def allow_request(self, request, view):
+        by_token = isinstance(request.auth, APIToken)
+
         # any request not using a token (e.g. editor, explorer) isn't subject to throttling
-        if request.user.is_authenticated and not request.user.using_token:
+        if request.user.is_authenticated and not by_token:
             return True
 
         self.scope = getattr(view, self.scope_attr, None)
 
         # Determine the allowed request rate considering the org config
-        self.rate = self.get_org_rate(request)
+        self.rate = self.get_org_rate(request, by_token)
         self.num_requests, self.duration = self.parse_rate(self.rate)
 
         return super(ScopedRateThrottle, self).allow_request(request, view)
 
     def get_cache_key(self, request, view):
+        org = request.org
         user = request.user
         ident = None
 
         if user.is_authenticated:
-            org = user.get_org()
             ident = f"{org.id if org else 0}"  # scope to org
 
             # but staff users get their own scope within the org
@@ -128,6 +135,8 @@ class DocumentationRenderer(BrowsableAPIRenderer):
     instead have a separate API explorer page. This render then just displays the endpoint docs.
     """
 
+    template = "api/docs.html"
+
     def get_context(self, data, accepted_media_type, renderer_context):
         view = renderer_context["view"]
         request = renderer_context["request"]
@@ -141,20 +150,33 @@ class DocumentationRenderer(BrowsableAPIRenderer):
             "response": response,
             "description": view.get_view_description(html=True),
             "name": self.get_name(view),
-            "breadcrumblist": self.get_breadcrumbs(request),
         }
 
-    def render(self, data, accepted_media_type=None, renderer_context=None):
-        """
-        Usually one customizes the browsable view by overriding the rest_framework/api.html template but we have two
-        versions of the API to support with two different templates.
-        """
-        if not renderer_context:  # pragma: needs cover
-            raise ValueError("Can't render without context")
 
-        self.template = "api/v2/api_root.html"
+class CreatedOnCursorPagination(CursorPagination):
+    ordering = ("-created_on", "-id")
+    offset_cutoff = 100000
 
-        return super().render(data, accepted_media_type, renderer_context)
+
+class ModifiedOnCursorPagination(CursorPagination):
+    ordering = ("-modified_on", "-id")
+    offset_cutoff = 100000
+
+    def get_ordering(self, request, queryset, view):
+        if str_to_bool(request.GET.get("reverse")):
+            return "modified_on", "id"
+        else:
+            return self.ordering
+
+
+class SentOnCursorPagination(CursorPagination):
+    ordering = ("-sent_on", "-id")
+    offset_cutoff = 100000
+
+
+class DateJoinedCursorPagination(CursorPagination):
+    ordering = ("-date_joined", "-id")
+    offset_cutoff = 100000
 
 
 class InvalidQueryError(APIException):

@@ -1,20 +1,18 @@
 import logging
 
+import requests
 from django.db import models
 from django.db.models import Index, Q
 from django.utils import timezone
-from django.utils.functional import cached_property
 from django.utils.translation import gettext_lazy as _
-from requests_toolbelt.utils import dump
 
 from temba.airtime.models import AirtimeTransfer
 from temba.channels.models import Channel
 from temba.classifiers.models import Classifier
-from temba.contacts.models import ContactURN
 from temba.flows.models import Flow
 from temba.orgs.models import Org
-from temba.tickets.models import Ticketer
 from temba.utils import redact
+from temba.utils.http import HttpLog
 
 logger = logging.getLogger(__name__)
 
@@ -24,17 +22,13 @@ class HTTPLog(models.Model):
     HTTPLog is used to log HTTP requests and responses.
     """
 
+    REDACT_MASK = "*" * 8  # used to mask redacted values
     HEALTHY_TIME_LIMIT = 10_000  # a call that takes longer than 10 seconds is considered unhealthy
-
-    # used for dumping traces
-    REQUEST_DELIM = ">!>!>! "
-    RESPONSE_DELIM = "<!<!<! "
 
     # log type choices
     WEBHOOK_CALLED = "webhook_called"
     INTENTS_SYNCED = "intents_synced"
     CLASSIFIER_CALLED = "classifier_called"
-    TICKETER_CALLED = "ticketer_called"
     AIRTIME_TRANSFERRED = "airtime_transferred"
     WHATSAPP_TEMPLATES_SYNCED = "whatsapp_templates_synced"
     WHATSAPP_TOKENS_SYNCED = "whatsapp_tokens_synced"
@@ -46,7 +40,6 @@ class HTTPLog(models.Model):
         (WEBHOOK_CALLED, "Webhook Called"),
         (INTENTS_SYNCED, _("Intents Synced")),
         (CLASSIFIER_CALLED, _("Classifier Called")),
-        (TICKETER_CALLED, _("Ticketing Service Called")),
         (AIRTIME_TRANSFERRED, _("Airtime Transferred")),
         (WHATSAPP_TEMPLATES_SYNCED, _("WhatsApp Templates Synced")),
         (WHATSAPP_TOKENS_SYNCED, _("WhatsApp Tokens Synced")),
@@ -73,117 +66,78 @@ class HTTPLog(models.Model):
     classifier = models.ForeignKey(
         Classifier, related_name="http_logs", on_delete=models.PROTECT, db_index=False, null=True
     )
-    ticketer = models.ForeignKey(
-        Ticketer, related_name="http_logs", on_delete=models.PROTECT, db_index=False, null=True
-    )
     airtime_transfer = models.ForeignKey(
         AirtimeTransfer, related_name="http_logs", on_delete=models.PROTECT, null=True
     )
     channel = models.ForeignKey(Channel, related_name="http_logs", on_delete=models.PROTECT, null=True)
 
-    @cached_property
-    def method(self):
-        return self.request.split(" ")[0] if self.request else None
-
     @classmethod
-    def create_from_response(
-        cls, log_type, url, response, classifier=None, channel=None, ticketer=None, request_time=None
-    ):
-        org = (classifier or channel or ticketer).org
-
-        is_error = response.status_code >= 400
-        data = dump.dump_response(
-            response,
-            request_prefix=cls.REQUEST_DELIM.encode("utf-8"),
-            response_prefix=cls.RESPONSE_DELIM.encode("utf-8"),
-        ).decode("utf-8")
-
-        # first build our array of request lines, our last item will also contain our response lines
-        request_lines = data.split(cls.REQUEST_DELIM)
-
-        # now split our response lines from the last request line
-        response_lines = request_lines[-1].split(cls.RESPONSE_DELIM)
-
-        # and clean up the last and first item appropriately
-        request_lines[-1] = response_lines[0]
-        response_lines = response_lines[1:]
-
-        request = "".join(request_lines)
-        response = "".join(response_lines)
+    def from_response(cls, log_type, response, created_on, ended_on, classifier=None, channel=None):
+        """
+        Creates a new HTTPLog from an HTTP response
+        """
+        org = (classifier or channel).org
+        http_log = HttpLog.from_response(response, created_on, ended_on)
+        is_error = http_log.status_code >= 400
 
         return cls.objects.create(
             org=org,
             log_type=log_type,
-            url=url,
-            request=request,
-            response=response,
+            url=http_log.url,
+            request=http_log.request,
+            response=http_log.response,
             is_error=is_error,
-            created_on=timezone.now(),
-            request_time=request_time,
+            created_on=created_on,
+            request_time=http_log.elapsed_ms,
             classifier=classifier,
             channel=channel,
-            ticketer=ticketer,
         )
 
     @classmethod
-    def create_from_exception(cls, log_type, url, exception, start, classifier=None, channel=None, ticketer=None):
-        org = (classifier or channel or ticketer).org
+    def from_exception(cls, log_type, exception, created_on, classifier=None, channel=None):
+        """
+        Creates a new HTTPLog from a request exception (typically a timeout)
+        """
+        assert isinstance(exception, requests.RequestException)
 
-        data = bytearray()
-        prefixes = dump.PrefixSettings(cls.REQUEST_DELIM, cls.RESPONSE_DELIM)
-        dump._dump_request_data(exception.request, prefixes, data)
-
-        data = data.decode("utf-8")
-        request_lines = data.split(cls.REQUEST_DELIM)
-        request = "".join(request_lines)
+        org = (classifier or channel).org
+        http_log = HttpLog.from_request(exception.request, created_on, timezone.now())
 
         return cls.objects.create(
             org=org,
             log_type=log_type,
-            url=url,
-            request=request,
+            url=http_log.url,
+            request=http_log.request,
             response="",
             is_error=True,
-            created_on=timezone.now(),
-            request_time=(timezone.now() - start).total_seconds() * 1000,
+            created_on=created_on,
+            request_time=http_log.elapsed_ms,
             channel=channel,
             classifier=classifier,
-            ticketer=ticketer,
         )
 
-    def get_redact_secrets(self) -> tuple:
+    def _get_redact_secrets(self) -> tuple:
         if self.channel:
             return self.channel.type.redact_values
         return ()
 
-    def get_url_display(self):
-        """
-        Gets the URL as it should be displayed to users
-        """
-        return self._get_display_value(self.url, ContactURN.ANON_MASK)
-
-    def get_request_display(self):
-        """
-        Gets the request trace as it should be displayed to users
-        """
-        return self._get_display_value(self.request, ContactURN.ANON_MASK)
-
-    def get_response_display(self):
-        """
-        Gets the response trace as it should be displayed to users
-        """
-        return self._get_display_value(self.response, ContactURN.ANON_MASK)
-
-    def _get_display_value(self, original, mask):
-        redact_secrets = self.get_redact_secrets()
+    def _get_display_value(self, original):
+        redact_secrets = self._get_redact_secrets()
 
         for secret in redact_secrets:
-            original = redact.text(original, secret, mask)
+            original = redact.text(original, secret, self.REDACT_MASK)
         return original
 
-    @property
-    def is_healthy(self):
-        return self.request_time <= self.HEALTHY_TIME_LIMIT
+    def get_display(self) -> dict:
+        return {
+            "url": self._get_display_value(self.url),
+            "status_code": self.status_code,
+            "request": self._get_display_value(self.request),
+            "response": self._get_display_value(self.response or ""),
+            "elapsed_ms": self.request_time,
+            "retries": self.num_retries,
+            "created_on": self.created_on.isoformat(),
+        }
 
     class Meta:
         indexes = (
@@ -191,6 +145,4 @@ class HTTPLog(models.Model):
             Index(fields=("classifier", "-created_on")),
             # for webhook log view
             Index(name="httplog_org_flows_only", fields=("org", "-created_on"), condition=Q(flow__isnull=False)),
-            # for ticketer specific log view
-            Index(fields=("ticketer", "-created_on")),
         )

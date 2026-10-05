@@ -14,6 +14,18 @@ class GroupRef:
 
 
 @dataclass(frozen=True)
+class TopicRef:
+    uuid: str
+    name: str
+
+
+@dataclass(frozen=True)
+class UserRef:
+    email: str
+    name: str
+
+
+@dataclass(frozen=True)
 class Modifier:
     type: str
 
@@ -53,6 +65,14 @@ class Groups(Modifier):
     type: str = field(default="groups", init=False)
     groups: list[GroupRef]
     modification: str
+
+
+@dataclass(frozen=True)
+class Ticket(Modifier):
+    type: str = field(default="ticket", init=False)
+    topic: TopicRef
+    body: str
+    assignee: UserRef | None
 
 
 @dataclass(frozen=True)

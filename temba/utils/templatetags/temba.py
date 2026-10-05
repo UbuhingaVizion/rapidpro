@@ -1,11 +1,8 @@
 import json
 from datetime import timedelta
+from datetime import timezone as tzone
 
 import iso8601
-import pytz
-from django import template
-from django.conf import settings
-from django.template import TemplateSyntaxError
 from django.template.defaultfilters import register
 from django.urls import reverse
 from django.utils import timezone
@@ -20,6 +17,7 @@ from temba.flows.models import Flow
 from temba.triggers.models import Trigger
 from temba.utils import analytics
 from temba.utils.dates import datetime_to_str
+from temba.utils.text import unsnakify
 
 TIME_SINCE_CHUNKS = (
     (60 * 60 * 24 * 365, ngettext_lazy("%d year", "%d years")),
@@ -37,7 +35,7 @@ OBJECT_URLS = {
     Campaign: lambda o: reverse("campaigns.campaign_read", args=[o.uuid]),
     CampaignEvent: lambda o: reverse("campaigns.campaign_read", args=[o.uuid]),
     ContactGroup: lambda o: reverse("contacts.contact_filter", args=[o.uuid]),
-    Trigger: lambda o: reverse("triggers.trigger_type", args=[o.type.slug]),
+    Trigger: lambda o: reverse("triggers.trigger_list"),
 }
 
 
@@ -47,26 +45,26 @@ def object_class_name(obj):
 
 
 @register.filter
-def oxford(forloop, punctuation=""):
+def oxford(forloop, conjunction=_("and")):
     """
-    Filter that looks at the current step in a forloop and adds commas or and
+    Filter for use in a forloop to join items using oxford commas and a conjunction.
     """
     # there are only two items
     if forloop["counter"] == 1 and forloop["revcounter"] == 2:
-        return f" {_('and')} "
+        return f" {conjunction} "
 
     # we are the last in a list of 3 or more
     if forloop["revcounter"] == 2:
-        return f", {_('and')} "
+        return f", {conjunction} "
 
     if not forloop["last"]:
         return ", "
-    return punctuation
+
+    return ""
 
 
 @register.filter
 def icon(o):
-
     if isinstance(o, Campaign):
         return "icon-campaign"
 
@@ -77,6 +75,11 @@ def icon(o):
         return "icon-flow"
 
     return ""
+
+
+@register.filter
+def unsnake(str):
+    return unsnakify(str)
 
 
 @register.filter
@@ -91,20 +94,6 @@ def verbose_name_plural(object):
     return object._meta.verbose_name_plural
 
 
-@register.filter
-def format_seconds(seconds):
-    if not seconds:
-        return None
-
-    if seconds < 60:
-        return f"{seconds} sec"
-    minutes = seconds // 60
-    seconds %= 60
-    if seconds >= 30:
-        minutes += 1
-    return f"{minutes} min"
-
-
 @register.simple_tag()
 def annotated_field(field, label, help_text):
     attrs = field.field.widget.attrs
@@ -112,31 +101,6 @@ def annotated_field(field, label, help_text):
     attrs["help_text"] = help_text
     attrs["errors"] = json.dumps([str(error) for error in field.errors])
     return field.as_widget(attrs=attrs)
-
-
-@register.simple_tag(takes_context=True)
-def ssl_brand_url(context, url_name, args=None):
-    hostname = settings.HOSTNAME
-    if "brand" in context:
-        hostname = context["brand"].get("domain", settings.HOSTNAME)
-
-    path = reverse(url_name, args)
-    if getattr(settings, "SESSION_COOKIE_SECURE", False):  # pragma: needs cover
-        return f"https://{hostname}{path}"
-    else:
-        return path
-
-
-@register.simple_tag(takes_context=True)
-def non_ssl_brand_url(context, url_name, args=None):
-    hostname = settings.HOSTNAME
-    if "brand" in context:
-        hostname = context["brand"].get("domain", settings.HOSTNAME)
-
-    path = reverse(url_name, args)
-    if settings.HOSTNAME != "localhost":  # pragma: needs cover
-        return f"http://{hostname}{path}"
-    return path
 
 
 @register.filter("delta", is_safe=False)
@@ -167,31 +131,9 @@ def delta_filter(delta):
         return ""
 
 
-def lessblock(parser, token):
-    args = token.split_contents()
-    if len(args) != 1:  # pragma: no cover
-        raise TemplateSyntaxError(f"lessblock tag takes no arguments, got: [{','.join(args)}]")
-
-    nodelist = parser.parse(("endlessblock",))
-    parser.delete_first_token()
-    return LessBlockNode(nodelist)
-
-
-class LessBlockNode(template.Node):
-    def __init__(self, nodelist):
-        self.nodelist = nodelist
-
-    def render(self, context):
-        output = self.nodelist.render(context)
-        includes = '@import (reference) "variables.less";\n'
-        includes += f'@import (reference, optional) "../brands/{context["brand"]["slug"]}/less/variables.less";\n'
-        includes += '@import (reference) "mixins.less";\n'
-        style_output = f'<style type="text/less" media="all">\n{includes}\n{output}</style>'
-        return style_output
-
-
-# register our tag
-lessblock = register.tag(lessblock)
+@register.filter
+def js_bool(value):
+    return "true" if value else "false"
 
 
 @register.filter
@@ -210,13 +152,28 @@ def to_json(value):
     return mark_safe(f'JSON.parse("{escaped_output}")')
 
 
+@register.filter
+def duration(date):
+    return mark_safe(f"<temba-date value='{date.isoformat()}' display='duration'></temba-date>")
+
+
+@register.filter
+def datetime(date):
+    return mark_safe(f"<temba-date value='{date.isoformat()}' display='datetime'></temba-date>")
+
+
+@register.filter
+def day(date):
+    return mark_safe(f"<temba-date value='{date.isoformat()}' display='date'></temba-date>")
+
+
 @register.simple_tag(takes_context=True)
 def short_datetime(context, dtime):
     if dtime.tzinfo is None:
-        dtime = dtime.replace(tzinfo=pytz.utc)
+        dtime = dtime.replace(tzinfo=tzone.utc)
 
     org_format = "D"
-    tz = pytz.UTC
+    tz = tzone.utc
     org = context["user_org"]
     if org:
         org_format = org.date_format
@@ -254,9 +211,9 @@ def short_datetime(context, dtime):
 @register.simple_tag(takes_context=True)
 def format_datetime(context, dt, seconds: bool = False):
     if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=pytz.utc)
+        dt = dt.replace(tzinfo=tzone.utc)
 
-    tz = pytz.UTC
+    tz = tzone.utc
     org = context.get("user_org")
     if org:
         tz = org.timezone
@@ -272,6 +229,11 @@ def format_datetime(context, dt, seconds: bool = False):
 @register.filter
 def parse_isodate(value):
     return iso8601.parse_date(value)
+
+
+@register.filter
+def first_word(value):
+    return str(value).split(" ", maxsplit=1)[0]
 
 
 @register.simple_tag(takes_context=True)

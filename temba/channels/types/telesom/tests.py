@@ -8,10 +8,8 @@ from ...models import Channel
 
 
 class TelesomTypeTest(TembaTest):
-    @patch("socket.gethostbyname")
+    @patch("socket.gethostbyname", return_value="123.123.123.123")
     def test_claim(self, mock_socket_hostname):
-        mock_socket_hostname.return_value = "123.123.123.123"
-
         Channel.objects.all().delete()
 
         self.login(self.admin)
@@ -37,7 +35,7 @@ class TelesomTypeTest(TembaTest):
         post_data = response.context["form"].initial
 
         post_data["country"] = "SO"
-        post_data["url"] = "http://test.com/send.php"
+        post_data["url"] = "http://example.com/send.php"
         post_data["username"] = "uname"
         post_data["password"] = "pword"
         post_data["secret"] = "secret"

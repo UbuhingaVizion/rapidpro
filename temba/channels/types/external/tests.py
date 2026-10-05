@@ -12,7 +12,6 @@ class ExternalTypeTest(TembaTest):
     @patch("socket.gethostbyname")
     def test_claim(self, mock_socket_hostname):
         mock_socket_hostname.return_value = "127.0.0.1"
-
         url = reverse("channels.types.external.claim")
 
         self.login(self.admin)
@@ -42,9 +41,9 @@ class ExternalTypeTest(TembaTest):
         self.assertFormError(response.context["form"], "url", "Cannot be a local or private host.")
         self.assertFormError(response.context["form"], "number", "This field is required.")
 
-        # change scheme to Ext and add valid URL
         mock_socket_hostname.return_value = "123.123.123.123"
-        ext_url = "http://test.com/send.php?from={{from}}&text={{text}}&to={{to}}"
+        # change scheme to Ext and add valid URL
+        ext_url = "http://example.com/send.php?from={{from}}&text={{text}}&to={{to}}"
         post_data["url"] = ext_url
         post_data["scheme"] = "ext"
 
@@ -85,13 +84,13 @@ class ExternalTypeTest(TembaTest):
 
         # test substitution in our url
         self.assertEqual(
-            "http://test.com/send.php?from=5080&text=test&to=%2B250788383383",
+            "http://example.com/send.php?from=5080&text=test&to=%2B250788383383",
             channel.replace_variables(ext_url, {"from": "5080", "text": "test", "to": "+250788383383"}),
         )
 
         # test substitution with unicode
         self.assertEqual(
-            "http://test.com/send.php?from=5080&text=Reply+%E2%80%9C1%E2%80%9D+for+good&to=%2B250788383383",
+            "http://example.com/send.php?from=5080&text=Reply+%E2%80%9C1%E2%80%9D+for+good&to=%2B250788383383",
             channel.replace_variables(ext_url, {"from": "5080", "text": "Reply “1” for good", "to": "+250788383383"}),
         )
 
@@ -132,7 +131,7 @@ class ExternalTypeTest(TembaTest):
 
         post_data["scheme"] = "ext"
         post_data["address"] = "123456789"
-        post_data["url"] = "http://test.com/send.php?from={{from}}&text={{text}}&to={{to}}"
+        post_data["url"] = "http://example.com/send.php?from={{from}}&text={{text}}&to={{to}}"
         post_data["method"] = "GET"
         post_data["content_type"] = Channel.CONTENT_TYPE_JSON
         post_data["max_length"] = 180
@@ -141,60 +140,7 @@ class ExternalTypeTest(TembaTest):
         self.client.post(url, post_data)
         channel = Channel.objects.get(schemes=["ext"])
         self.assertEqual("123456789", channel.address)
-        self.assertIsNone(channel.country.code)
-
-    @patch("socket.gethostbyname")
-    def test_claim_bulk_sender(self, mock_socket_hostname):
-        mock_socket_hostname.return_value = "123.123.123.123"
-
-        url = reverse("channels.types.external.claim") + f"?role=S&channel={self.channel.pk}"
-
-        self.login(self.admin)
-
-        response = self.client.get(url)
-        self.assertEqual(
-            set(response.context["form"].fields.keys()),
-            {
-                "url",
-                "method",
-                "encoding",
-                "content_type",
-                "max_length",
-                "send_authorization",
-                "body",
-                "mt_response_check",
-                "loc",
-            },
-        )
-
-        post_data = response.context["form"].initial
-
-        ext_url = "http://test.com/send.php?from={{from}}&text={{text}}&to={{to}}"
-
-        post_data["url"] = ext_url
-        post_data["method"] = "POST"
-        post_data["body"] = "send=true"
-        post_data["content_type"] = Channel.CONTENT_TYPE_JSON
-        post_data["max_length"] = 180
-        post_data["encoding"] = Channel.ENCODING_SMART
-        post_data["mt_response_check"] = "SENT"
-
-        response = self.client.post(url, post_data)
-        channel = Channel.objects.filter(org=self.org).exclude(pk=self.channel.pk).first()
-
-        self.assertEqual(channel.country, "RW")
-        self.assertTrue(channel.uuid)
-        self.assertEqual(self.channel.address, channel.address)
-        self.assertEqual(post_data["url"], channel.config[Channel.CONFIG_SEND_URL])
-        self.assertEqual(post_data["method"], channel.config[ExternalType.CONFIG_SEND_METHOD])
-        self.assertEqual(post_data["content_type"], channel.config[ExternalType.CONFIG_CONTENT_TYPE])
-        self.assertEqual(channel.config[ExternalType.CONFIG_MAX_LENGTH], 180)
-        self.assertEqual(channel.channel_type, "EX")
-        self.assertEqual(Channel.ENCODING_SMART, channel.config[Channel.CONFIG_ENCODING])
-        self.assertEqual("send=true", channel.config[ExternalType.CONFIG_SEND_BODY])
-        self.assertEqual("SENT", channel.config[ExternalType.CONFIG_MT_RESPONSE_CHECK])
-        self.assertEqual(channel.role, "S")
-        self.assertEqual(channel.parent, self.channel)
+        self.assertIsNone(channel.country)
 
     def test_update(self):
         channel = Channel.create(
@@ -219,23 +165,29 @@ class ExternalTypeTest(TembaTest):
         self.login(self.admin)
         response = self.client.get(update_url)
         self.assertEqual(
-            ["name", "alert_email", "role", "allow_international", "loc"],
+            ["name", "role", "allow_international", "loc"],
             list(response.context["form"].fields.keys()),
         )
 
-        post_data = dict(name="Receiver 1234", role=["R"], alert_email="alert@example.com")
+        post_data = dict(name="Receiver 1234", role=["R"])
         response = self.client.post(update_url, post_data)
 
         channel = Channel.objects.filter(pk=channel.pk).first()
         self.assertEqual(channel.role, "R")
         self.assertEqual(channel.name, "Receiver 1234")
-        self.assertEqual(channel.alert_email, "alert@example.com")
 
-        post_data = dict(name="Channel 1234", role=["R", "S"], alert_email="")
+        post_data = dict(name="Channel 1234", role=["R", "S"])
 
         response = self.client.post(update_url, post_data)
 
         channel = Channel.objects.filter(pk=channel.pk).first()
         self.assertEqual(channel.role, "RS")
         self.assertEqual(channel.name, "Channel 1234")
-        self.assertIsNone(channel.alert_email)
+
+        # staff users see extra log policy field
+        self.login(self.customer_support, choose_org=self.org)
+        response = self.client.get(update_url)
+        self.assertEqual(
+            ["name", "role", "log_policy", "allow_international", "loc"],
+            list(response.context["form"].fields.keys()),
+        )

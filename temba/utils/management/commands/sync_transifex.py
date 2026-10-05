@@ -36,7 +36,7 @@ class Command(BaseCommand):
         """
         ignore_paths = ("env/*", ".venv/*", "fabric/*", "media/*", "sitestatic/*", "static/*", "node_modules/*")
         ignore_args = " ".join([f'--ignore="{p}"' for p in ignore_paths])
-        cmd = f"python manage.py makemessages -a -e haml,html,txt,py --no-location --no-wrap {ignore_args}"
+        cmd = f"python manage.py makemessages -a -e html,txt,py --no-location --no-wrap {ignore_args}"
         subprocess.check_output(cmd, shell=True)
 
     def fetch_translation(self, lang: str):

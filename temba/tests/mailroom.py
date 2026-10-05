@@ -10,19 +10,20 @@ from django.conf import settings
 from django.contrib.auth.models import User
 from django.db import connection
 from django.utils import timezone
-from django_redis import get_redis_connection
 
 from temba import mailroom
 from temba.campaigns.models import CampaignEvent, EventFire
+from temba.channels.models import Channel
 from temba.contacts.models import URN, Contact, ContactField, ContactGroup, ContactURN
+from temba.flows.models import FlowRun, FlowSession
 from temba.locations.models import AdminBoundary
 from temba.mailroom.client import ContactSpec, MailroomClient, MailroomException
 from temba.mailroom.modifiers import Modifier
+from temba.msgs.models import Msg
 from temba.orgs.models import Org
 from temba.tests.dates import parse_datetime
 from temba.tickets.models import Ticket, TicketEvent, Topic
 from temba.utils import get_anonymous_user, json
-from temba.utils.cache import incrby_existing
 
 event_units = {
     CampaignEvent.UNIT_MINUTES: "minutes",
@@ -55,7 +56,8 @@ class Mocks:
         self.calls = defaultdict(list)
         self._parse_query = {}
         self._contact_search = {}
-        self._flow_preview_start = []
+        self._flow_start_preview = []
+        self._msg_broadcast_preview = []
         self._errors = []
 
         self.queued_batch_tasks = []
@@ -81,16 +83,17 @@ class Mocks:
 
         self._contact_search[query] = mock
 
-    def flow_preview_start(self, query, total, sample):
+    def flow_start_preview(self, query, total):
         def mock(org):
-            return mailroom.StartPreview(
-                query=query,
-                total=total,
-                sample_ids=[c.id for c in sample],
-                metadata=mock_inspect_query(org, query),
-            )
+            return mailroom.StartPreview(query=query, total=total)
 
-        self._flow_preview_start.append(mock)
+        self._flow_start_preview.append(mock)
+
+    def msg_broadcast_preview(self, query, total):
+        def mock(org):
+            return mailroom.BroadcastPreview(query=query, total=total)
+
+        self._msg_broadcast_preview.append(mock)
 
     def error(self, msg: str, code: str = None, extra: dict = None):
         """
@@ -145,7 +148,7 @@ class TestClient(MailroomClient):
 
         apply_modifiers(org, user, contacts, modifiers)
 
-        return {c.id: {"contact": {}, "events": []} for c in contacts}
+        return {str(c.id): {"contact": {}, "events": []} for c in contacts}
 
     @_client_method
     def contact_resolve(self, org_id: int, channel_id: int, urn: str):
@@ -172,6 +175,45 @@ class TestClient(MailroomClient):
         }
 
     @_client_method
+    def contact_inspect(self, org_id: int, contact_ids: list[int]):
+        org = Org.objects.get(id=org_id)
+        contacts = org.contacts.filter(id__in=contact_ids)
+
+        def inspect(c) -> dict:
+            sendable = []
+            unsendable = []
+            for urn in c.get_urns():
+                channel = urn.channel or org.channels.filter(schemes__contains=[urn.scheme]).first()
+                if channel:
+                    sendable.append(
+                        {
+                            "channel": {"uuid": str(channel.uuid), "name": channel.name},
+                            "scheme": urn.scheme,
+                            "path": urn.path,
+                            "display": urn.display or "",
+                        }
+                    )
+                else:
+                    unsendable.append(
+                        {"channel": None, "scheme": urn.scheme, "path": urn.path, "display": urn.display or ""}
+                    )
+
+            return {"urns": sendable + unsendable}
+
+        return {str(c.id): inspect(c) for c in contacts}
+
+    @_client_method
+    def contact_interrupt(self, org_id: int, user_id: int, contact_id: int):
+        contact = Contact.objects.get(id=contact_id)
+
+        # get the waiting session IDs
+        session_ids = list(contact.sessions.filter(status=FlowSession.STATUS_WAITING).values_list("id", flat=True))
+
+        exit_sessions(session_ids, FlowSession.STATUS_INTERRUPTED)
+
+        return {"sessions": len(session_ids)}
+
+    @_client_method
     def parse_query(self, org_id: int, query: str, parse_only: bool = False, group_uuid: str = ""):
         org = Org.objects.get(id=org_id)
 
@@ -187,7 +229,7 @@ class TestClient(MailroomClient):
         )
 
     @_client_method
-    def contact_search(self, org_id, group_uuid, query, sort, offset=0, exclude_ids=()):
+    def contact_search(self, org_id, group_id, query, sort, offset=0, exclude_ids=()):
         mock = self.mocks._contact_search.get(query or "")
 
         assert mock, f"missing contact_search mock for query '{query}'"
@@ -196,16 +238,43 @@ class TestClient(MailroomClient):
         return mock(org, offset, sort)
 
     @_client_method
-    def flow_preview_start(self, org_id: int, flow_id: int, include, exclude, sample_size: int):
-        assert self.mocks._flow_preview_start, "missing flow_preview_start mock"
+    def flow_start_preview(self, org_id: int, flow_id: int, include, exclude):
+        assert self.mocks._flow_start_preview, "missing flow_start_preview mock"
 
-        mock = self.mocks._flow_preview_start.pop(0)
+        mock = self.mocks._flow_start_preview.pop(0)
         org = Org.objects.get(id=org_id)
 
         return mock(org)
 
     @_client_method
-    def ticket_assign(self, org_id, user_id, ticket_ids, assignee_id, note):
+    def msg_broadcast_preview(self, org_id: int, include, exclude):
+        assert self.mocks._msg_broadcast_preview, "missing msg_broadcast_preview mock"
+
+        mock = self.mocks._msg_broadcast_preview.pop(0)
+        org = Org.objects.get(id=org_id)
+
+        return mock(org)
+
+    @_client_method
+    def msg_send(self, org_id: int, user_id: int, contact_id: int, text: str, attachments: list[str], ticket_id: int):
+        org = Org.objects.get(id=org_id)
+        contact = Contact.objects.get(org=org, id=contact_id)
+        msg = send_to_contact(org, contact, text, attachments)
+
+        return {
+            "id": msg.id,
+            "channel": {"uuid": str(msg.channel.uuid), "name": msg.channel.name} if msg.channel else None,
+            "contact": {"uuid": str(msg.contact.uuid), "name": msg.contact.name},
+            "urn": str(msg.contact_urn) if msg.contact_urn else "",
+            "text": msg.text,
+            "attachments": msg.attachments,
+            "status": msg.status,
+            "created_on": msg.created_on.isoformat(),
+            "modified_on": msg.modified_on.isoformat(),
+        }
+
+    @_client_method
+    def ticket_assign(self, org_id, user_id, ticket_ids, assignee_id):
         now = timezone.now()
         tickets = Ticket.objects.filter(org_id=org_id, id__in=ticket_ids).exclude(assignee_id=assignee_id)
 
@@ -215,7 +284,6 @@ class TestClient(MailroomClient):
                 contact=ticket.contact,
                 event_type=TicketEvent.TYPE_ASSIGNED,
                 assignee_id=assignee_id,
-                note=note,
                 created_by_id=user_id,
             )
 
@@ -367,6 +435,18 @@ def apply_modifiers(org, user, contacts, modifiers: list):
             add = mod.modification == "add"
             for contact in contacts:
                 update_groups_locally(contact, [g.uuid for g in mod.groups], add=add)
+
+        elif mod.type == "ticket":
+            topic = org.topics.get(uuid=mod.topic.uuid, is_active=True)
+            assignee = org.users.get(email=mod.assignee.email, is_active=True) if mod.assignee else None
+            for contact in contacts:
+                contact.tickets.create(
+                    org=org,
+                    topic=topic,
+                    status=Ticket.STATUS_OPEN,
+                    body=mod.body,
+                    assignee=assignee,
+                )
 
         elif mod.type == "urns":
             assert len(contacts) == 1, "should never be trying to bulk update contact URNs"
@@ -629,28 +709,48 @@ def find_boundary_by_name(org, name, level, parent):
     return boundary
 
 
-def decrement_credit(org):
-    r = get_redis_connection()
+def exit_sessions(session_ids: list, status: str):
+    FlowRun.objects.filter(session_id__in=session_ids).update(
+        status=status, exited_on=timezone.now(), modified_on=timezone.now()
+    )
+    FlowSession.objects.filter(id__in=session_ids).update(
+        status=status,
+        ended_on=timezone.now(),
+        wait_started_on=None,
+        wait_expires_on=None,
+        timeout_on=None,
+        current_flow_id=None,
+    )
 
-    # we always consider this a credit 'used' since un-applied msgs are pending
-    # credit expenses for the next purchased topup
-    incrby_existing(f"org:{org.id}:cache:credits_used", 1)
+    for session in FlowSession.objects.filter(id__in=session_ids):
+        session.contact.current_flow = None
+        session.contact.modified_on = timezone.now()
+        session.contact.save(update_fields=("current_flow", "modified_on"))
 
-    # if we have an active topup cache, we need to decrement the amount remaining
-    active_topup_id = org.get_active_topup_id()
-    if active_topup_id:
-        remaining = r.decr(f"org:{org.id}:cache:credits_remaining:{active_topup_id}", 1)
 
-        # near the edge, clear out our cache and calculate from the db
-        if not remaining or int(remaining) < 100:
-            active_topup_id = None
-            org.clear_credit_cache()
+def send_to_contact(org, contact, text, attachments) -> Msg:
+    contact_urn = contact.get_urn()
+    channel = Channel.objects.filter(org=org).first()
 
-    # calculate our active topup if we need to
-    if not active_topup_id:
-        active_topup = org.get_active_topup(force_dirty=True)
-        if active_topup:
-            active_topup_id = active_topup.id
-            r.decr(f"org:{org.id}:cache:credits_remaining:{active_topup_id}", 1)
+    if contact_urn and channel:
+        status = "Q"
+        failed_reason = None
+    else:
+        contact_urn = None
+        channel = None
+        status = "F"
+        failed_reason = Msg.FAILED_NO_DESTINATION
 
-    return active_topup_id or None
+    return Msg.objects.create(
+        org=org,
+        channel=channel,
+        contact=contact,
+        contact_urn=contact_urn,
+        status=status,
+        failed_reason=failed_reason,
+        text=text or "",
+        attachments=attachments or [],
+        msg_type=Msg.TYPE_TEXT,
+        created_on=timezone.now(),
+        modified_on=timezone.now(),
+    )

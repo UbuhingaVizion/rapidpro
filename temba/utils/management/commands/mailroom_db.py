@@ -1,8 +1,8 @@
 import json
 import subprocess
-import sys
+import time
+from zoneinfo import ZoneInfo
 
-import pytz
 from django.conf import settings
 from django.core.management import BaseCommand, CommandError, call_command
 from django.db import connection
@@ -19,15 +19,15 @@ from temba.locations.models import AdminBoundary
 from temba.msgs.models import Label
 from temba.orgs.models import Org, OrgRole, User
 from temba.templates.models import Template, TemplateTranslation
-from temba.tickets.models import Team, Ticketer, Topic
+from temba.tickets.models import Team, Topic
 
-ORGS_SPEC_FILE = "temba/utils/management/commands/data/mailroom_db.json"
+SPECS_FILE = "temba/utils/management/commands/data/mailroom_db.json"
 
 # by default every user will have this password including the superuser
 USER_PASSWORD = "Qwerty123"
 
 # database dump containing admin boundary records
-LOCATIONS_DUMP = "test-data/nigeria.bin"
+LOCATIONS_FILE = "test-data/nigeria.bin"
 
 # database id sequences to be reset to make ids predictable
 RESET_SEQUENCES = (
@@ -45,43 +45,35 @@ RESET_SEQUENCES = (
     "triggers_trigger_id_seq",
 )
 
+PG_CONTAINER_NAME = "textit-postgres-1"
+MAILROOM_DB_NAME = "mailroom_test"
+MAILROOM_DB_USER = "mailroom_test"
+DUMP_FILE = "mailroom_test.dump"
+
 
 class Command(BaseCommand):
     help = "Generates a database suitable for mailroom testing"
 
     def handle(self, *args, **kwargs):
-        with open(ORGS_SPEC_FILE) as orgs_file:
+        self.generate_and_dump(SPECS_FILE, LOCATIONS_FILE, MAILROOM_DB_NAME, MAILROOM_DB_USER, DUMP_FILE)
+
+    def generate_and_dump(self, specs_file, locs_file, db_name, db_user, dump_file):
+        with open(specs_file) as orgs_file:
             orgs_spec = json.load(orgs_file)
 
-        self._log("Checking Postgres database version... ")
+        self._log(f"Initializing {db_name} database...\n")
 
-        result = subprocess.run(["pg_dump", "--version"], stdout=subprocess.PIPE)
-        version = result.stdout.decode("utf8")
-        if version.split(" ")[-1].find("12.") == 0:
-            self._log(self.style.SUCCESS("OK") + "\n")
-        else:
-            self._log(
-                "\n" + self.style.ERROR("Incorrect pg_dump version, needs version 12.*, found: " + version) + "\n"
-            )
-            sys.exit(1)
+        # drop and recreate the test db and user
+        self._sql(f"DROP DATABASE IF EXISTS {db_name}")
+        self._sql(f"CREATE DATABASE {db_name}")
+        self._sql(f"DROP USER IF EXISTS {db_user}")
+        self._sql(f"CREATE USER {db_user} PASSWORD 'temba'")
+        self._sql(f"ALTER ROLE {db_user} WITH SUPERUSER")
 
-        self._log("Initializing mailroom_test database...\n")
-
-        # drop and recreate the mailroom_test db and user
-        subprocess.check_call('psql -c "DROP DATABASE IF EXISTS mailroom_test;"', shell=True)
-        subprocess.check_call('psql -c "CREATE DATABASE mailroom_test;"', shell=True)
-        subprocess.check_call('psql -c "DROP USER IF EXISTS mailroom_test;"', shell=True)
-        subprocess.check_call("psql -c \"CREATE USER mailroom_test PASSWORD 'temba';\"", shell=True)
-        subprocess.check_call('psql -c "ALTER ROLE mailroom_test WITH SUPERUSER;"', shell=True)
-
-        # always use mailroom_test as our db
-        settings.DATABASES["default"]["NAME"] = "mailroom_test"
-        settings.DATABASES["default"]["USER"] = "mailroom_test"
-
-        # patch UUID generation so it's deterministic
-        from temba.utils import uuid
-
-        uuid.default_generator = uuid.seeded_generator(1234)
+        # always use test db as our db and override mailroom location
+        settings.DATABASES["default"]["NAME"] = db_name
+        settings.DATABASES["default"]["USER"] = db_user
+        settings.MAILROOM_URL = "http://host.docker.internal:8090"
 
         self._log("Running migrations...\n")
 
@@ -98,10 +90,15 @@ class Command(BaseCommand):
         superuser = User.objects.create_superuser("root", "root@nyaruka.com", USER_PASSWORD)
         self._log(self.style.SUCCESS("OK") + "\n")
 
-        mr_cmd = 'mailroom -db="postgres://mailroom_test:temba@localhost/mailroom_test?sslmode=disable" -uuid-seed=123'
+        mr_cmd = f'mailroom -db="postgres://{db_user}:temba@localhost/{db_name}?sslmode=disable" -uuid-seed=123'
         input(f"\nPlease start mailroom:\n   % ./{mr_cmd}\n\nPress enter when ready.\n")
 
-        country = self.load_locations(LOCATIONS_DUMP)
+        country = self.load_locations(locs_file)
+
+        # patch UUID generation so it's deterministic
+        from temba.utils import uuid
+
+        uuid.default_generator = uuid.seeded_generator(1234)
 
         # create each of our orgs
         for spec in orgs_spec["orgs"]:
@@ -111,9 +108,16 @@ class Command(BaseCommand):
         self.reset_id_sequences(30000)
 
         # dump our file
-        subprocess.check_call("pg_dump -Fc mailroom_test > mailroom_test.dump", shell=True)
+        result = subprocess.run(
+            ["docker", "exec", "-i", PG_CONTAINER_NAME, "pg_dump", "-U", "postgres", "-Fc", db_name],
+            stdout=subprocess.PIPE,
+            check=True,
+        )
 
-        self._log("\n" + self.style.SUCCESS("Success!") + " Dump file: mailroom_test.dump\n\n")
+        with open(dump_file, "wb") as f:
+            f.write(result.stdout)
+
+        self._log("\n" + self.style.SUCCESS("Success!") + f" Dump file: {dump_file}\n\n")
 
     def load_locations(self, path):
         """
@@ -121,18 +125,30 @@ class Command(BaseCommand):
         """
         self._log(f"Loading locations from {path}... ")
 
-        # load dump into current db with pg_restore
-        db_config = settings.DATABASES["default"]
-        try:
-            subprocess.check_call(
-                f"export PGPASSWORD={db_config['PASSWORD']} && pg_restore -h {db_config['HOST']} "
-                f"-p {db_config['PORT']} -U {db_config['USER']} -w -d {db_config['NAME']} {path}",
-                shell=True,
-            )
-        except subprocess.CalledProcessError:  # pragma: no cover
-            raise CommandError("Error occurred whilst calling pg_restore to load locations dump")
+        with open(path, "rb") as f:
+            try:
+                subprocess.run(
+                    [
+                        "docker",
+                        "exec",
+                        "-i",
+                        PG_CONTAINER_NAME,
+                        "pg_restore",
+                        "-d",
+                        MAILROOM_DB_NAME,
+                        "-U",
+                        MAILROOM_DB_USER,
+                    ],
+                    input=f.read(),
+                    check=True,
+                )
+            except subprocess.CalledProcessError:
+                raise CommandError("Error occurred whilst calling pg_restore to load locations dump")
 
         self._log(self.style.SUCCESS("OK") + "\n")
+
+        # TODO figure out why this is needed
+        time.sleep(1)
 
         return AdminBoundary.objects.filter(level=0).get()
 
@@ -147,15 +163,14 @@ class Command(BaseCommand):
         org = Org.objects.create(
             uuid=spec["uuid"],
             name=spec["name"],
-            timezone=pytz.timezone("America/Los_Angeles"),
+            timezone=ZoneInfo("America/Los_Angeles"),
             flow_languages=spec["languages"],
-            brand="rapidpro.io",
             country=country,
             created_on=timezone.now(),
             created_by=superuser,
             modified_by=superuser,
         )
-        org.initialize(topup_size=100_000, sample_flows=False)
+        org.initialize(sample_flows=False)
 
         # set our sequences to make ids stable across orgs
         self.reset_id_sequences(spec["sequence_start"])
@@ -171,7 +186,6 @@ class Command(BaseCommand):
         self.create_campaigns(spec, org, superuser)
         self.create_templates(spec, org, superuser)
         self.create_classifiers(spec, org, superuser)
-        self.create_ticketers(spec, org, superuser)
         self.create_topics(spec, org, superuser)
         self.create_teams(spec, org, superuser)
         self.create_users(spec, org)
@@ -190,6 +204,7 @@ class Command(BaseCommand):
                 schemes=[c["scheme"]],
                 uuid=c["uuid"],
                 role=c["role"],
+                config=c["config"],
                 created_by=user,
                 modified_by=user,
             )
@@ -215,22 +230,6 @@ class Command(BaseCommand):
                 classifier.intents.create(
                     name=intent["name"], external_id=intent["external_id"], created_on=timezone.now()
                 )
-
-        self._log(self.style.SUCCESS("OK") + "\n")
-
-    def create_ticketers(self, spec, org, user):
-        self._log(f"Creating {len(spec['ticketers'])} ticketers... ")
-
-        for t in spec["ticketers"]:
-            Ticketer.objects.create(
-                org=org,
-                name=t["name"],
-                config=t["config"],
-                ticketer_type=t["ticketer_type"],
-                uuid=t["uuid"],
-                created_by=user,
-                modified_by=user,
-            )
 
         self._log(self.style.SUCCESS("OK") + "\n")
 
@@ -398,13 +397,15 @@ class Command(BaseCommand):
                 TemplateTranslation.get_or_create(
                     channel,
                     t["name"],
-                    tt["language"],
-                    tt["country"],
-                    tt["content"],
-                    tt["variable_count"],
-                    tt["status"],
-                    tt["external_id"],
-                    tt["namespace"],
+                    locale=tt["locale"],
+                    content=tt["content"],
+                    variable_count=tt["variable_count"],
+                    status=tt["status"],
+                    external_id=tt["external_id"],
+                    external_locale=tt["external_locale"],
+                    namespace=tt["namespace"],
+                    components=tt["components"],
+                    params=tt["params"],
                 )
 
         self._log(self.style.SUCCESS("OK") + "\n")
@@ -444,6 +445,19 @@ class Command(BaseCommand):
                 Contact.bulk_change_group(user, contacts, group, add=True)
 
         self._log(self.style.SUCCESS("OK") + "\n")
+
+    def _sql(self, sql: str):
+        try:
+            result = subprocess.run(
+                ["docker", "exec", "-i", PG_CONTAINER_NAME, "psql", "-U", "postgres"],
+                input=sql.encode(),
+                stdout=subprocess.PIPE,
+                check=True,
+            )
+        except subprocess.CalledProcessError as e:
+            raise CommandError(str(e))
+
+        self._log(result.stdout.decode())
 
     def _log(self, text):
         self.stdout.write(text, ending="")

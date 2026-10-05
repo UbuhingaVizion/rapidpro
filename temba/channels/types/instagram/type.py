@@ -1,4 +1,5 @@
 import requests
+from django.conf import settings
 from django.urls import re_path
 from django.utils.translation import gettext_lazy as _
 
@@ -13,39 +14,29 @@ class InstagramType(ChannelType):
     A Instagram channel
     """
 
-    extra_links = [
-        dict(
-            name=_("Reconnect Instagram Business Account"),
-            link="channels.types.instagram.refresh_token",
-        )
-    ]
-
     code = "IG"
+    name = "Instagram"
     category = ChannelType.Category.SOCIAL_MEDIA
 
+    unique_addresses = True
+
     courier_url = r"^ig/receive"
-
-    name = "Instagram"
-    icon = "icon-instagram"
-
-    show_config_page = False
+    schemes = [URN.INSTAGRAM_SCHEME]
+    redact_values = (settings.FACEBOOK_APPLICATION_SECRET, settings.FACEBOOK_WEBHOOK_SECRET)
 
     claim_blurb = _("Add an %(link)s bot to send and receive messages on behalf of a business Instagram account.") % {
-        "link": '<a href="http://instagram.com">Instagram</a>',
+        "link": '<a target="_blank" href="http://instagram.com">Instagram</a>',
     }
     claim_view = ClaimView
 
-    schemes = [URN.INSTAGRAM_SCHEME]
-    max_length = 2000
-    attachment_support = True
-    free_sending = True
+    menu_items = [dict(label=_("Reconnect Business Account"), view_name="channels.types.instagram.refresh_token")]
 
     def get_urls(self):
         return [
             self.get_claim_url(),
             re_path(
                 r"^(?P<uuid>[a-z0-9\-]+)/refresh_token$",
-                RefreshToken.as_view(),
+                RefreshToken.as_view(channel_type=self),
                 name="refresh_token",
             ),
         ]
@@ -53,6 +44,9 @@ class InstagramType(ChannelType):
     def deactivate(self, channel):
         config = channel.config
         requests.delete(
-            f"https://graph.facebook.com/v12.0/{channel.address}/subscribed_apps",
+            f"https://graph.facebook.com/v18.0/{channel.address}/subscribed_apps",
             params={"access_token": config[Channel.CONFIG_AUTH_TOKEN]},
         )
+
+    def get_error_ref_url(self, channel, code: str) -> str:
+        return "https://developers.facebook.com/docs/instagram-api/reference/error-codes"

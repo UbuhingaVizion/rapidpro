@@ -4,13 +4,13 @@ from django.urls import reverse
 
 from temba.contacts.models import URN
 from temba.orgs.models import Org
-from temba.tests import TembaTest
+from temba.tests import CRUDLTestMixin, TembaTest
 from temba.utils import get_anonymous_user
 
 from ...models import Channel
 
 
-class AndroidTypeTest(TembaTest):
+class AndroidTypeTest(TembaTest, CRUDLTestMixin):
     def test_claim(self):
         # remove our explicit country so it needs to be derived from channels
         self.org.country = None
@@ -32,7 +32,6 @@ class AndroidTypeTest(TembaTest):
         android1 = Channel.objects.get()
         self.assertIsNone(android1.org)
         self.assertIsNone(android1.address)
-        self.assertIsNone(android1.alert_email)
         self.assertEqual(android1.country, "RW")
         self.assertEqual(android1.device, "Nexus")
         self.assertEqual(android1.config["FCM_ID"], "FCM111")
@@ -98,6 +97,22 @@ class AndroidTypeTest(TembaTest):
         self.assertEqual(response.status_code, 200)
         self.assertFormError(response.context["form"], "phone_number", "Invalid phone number, try again.")
 
+        # Add a Dialog360 whatsapp channel and bulk sender channel that should not block us to claim an Android channel
+        channel = self.create_channel(
+            "D3",
+            "360Dialog channel",
+            address="+250788123123",
+            country="RW",
+            schemes=[URN.WHATSAPP_SCHEME],
+            config={
+                Channel.CONFIG_BASE_URL: "https://example.com/whatsapp",
+                Channel.CONFIG_AUTH_TOKEN: "123456789",
+            },
+        )
+        Channel.create(
+            self.org, self.admin, "RW", "NX", "", "+250788123123", schemes=[URN.TEL_SCHEME], role=Channel.ROLE_SEND
+        )
+
         # claim our channel
         response = self.client.post(
             reverse("channels.types.android.claim"), dict(claim_code=android1.claim_code, phone_number="0788123123")
@@ -112,7 +127,6 @@ class AndroidTypeTest(TembaTest):
         secret = android1.secret
         self.assertEqual(android1.org, self.org)
         self.assertEqual(android1.address, "+250788123123")  # normalized
-        self.assertEqual(android1.alert_email, self.admin.email)  # the logged-in user
         self.assertEqual(android1.config["FCM_ID"], "FCM111")
         self.assertEqual(android1.uuid, "uuid")
         self.assertFalse(android1.claim_code)
@@ -125,7 +139,6 @@ class AndroidTypeTest(TembaTest):
         android1.refresh_from_db()
         self.assertEqual(android1.org, self.org)
         self.assertEqual(android1.address, "+250788123123")
-        self.assertEqual(android1.alert_email, self.admin.email)
         self.assertEqual(android1.config["FCM_ID"], "FCM111")
         self.assertEqual(android1.uuid, "uuid")
         self.assertEqual(android1.is_active, True)
@@ -147,7 +160,6 @@ class AndroidTypeTest(TembaTest):
         android1.refresh_from_db()
         self.assertEqual(android1.org, self.org)
         self.assertEqual(android1.address, "+250788123123")
-        self.assertEqual(android1.alert_email, self.admin.email)
         self.assertEqual(android1.config["FCM_ID"], "FCM222")
         self.assertEqual(android1.uuid, "uuid")
         self.assertEqual(android1.is_active, True)
@@ -161,7 +173,6 @@ class AndroidTypeTest(TembaTest):
         android1.refresh_from_db()
         self.assertEqual(android1.org, self.org)
         self.assertEqual(android1.address, "+250788123124")
-        self.assertEqual(android1.alert_email, self.admin.email)
         self.assertEqual(android1.config["FCM_ID"], "FCM222")
         self.assertEqual(android1.uuid, "uuid")
         self.assertEqual(android1.is_active, True)
@@ -183,7 +194,7 @@ class AndroidTypeTest(TembaTest):
         self.assertNotEqual(android1.uuid, old_uuid)  # inactive channel now has new UUID
 
         # and we have a new Android channel with our UUID
-        android2 = Channel.objects.get(is_active=True)
+        android2 = Channel.objects.filter(is_active=True, channel_type="A").first()
         self.assertNotEqual(android2, android1)
         self.assertEqual(android2.uuid, "uuid")
 
@@ -196,50 +207,6 @@ class AndroidTypeTest(TembaTest):
         default_sender = self.org.get_send_channel(URN.TEL_SCHEME)
         self.assertEqual(default_sender, android2)
         self.assertEqual(default_sender, self.org.get_receive_channel(URN.TEL_SCHEME))
-        self.assertFalse(default_sender.is_delegate_sender())
-
-        response = self.client.get(reverse("channels.channel_bulk_sender_options"))
-        self.assertEqual(response.status_code, 200)
-
-        response = self.client.post(
-            reverse("channels.channel_create_bulk_sender") + "?connection=NX", dict(connection="NX")
-        )
-        self.assertFormError(response.context["form"], "channel", "Can't add sender for that number")
-
-        # try to claim a bulk Vonage sender (without adding account to org)
-        claim_bulk_url = reverse("channels.channel_create_bulk_sender") + "?connection=NX&channel=%d" % android2.pk
-        response = self.client.post(claim_bulk_url, dict(connection="NX", channel=android2.pk))
-        self.assertFormError(response.context["form"], "connection", "A connection to a Vonage account is required")
-
-        # send channel is still our Android device
-        self.assertEqual(self.org.get_send_channel(URN.TEL_SCHEME), android2)
-        self.assertFalse(self.org.is_connected_to_vonage())
-
-        # now connect to vonage
-        self.org.connect_vonage("123", "456", self.admin)
-        self.assertTrue(self.org.is_connected_to_vonage())
-
-        # now adding a bulk sender should work
-        response = self.client.post(claim_bulk_url, dict(connection="NX", channel=android2.pk))
-        self.assertRedirect(response, reverse("channels.channel_read", args=[android2.uuid]))
-
-        # new channel created for delegated sending
-        vonage = self.org.get_send_channel(URN.TEL_SCHEME)
-        self.assertEqual(vonage.channel_type, "NX")
-        self.assertEqual(vonage.parent, android2)
-        self.assertTrue(vonage.is_delegate_sender())
-        self.assertEqual(vonage.tps, 1)
-        channel_config = vonage.config
-        self.assertEqual(channel_config[Channel.CONFIG_VONAGE_API_KEY], "123")
-        self.assertEqual(channel_config[Channel.CONFIG_VONAGE_API_SECRET], "456")
-
-        # reading our delegate channel should now offer a disconnect option
-        vonage = self.org.channels.filter(channel_type="NX").first()
-        response = self.client.get(reverse("channels.channel_read", args=[vonage.uuid]))
-        self.assertContains(response, "Disable Bulk Sending")
-
-        # receiving still job of our Android device
-        self.assertEqual(self.org.get_receive_channel(URN.TEL_SCHEME), android2)
 
         # re-register device with country as US
         reg_data = dict(
@@ -264,9 +231,6 @@ class AndroidTypeTest(TembaTest):
         # our country is RW
         self.assertEqual(self.org.default_country_code, "RW")
 
-        # remove channel
-        vonage.release(self.admin)
-
         self.assertEqual(self.org.default_country_code, "RW")
 
         # register another device with country as US
@@ -286,7 +250,7 @@ class AndroidTypeTest(TembaTest):
         channel = Channel.objects.get(country="US")
         self.assertEqual(channel.address, "+12065551212")
 
-        self.assertEqual(Channel.objects.filter(org=self.org, is_active=True).count(), 2)
+        self.assertEqual(Channel.objects.filter(org=self.org, is_active=True).count(), 4)
 
         # normalize a URN with a fully qualified number
         normalized = URN.normalize_number("+12061112222", "")
@@ -337,6 +301,4 @@ class AndroidTypeTest(TembaTest):
 
         self.login(self.admin)
         response = self.client.get(update_url)
-        self.assertEqual(
-            ["name", "alert_email", "allow_international", "loc"], list(response.context["form"].fields.keys())
-        )
+        self.assertEqual(["name", "allow_international", "loc"], list(response.context["form"].fields.keys()))

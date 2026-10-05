@@ -13,6 +13,7 @@ from temba.contacts.models import ContactImport, ExportContactsTask
 from temba.flows.models import ExportFlowResultsTask
 from temba.msgs.models import ExportMessagesTask
 from temba.orgs.models import Org
+from temba.tickets.models import ExportTicketsTask
 from temba.utils.email import send_template_email
 from temba.utils.models import SquashableModel
 
@@ -20,7 +21,14 @@ logger = logging.getLogger(__name__)
 
 
 class IncidentType:
-    slug: str = None
+    slug: str
+    title: str
+
+    def get_notification_scope(self, incident) -> str:
+        return str(incident.id)
+
+    def get_notification_target_url(self, incident) -> str:
+        return reverse("notifications.incident_list")
 
     def as_json(self, incident) -> dict:
         return {
@@ -28,25 +36,6 @@ class IncidentType:
             "started_on": incident.started_on.isoformat(),
             "ended_on": incident.ended_on.isoformat() if incident.ended_on else None,
         }
-
-
-class OrgFlaggedIncidentType(IncidentType):
-    """
-    Org has been flagged due to suspicious activity
-    """
-
-    slug = "org:flagged"
-
-
-class WebhooksUnhealthyIncidentType(IncidentType):
-    """
-    Webhook calls from flows have been taking too long to respond for a period of time.
-    """
-
-    slug = "webhooks:unhealthy"
-
-
-INCIDENT_TYPES_BY_SLUG = {t.slug: t() for t in IncidentType.__subclasses__()}
 
 
 class Incident(models.Model):
@@ -69,14 +58,9 @@ class Incident(models.Model):
     channel = models.ForeignKey(Channel, null=True, on_delete=models.PROTECT, related_name="incidents")
 
     @classmethod
-    def flagged(cls, org):
-        """
-        Creates a flagged incident if one is not already ongoing
-        """
-        return cls._create(org, OrgFlaggedIncidentType.slug, scope="")
+    def get_or_create(cls, org, incident_type: str, *, scope: str, **kwargs):
+        from .types.builtin import IncidentStartedNotificationType
 
-    @classmethod
-    def _create(cls, org, incident_type: str, *, scope: str, **kwargs):
         incident, created = cls.objects.get_or_create(
             org=org,
             incident_type=incident_type,
@@ -85,7 +69,7 @@ class Incident(models.Model):
             defaults=kwargs,
         )
         if created:
-            Notification.incident_started(incident)
+            IncidentStartedNotificationType.create(incident)
         return incident
 
     def end(self):
@@ -96,12 +80,18 @@ class Incident(models.Model):
         self.save(update_fields=("ended_on",))
 
     @property
-    def template(self):
-        return f"notifications/incidents/{self.incident_type.replace(':', '_')}.haml"
+    def template(self) -> str:
+        return f"notifications/incidents/{self.incident_type.replace(':', '_')}.html"
 
     @property
-    def type(self):
-        return INCIDENT_TYPES_BY_SLUG[self.incident_type]
+    def email_template(self) -> str:
+        return f"notifications/email/incident_started.{self.incident_type.replace(':', '_')}"
+
+    @property
+    def type(self) -> IncidentType:
+        from .incidents import TYPES  # noqa
+
+        return TYPES[self.incident_type]
 
     def as_json(self) -> dict:
         return self.type.as_json(self)
@@ -133,11 +123,17 @@ class NotificationType:
     def get_target_url(self, notification) -> str:  # pragma: no cover
         pass
 
-    def get_email_template(self, notification) -> tuple:  # pragma: no cover
+    def get_email_subject(self, notification) -> str:  # pragma: no cover
         """
-        For types that support sending as email, this should return subject and template name
+        For types that support sending as email, this is the subject of the email
         """
-        return ("", "")
+        return ""
+
+    def get_email_template(self, notification) -> str:  # pragma: no cover
+        """
+        For types that support sending as email, this is the template to use
+        """
+        return ""
 
     def get_email_context(self, notification):
         return {
@@ -155,73 +151,13 @@ class NotificationType:
         }
 
 
-class ExportFinishedNotificationType(NotificationType):
-    slug = "export:finished"
-
-    def get_target_url(self, notification) -> str:
-        return notification.export.get_download_url()
-
-    def get_email_template(self, notification) -> tuple:
-        export_type = notification.export.notification_export_type
-        return f"Your {export_type} export is ready", f"notifications/email/export_finished.{export_type}"
-
-    def get_email_context(self, notification):
-        context = super().get_email_context(notification)
-        if notification.results_export:
-            context["flows"] = notification.results_export.flows.order_by("name")
-        return context
-
-    def as_json(self, notification) -> dict:
-        json = super().as_json(notification)
-        json["export"] = {"type": notification.export.notification_export_type}
-        return json
-
-
-class ImportFinishedNotificationType(NotificationType):
-    slug = "import:finished"
-
-    def get_target_url(self, notification) -> str:
-        return reverse("contacts.contactimport_read", args=[notification.contact_import.id])
-
-    def as_json(self, notification) -> dict:
-        json = super().as_json(notification)
-        json["import"] = {"type": "contact", "num_records": notification.contact_import.num_records}
-        return json
-
-
-class IncidentStartedNotificationType(NotificationType):
-    slug = "incident:started"
-
-    def get_target_url(self, notification) -> str:
-        return reverse("notifications.incident_list")
-
-    def as_json(self, notification) -> dict:
-        json = super().as_json(notification)
-        json["incident"] = notification.incident.as_json()
-        return json
-
-
-class TicketsOpenedNotificationType(NotificationType):
-    slug = "tickets:opened"
-
-    def get_target_url(self, notification) -> str:
-        return "/ticket/unassigned/"
-
-
-class TicketActivityNotificationType(NotificationType):
-    slug = "tickets:activity"
-
-    def get_target_url(self, notification) -> str:
-        return "/ticket/mine/"
-
-
-NOTIFICATION_TYPES_BY_SLUG = {lt.slug: lt() for lt in NotificationType.__subclasses__()}
-
-
 class Notification(models.Model):
     """
     A user specific notification
     """
+
+    MEDIUM_UI = "U"
+    MEDIUM_EMAIL = "E"
 
     EMAIL_STATUS_PENDING = "P"
     EMAIL_STATUS_SENT = "S"
@@ -235,6 +171,7 @@ class Notification(models.Model):
     id = models.BigAutoField(primary_key=True)
     org = models.ForeignKey(Org, on_delete=models.PROTECT, related_name="notifications")
     notification_type = models.CharField(max_length=16)
+    medium = models.CharField(max_length=2)
 
     # The scope is what we maintain uniqueness of unseen notifications for within an org. For some notification types,
     # user can only have one unseen of that type per org, and so this will be an empty string. For other notification
@@ -255,43 +192,18 @@ class Notification(models.Model):
     results_export = models.ForeignKey(
         ExportFlowResultsTask, null=True, on_delete=models.PROTECT, related_name="notifications"
     )
+    ticket_export = models.ForeignKey(
+        ExportTicketsTask, null=True, on_delete=models.PROTECT, related_name="notifications"
+    )
+
     contact_import = models.ForeignKey(
         ContactImport, null=True, on_delete=models.PROTECT, related_name="notifications"
     )
+
     incident = models.ForeignKey(Incident, null=True, on_delete=models.PROTECT, related_name="notifications")
 
     @classmethod
-    def export_finished(cls, export):
-        """
-        Creates an export finished notification for the creator of the given export.
-        """
-
-        cls._create_all(
-            export.org,
-            ExportFinishedNotificationType.slug,
-            scope=export.get_notification_scope(),
-            users=[export.created_by],
-            email_status=cls.EMAIL_STATUS_PENDING,
-            **{export.notification_export_type + "_export": export},
-        )
-
-    @classmethod
-    def incident_started(cls, incident):
-        """
-        Creates an incident started notification for all admins in the workspace.
-        """
-
-        cls._create_all(
-            incident.org,
-            IncidentStartedNotificationType.slug,
-            scope=str(incident.id),
-            users=incident.org.get_admins(),
-            email_status=cls.EMAIL_STATUS_NONE,  # TODO add email support
-            incident=incident,
-        )
-
-    @classmethod
-    def _create_all(cls, org, notification_type: str, *, scope: str, users, **kwargs):
+    def create_all(cls, org, notification_type: str, *, scope: str, users, **kwargs):
         for user in users:
             cls.objects.get_or_create(
                 org=org,
@@ -303,7 +215,8 @@ class Notification(models.Model):
             )
 
     def send_email(self):
-        subject, template = self.type.get_email_template(self)
+        subject = self.type.get_email_subject(self)
+        template = self.type.get_email_template(self)
         context = self.type.get_email_context(self)
 
         if subject and template:
@@ -312,10 +225,10 @@ class Notification(models.Model):
                 f"[{self.org.name}] {subject}",
                 template,
                 context,
-                self.org.get_branding(),
+                self.org.branding,
             )
         else:  # pragma: no cover
-            logger.warning(f"skipping email send for notification type {self.type.slug} not configured for email")
+            logger.error(f"pending emails for notification type {self.type.slug} not configured for email")
 
         self.email_status = Notification.EMAIL_STATUS_SENT
         self.save(update_fields=("email_status",))
@@ -337,19 +250,25 @@ class Notification(models.Model):
 
     @cached_property
     def export(self):
-        return self.contact_export or self.message_export or self.results_export
+        return self.contact_export or self.message_export or self.results_export or self.ticket_export
 
     @property
     def type(self):
-        return NOTIFICATION_TYPES_BY_SLUG[self.notification_type]
+        from .types import TYPES  # noqa
+
+        return TYPES[self.notification_type]
 
     def as_json(self) -> dict:
         return self.type.as_json(self)
 
     class Meta:
         indexes = [
-            # used to list org specific notifications for a user
-            models.Index(fields=["org", "user", "-created_on"]),
+            # used to list org specific notifications for a user in the UI
+            models.Index(
+                name="notifications_user_ui",
+                fields=["org", "user", "-created_on", "-id"],
+                condition=Q(medium__contains="U"),
+            ),
             # used to find notifications with pending email sends
             models.Index(name="notifications_email_pending", fields=["created_on"], condition=Q(email_status="P")),
             # used for notification types where the target URL clears all of that type (e.g. incident_started)

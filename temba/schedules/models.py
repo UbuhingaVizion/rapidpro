@@ -1,6 +1,7 @@
 import calendar
 import logging
 from datetime import time, timedelta
+from datetime import timezone as tzone
 
 from dateutil.relativedelta import relativedelta
 from django.contrib.humanize.templatetags.humanize import ordinal
@@ -9,12 +10,11 @@ from django.db.models import Index, Q
 from django.utils import timezone
 from django.utils.timesince import timeuntil
 from django.utils.translation import gettext_lazy as _
-from smartmin.models import SmartModel
 
 logger = logging.getLogger(__name__)
 
 
-class Schedule(SmartModel):
+class Schedule(models.Model):
     """
     Describes a point in the future to execute some action. These are used to schedule Broadcasts
     as a single event or with a specified interval for recurrence.
@@ -24,7 +24,6 @@ class Schedule(SmartModel):
     REPEAT_DAILY = "D"
     REPEAT_WEEKLY = "W"
     REPEAT_MONTHLY = "M"
-
     REPEAT_CHOICES = (
         (REPEAT_NEVER, _("Never")),
         (REPEAT_DAILY, _("Daily")),
@@ -55,13 +54,11 @@ class Schedule(SmartModel):
     # ordered in the same way as python's weekday function
     DAYS_OF_WEEK_OFFSET = "MTWRFSU"
 
-    # when this schedule will repeat
+    org = models.ForeignKey("orgs.Org", on_delete=models.PROTECT, related_name="schedules")
     repeat_period = models.CharField(max_length=1, choices=REPEAT_CHOICES)
 
-    # the hour of the day this schedule will fire (in org timezone)
+    # the time of the day this schedule will fire (in org timezone)
     repeat_hour_of_day = models.IntegerField(null=True)
-
-    # the minute of the our this schedule will fire
     repeat_minute_of_hour = models.IntegerField(null=True)
 
     # the day of the month this will repeat on (only for monthly repeats, 1-31)
@@ -70,44 +67,25 @@ class Schedule(SmartModel):
     # what days of the week this will repeat on (only for weekly repeats) One of MTWRFSU
     repeat_days_of_week = models.CharField(null=True, max_length=7)
 
-    # when this schedule will next fire
-    next_fire = models.DateTimeField(null=True)
+    is_paused = models.BooleanField(default=False)
 
-    # when this schedule was last fired
     last_fire = models.DateTimeField(null=True)
-
-    # the org this schedule belongs to
-    org = models.ForeignKey("orgs.Org", on_delete=models.PROTECT, related_name="schedules")
+    next_fire = models.DateTimeField()
 
     @classmethod
-    def create_blank_schedule(cls, org, user):
-        return Schedule.create_schedule(org, user, None, Schedule.REPEAT_NEVER)
-
-    @classmethod
-    def create_schedule(cls, org, user, start_time, repeat_period, repeat_days_of_week=None, now=None):
+    def create(cls, org, start_time, repeat_period, repeat_days_of_week=None, now=None):
         assert not repeat_days_of_week or set(repeat_days_of_week).issubset(cls.DAYS_OF_WEEK_OFFSET)
 
-        schedule = Schedule(repeat_period=repeat_period, created_by=user, modified_by=user, org=org)
+        schedule = cls(org=org, repeat_period=repeat_period)
         schedule.update_schedule(start_time, repeat_period, repeat_days_of_week, now=now)
         return schedule
 
-    def update_schedule(self, start_time, repeat_period, repeat_days_of_week, now=None):
-        assert self.org is not None
-
+    def update_schedule(self, start_time, repeat_period: str, repeat_days_of_week: str, now=None):
         if not now:
             now = timezone.now()
 
         tz = self.org.timezone
-
-        # no start time means we aren't repeating anymore
-        if not start_time:
-            repeat_period = Schedule.REPEAT_NEVER
-
         self.repeat_period = repeat_period
-
-        # deprecated
-        self.status = None
-        self.repeat_days = None
 
         if repeat_period == Schedule.REPEAT_NEVER:
             self.repeat_minute_of_hour = None
@@ -115,13 +93,13 @@ class Schedule(SmartModel):
             self.repeat_day_of_month = None
             self.repeat_days_of_week = None
 
-            self.next_fire = start_time if start_time and start_time > now else None
+            self.next_fire = start_time
             self.save()
 
         else:
             # our start time needs to be in the org timezone so that we always fire at the
             # appropriate hour regardless of timezone / dst changes
-            start_time = tz.normalize(start_time.astimezone(tz))
+            start_time = start_time.astimezone(tz)
 
             self.repeat_hour_of_day = start_time.hour
             self.repeat_minute_of_hour = start_time.minute
@@ -142,17 +120,11 @@ class Schedule(SmartModel):
 
             self.save()
 
-    def get_broadcast(self):
-        if hasattr(self, "broadcast"):
-            return self.broadcast
-
     def calculate_next_fire(self, now):
         """
         Get the next point in the future when our schedule should fire again. Note this should only be called to find
         the next scheduled event as it will force the next date to meet the criteria in day_of_month, days_of_week etc..
         """
-        if self.repeat_period == Schedule.REPEAT_NEVER:
-            return None
 
         tz = self.org.timezone
         hour = self.repeat_hour_of_day
@@ -160,18 +132,18 @@ class Schedule(SmartModel):
 
         # start from the trigger date
         next_fire = now.astimezone(tz)
-        next_fire = tz.normalize(next_fire.replace(hour=hour, minute=minute, second=0, microsecond=0))
+        next_fire = next_fire.replace(hour=hour, minute=minute, second=0, microsecond=0)
 
         # if monthly, set to the day of the month scheduled and move forward until we are in the future
         if self.repeat_period == Schedule.REPEAT_MONTHLY:
             while True:
                 (weekday, days) = calendar.monthrange(next_fire.year, next_fire.month)
                 day_of_month = min(days, self.repeat_day_of_month)
-                next_fire = tz.normalize(next_fire.replace(day=day_of_month, hour=hour, minute=minute))
+                next_fire = next_fire.replace(day=day_of_month, hour=hour, minute=minute)
                 if next_fire > now:
                     break
 
-                next_fire = tz.normalize(next_fire + relativedelta(months=1))
+                next_fire = (next_fire.astimezone(tzone.utc) + relativedelta(months=1)).astimezone(tz)
 
             return next_fire
 
@@ -180,13 +152,21 @@ class Schedule(SmartModel):
             assert self.repeat_days_of_week != "" and self.repeat_days_of_week is not None
 
             while next_fire <= now or self._day_of_week(next_fire) not in self.repeat_days_of_week:
-                next_fire = tz.normalize(tz.normalize(next_fire + timedelta(days=1)).replace(hour=hour, minute=minute))
+                next_fire = (
+                    (next_fire.astimezone(tzone.utc) + timedelta(days=1))
+                    .astimezone(tz)
+                    .replace(hour=hour, minute=minute)
+                )
 
             return next_fire
 
         elif self.repeat_period == Schedule.REPEAT_DAILY:
             while next_fire <= now:
-                next_fire = tz.normalize(tz.normalize(next_fire + timedelta(days=1)).replace(hour=hour, minute=minute))
+                next_fire = (
+                    (next_fire.astimezone(tzone.utc) + timedelta(days=1))
+                    .astimezone(tz)
+                    .replace(hour=hour, minute=minute)
+                )
 
             return next_fire
 
@@ -201,9 +181,9 @@ class Schedule(SmartModel):
             return _("each day at %(time)s") % {"time": time_of_day}
         elif self.repeat_period == self.REPEAT_WEEKLY:
             days = [str(day) for day in self.get_repeat_days_display()]
-            return _(f"each week on {', '.join(days)}")
+            return _("each week on %(daysofweek)s" % {"daysofweek": ", ".join(days)})
         elif self.repeat_period == self.REPEAT_MONTHLY:
-            return _(f"each month on the {ordinal(self.repeat_day_of_month)}")
+            return _("each month on the %(dayofmonth)s" % {"dayofmonth": ordinal(self.repeat_day_of_month)})
 
     @staticmethod
     def _day_of_week(d):
@@ -212,20 +192,19 @@ class Schedule(SmartModel):
         """
         return Schedule.DAYS_OF_WEEK_OFFSET[d.weekday()]
 
-    def release(self, user):
-        self.is_active = False
-        self.modified_by = user
-        self.save(update_fields=("is_active", "modified_by", "modified_on"))
+    def pause(self):
+        self.is_paused = True
+        self.save(update_fields=("is_paused",))
 
-    def __str__(self):
-        return f'Schedule[id={self.id} repeat="{self.get_display()}" next={str(self.next_fire)}]'
+    def resume(self):
+        self.is_paused = False
+        self.save(update_fields=("is_paused",))
+
+    def __repr__(self):  # pragma: no cover
+        return f'<Schedule: id={self.id} repeat="{self.get_display()}" next={str(self.next_fire)}>'
 
     class Meta:
         indexes = [
             # used by mailroom for fetching schedules that need to be fired
-            Index(
-                name="schedules_next_fire_active",
-                fields=["next_fire"],
-                condition=Q(is_active=True, next_fire__isnull=False),
-            )
+            Index(name="schedules_due", fields=["next_fire"], condition=Q(is_paused=False))
         ]

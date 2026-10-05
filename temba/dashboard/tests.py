@@ -10,14 +10,13 @@ class DashboardTest(TembaTest):
         self.user = self.create_user("tito")
 
     def create_activity(self):
-
         # and some message and call activity
         joe = self.create_contact("Joe", phone="+593979099111")
         self.create_outgoing_msg(joe, "Tea of coffee?")
         self.create_incoming_msg(joe, "Coffee")
         self.create_outgoing_msg(joe, "OK")
-        self.create_outgoing_msg(joe, "Wanna hang?", msg_type="V")
-        self.create_incoming_msg(joe, "Sure", msg_type="V")
+        self.create_outgoing_msg(joe, "Wanna hang?", voice=True)
+        self.create_incoming_msg(joe, "Sure", voice=True)
 
     def test_dashboard_home(self):
         dashboard_url = reverse("dashboard.dashboard_home")
@@ -35,7 +34,6 @@ class DashboardTest(TembaTest):
         self.assertEqual(response.request["PATH_INFO"], dashboard_url)
 
     def test_message_history(self):
-
         url = reverse("dashboard.dashboard_message_history")
 
         # visit this page without authenticating
@@ -48,20 +46,33 @@ class DashboardTest(TembaTest):
         self.create_activity()
         response = self.client.get(url).json()
 
-        # in, out, and total
-        self.assertEqual(3, len(response))
+        # in, out
+        self.assertEqual(2, len(response))
 
         # incoming messages
-        self.assertEqual(2, response[0]["data"][0][1])
+        self.assertEqual(1, response[0]["data"][0][1])
 
         # outgoing messages
-        self.assertEqual(3, response[1]["data"][0][1])
+        self.assertEqual(2, response[1]["data"][0][1])
 
-        # total messages
-        self.assertEqual(5, response[2]["data"][0][1])
+    def test_workspace_stats(self):
+        url = reverse("dashboard.dashboard_workspace_stats")
+
+        # visit this page without authenticating
+        response = self.client.get(url, follow=True)
+
+        # nope!
+        self.assertRedirects(response, f"/users/login/?next={url}")
+
+        self.login(self.admin)
+        self.create_activity()
+        response = self.client.get(url).json()
+
+        self.assertEqual(2, len(response["series"]))
+        self.assertEqual(1, response["series"][0]["data"][0])  # incoming
+        self.assertEqual(2, response["series"][1]["data"][0])  # outgoing
 
     def test_range_details(self):
-
         url = reverse("dashboard.dashboard_range_details")
 
         # visit this page without authenticating
@@ -73,7 +84,7 @@ class DashboardTest(TembaTest):
         self.login(self.admin)
         self.create_activity()
 
-        types = ["T", "TT", "FB", "NX", "AT", "KN", "CK"]
+        types = ["T", "TWT", "FB", "NX", "AT", "KN"]
         michael = self.create_contact("Michael", urns=["twitter:mjackson"])
         for t in types:
             channel = self.create_channel(t, f"Test Channel {t}", f"{t}:1234")
@@ -81,7 +92,7 @@ class DashboardTest(TembaTest):
         response = self.client.get(url)
 
         # org message activity
-        self.assertEqual(12, response.context["orgs"][0]["count_sum"])
+        self.assertEqual(11, response.context["orgs"][0]["count_sum"])
         self.assertEqual("Nyaruka", response.context["orgs"][0]["channel__org__name"])
 
         # our pie chart

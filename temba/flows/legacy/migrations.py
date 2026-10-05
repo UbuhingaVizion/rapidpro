@@ -1184,7 +1184,6 @@ def migrate_to_version_5(json_flow, flow=None):
     """
 
     def requires_step(operand):
-
         # if we start with =( then we are an expression
         is_expression = operand and len(operand) > 2 and operand[0:2] == "=("
         if "@step" in operand or (is_expression and "step" in operand):
