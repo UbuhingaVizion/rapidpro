@@ -96,7 +96,6 @@ exclude = [
     ".venv",
     "env",
     "config",
-    "static/bower",
     "sitestatic/bower",
 ]
 
