@@ -1,10 +1,10 @@
-import telegram
 from django.urls import reverse
 from django.utils.translation import gettext_lazy as _
 
 from temba.contacts.models import URN
 
 from ...models import ChannelType
+from .client import delete_webhook, set_webhook
 from .views import ClaimView
 
 
@@ -32,13 +32,12 @@ class TelegramType(ChannelType):
 
     def activate(self, channel):
         config = channel.config
-        bot = telegram.Bot(config["auth_token"])
-        bot.set_webhook("https://" + channel.callback_domain + reverse("courier.tg", args=[channel.uuid]))
+        set_webhook(
+            config["auth_token"], "https://" + channel.callback_domain + reverse("courier.tg", args=[channel.uuid])
+        )
 
     def deactivate(self, channel):
-        config = channel.config
-        bot = telegram.Bot(config["auth_token"])
-        bot.delete_webhook()
+        delete_webhook(channel.config["auth_token"])
 
     def get_error_ref_url(self, channel, code: str) -> str:
         return "https://core.telegram.org/api/errors"
