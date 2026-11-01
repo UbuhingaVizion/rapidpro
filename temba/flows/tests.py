@@ -1630,6 +1630,31 @@ class FlowCRUDLTest(TembaTest, CRUDLTestMixin):
         flow2 = Flow.objects.get(name="Flow 2")
         self.assertEqual([["test"]], list(flow2.triggers.order_by("id").values_list("keywords", flat=True)))
 
+    def test_download_results(self):
+        self.create_contact("Eric", phone="+250788382382")
+        self.get_flow("color")
+
+        url = reverse("flows.flow_list")
+
+        # viewers can export results (flows.flow_export_results) so the download icon, its modal and
+        # its click handler must all be present - the handler used to be gated on flow_update, which
+        # viewers don't have, leaving an onclick pointing at an undefined function
+        self.login(self.user)
+
+        response = self.client.get(url)
+        self.assertEqual(200, response.status_code)
+        self.assertContains(response, 'onclick="handleDownloadFlowResults')
+        self.assertContains(response, 'id="export-results"')
+        self.assertContains(response, "function handleDownloadFlowResults")
+
+        # as must admins
+        self.login(self.admin)
+
+        response = self.client.get(url)
+        self.assertContains(response, 'onclick="handleDownloadFlowResults')
+        self.assertContains(response, 'id="export-results"')
+        self.assertContains(response, "function handleDownloadFlowResults")
+
     def test_views(self):
         create_url = reverse("flows.flow_create")
 

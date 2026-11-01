@@ -101,7 +101,7 @@
             </temba-tip>
           </div>
         {% endif %}
-        {% if 'download-results' in actions %}
+        {% if 'download-results' in actions and org_perms.flows.flow_export_results %}
           <div onclick="handleDownloadFlowResults(event)" class="linked ml-4">
             <temba-tip position="top" text="{{ _("Download Results") |escapejs }}">
               <temba-icon name="download" clickable="true" class="show-loading">

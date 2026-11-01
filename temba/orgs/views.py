@@ -136,11 +136,13 @@ class OrgPermsMixin:
         return self.has_org_perm(self.permission)
 
     def dispatch(self, request, *args, **kwargs):
-        # non admin authenticated users without orgs get the org chooser
+        # Authenticated users without an org can't render an org-scoped view (request.org is None and
+        # InferOrgMixin views such as /user/account/ would blow up on object._meta). Send them to the
+        # workspace chooser, or - for staff, who aren't necessarily a member of any org - to the staff
+        # workspace manager, from which they can switch into one.
         user = self.get_user()
-        if user.is_authenticated and not user.is_staff:
-            if not self.derive_org():
-                return HttpResponseRedirect(reverse("orgs.org_choose"))
+        if user.is_authenticated and not self.derive_org():
+            return HttpResponseRedirect(reverse("orgs.org_manage" if user.is_staff else "orgs.org_choose"))
 
         return super().dispatch(request, *args, **kwargs)
 

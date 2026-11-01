@@ -3782,6 +3782,18 @@ class UserCRUDLTest(TembaTest, CRUDLTestMixin):
         response = self.client.get(reverse("orgs.user_account"))
         self.assertEqual(2, len(response.context["formax"].sections))
 
+        # a user with no org is sent to the workspace chooser rather than rendering with no org
+        self.login(self.non_org_user)
+
+        response = self.client.get(reverse("orgs.user_account"))
+        self.assertRedirect(response, reverse("orgs.org_choose"))
+
+        # and a staff user with no org goes to the staff workspace manager (this used to 500)
+        self.login(self.superuser)
+
+        response = self.client.get(reverse("orgs.user_account"))
+        self.assertRedirect(response, reverse("orgs.org_manage"))
+
     def test_edit(self):
         edit_url = reverse("orgs.user_edit")
 

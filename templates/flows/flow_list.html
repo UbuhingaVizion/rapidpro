@@ -2,9 +2,11 @@
 {% load smartmin sms temba compress i18n humanize %}
 
 {% block content %}
-  {% if org_perms.flows.flow_update %}
+  {% if org_perms.flows.flow_export_results %}
     <temba-modax header="{% trans "Download Results" %}" id="export-results">
     </temba-modax>
+  {% endif %}
+  {% if org_perms.flows.flow_update %}
     <temba-modax header="{% trans "Create Label" %}"
                  endpoint="{% url 'flows.flowlabel_create' %}"
                  -temba-loaded="handleCreateLabelModalLoaded"
@@ -143,7 +145,10 @@
         }, true);
         refreshMenu();
       }
-
+    </script>
+  {% endif %}
+  {% if org_perms.flows.flow_export_results %}
+    <script type="text/javascript">
       function handleDownloadFlowResults(evt) {
         var endpoint = '{% url "flows.flow_export_results" %}';
         var modal = document.querySelector("#export-results");
