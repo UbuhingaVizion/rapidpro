@@ -868,6 +868,7 @@ class ContactCRUDL(SmartCRUDL):
         title = _("Active Contacts")
         system_group = ContactGroup.TYPE_DB_ACTIVE
         menu_path = "/contact/active"
+        bulk_action_permissions = {"send": "msgs.broadcast_create", "start-flow": "flows.flow_start"}
 
         def get_bulk_actions(self):
             actions = ("block", "archive") if self.has_org_perm("contacts.contact_update") else ()
@@ -978,6 +979,7 @@ class ContactCRUDL(SmartCRUDL):
 
     class Filter(OrgObjPermsMixin, ContentMenuMixin, ContactListView):
         template_name = "contacts/contact_filter.html"
+        bulk_action_permissions = {"send": "msgs.broadcast_create", "start-flow": "flows.flow_start"}
 
         def build_content_menu(self, menu):
             if not self.group.is_system and self.has_org_perm("contacts.contactgroup_update"):

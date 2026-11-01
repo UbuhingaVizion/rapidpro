@@ -816,6 +816,7 @@ class FlowCRUDL(SmartCRUDL):
     class List(BaseList):
         title = _("Active Flows")
         bulk_actions = ("archive", "label", "download-results")
+        bulk_action_permissions = {"download-results": "flows.flow_export_results"}
         menu_path = "/flow/active"
 
         def derive_queryset(self, *args, **kwargs):
@@ -826,6 +827,7 @@ class FlowCRUDL(SmartCRUDL):
     class Filter(BaseList, OrgObjPermsMixin):
         add_button = True
         bulk_actions = ("label", "download-results")
+        bulk_action_permissions = {"download-results": "flows.flow_export_results"}
         slug_url_kwarg = "uuid"
 
         def derive_menu_path(self):

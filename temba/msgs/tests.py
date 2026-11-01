@@ -1533,6 +1533,12 @@ class MsgCRUDLTest(TembaTest, CRUDLTestMixin):
         )
         self.assertEqual(("restore", "label", "delete"), response.context["actions"])
 
+        # viewers can read archived messages but may not restore/label/delete them, so the toolbar
+        # must not render any bulk action (the delete icon used to call an undefined onDeleteClicked)
+        response = self.requestView(archived_url, self.user)
+        self.assertEqual((), response.context["actions"])
+        self.assertNotContains(response, 'onclick="onDeleteClicked')
+
         # test searching
         response = self.client.get(archived_url + "?search=joe")
         self.assertEqual([msg2, msg1], list(response.context_data["object_list"]))
@@ -1718,7 +1724,10 @@ class MsgCRUDLTest(TembaTest, CRUDLTestMixin):
         response = self.requestView(label3_url, self.user, HTTP_TEMBA_SPA=1)
         self.assertEqual(f"/msg/labels/{label3.uuid}", response.headers[TEMBA_MENU_SELECTION])
         self.assertEqual(200, response.status_code)
-        self.assertEqual(("label",), response.context["actions"])
+
+        # viewers can't label messages (msgs.msg_update), so no bulk actions are offered - the label
+        # button would only fail with a 403
+        self.assertEqual((), response.context["actions"])
         self.assertContentMenu(label3_url, self.user, ["Download", "Usages"])  # no update or delete
 
         # check that non-visible messages are excluded, and messages and ordered newest to oldest

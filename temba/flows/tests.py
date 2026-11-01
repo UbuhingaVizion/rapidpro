@@ -1647,6 +1647,9 @@ class FlowCRUDLTest(TembaTest, CRUDLTestMixin):
         self.assertContains(response, 'id="export-results"')
         self.assertContains(response, "function handleDownloadFlowResults")
 
+        # exporting is the only bulk action a viewer may perform (no archive/label: those need flow_update)
+        self.assertEqual(("download-results",), response.context["actions"])
+
         # as must admins
         self.login(self.admin)
 
@@ -1654,6 +1657,7 @@ class FlowCRUDLTest(TembaTest, CRUDLTestMixin):
         self.assertContains(response, 'onclick="handleDownloadFlowResults')
         self.assertContains(response, 'id="export-results"')
         self.assertContains(response, "function handleDownloadFlowResults")
+        self.assertEqual(("archive", "label", "download-results"), response.context["actions"])
 
     def test_views(self):
         create_url = reverse("flows.flow_create")

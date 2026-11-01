@@ -282,7 +282,10 @@ class BulkActionMixin:
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context["actions"] = self.get_bulk_actions()
+        # only render the actions this user can actually perform, so a button never calls a handler
+        # (or posts an action) that the view would then reject (e.g. viewers on /msg/archived/ got a
+        # delete icon whose onDeleteClicked handler is only defined for msg_update users)
+        context["actions"] = tuple(a for a in self.get_bulk_actions() if self.has_bulk_action_perm(a))
         return context
 
     def get_bulk_actions(self):
@@ -298,6 +301,15 @@ class BulkActionMixin:
         default = f"{self.model._meta.app_label}.{self.model.__name__.lower()}_update"
 
         return self.bulk_action_permissions.get(action, default)
+
+    def has_bulk_action_perm(self, action):
+        """
+        Whether the current user may perform the given bulk action - i.e. the same check the POST path
+        enforces (PermissionDenied otherwise)
+        """
+        org = self.request.org
+
+        return bool(org and self.request.user.has_org_perm(org, self.get_bulk_action_permission(action)))
 
     def get_bulk_action_labels(self):
         """
