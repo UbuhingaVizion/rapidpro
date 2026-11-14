@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.12, <4"
 resolution-markers = [
     "python_full_version >= '3.14'",
@@ -1317,11 +1317,11 @@ crypto = [
 
 [[package]]
 name = "pyotp"
-version = "2.4.1"
+version = "2.10.0"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/4f/b4/21f8c6b0b941f8bea4587088a40d8a207851b19cb07ca8fa0a1e38e27082/pyotp-2.4.1.tar.gz", hash = "sha256:038a3f70b34eaad3f72459e8b411662ef8dfcdd95f7d9203fa489e987a75584b", size = 15232, upload-time = "2020-10-16T22:54:34.648Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/2d/c6/c5d96a86fd0bf6fa1bbb5c5c341ff3208638b692727a683c8289068d9a11/pyotp-2.10.0.tar.gz", hash = "sha256:d01e9703443616b03c57c700b5cbffd56a1f929c1b0f8f03131bc78c1fca9d3f", size = 18625, upload-time = "2026-06-14T03:48:49.221Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/6f/5f/b8b985153df5516386e2918ab97ac836abfe88dc420cd3211d7b9e30814e/pyotp-2.4.1-py2.py3-none-any.whl", hash = "sha256:ef07c393660529261e66902e788b32e46260d2c29eb740978df778260a1c2b4c", size = 11354, upload-time = "2020-10-16T22:54:33.125Z" },
+    { url = "https://files.pythonhosted.org/packages/65/33/7b83bde70eddaaaaef487751a9c3a5cc0c0be54620ded0e120ebdc401ff9/pyotp-2.10.0-py3-none-any.whl", hash = "sha256:1df2f6a1bcc3bb0716172a5215ddc2f8c7c7fd26a13df9927d52e1746934836c", size = 13768, upload-time = "2026-06-14T03:48:47.831Z" },
 ]
 
 [[package]]
@@ -1719,11 +1719,11 @@ wheels = [
 
 [[package]]
 name = "setuptools"
-version = "83.0.0"
+version = "84.2.1"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/34/26/f5d29e25ffdb535afef2d35cdb55b325298f96debd670da4c325e08d70f4/setuptools-83.0.0.tar.gz", hash = "sha256:025bccbbf0fa05b6192bc64ae1e7b16e001fd6d6d4d5de03c97b1c1ade523bef", size = 1154254, upload-time = "2026-07-04T15:31:22.699Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/70/b3/c19426f783614d625699a4b247faf628ea9ab1db228674491767b417f9e1/setuptools-84.2.1.tar.gz", hash = "sha256:3ff8b3b5492a0aa66960f4419365a86b84e013070d4313e4d4a6894f5d64d6bc", size = 1230289, upload-time = "2026-10-20T19:01:37.742Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/5d/40/e1e72872c6354b306daef1703549e8e83b4d43cfea356311bf722a043752/setuptools-83.0.0-py3-none-any.whl", hash = "sha256:29b23c360f22f414dc7336bb39178cc7bcbf6021ed2733cde173f09dba19abb3", size = 1008090, upload-time = "2026-07-04T15:31:20.885Z" },
+    { url = "https://files.pythonhosted.org/packages/ef/55/6dc6d6bb953bdfc52519a0059592c52b6e3b8ad51cf8256dffceb55b0610/setuptools-84.2.1-py3-none-any.whl", hash = "sha256:ca140b45d5325a9478f880e351484f62fef15f336462e449ca0c03c873d589c2", size = 876263, upload-time = "2026-10-20T19:01:35.678Z" },
 ]
 
 [[package]]
@@ -1882,14 +1882,14 @@ requires-dist = [
     { name = "pyexcel-xls", specifier = ">=0.7,<0.8" },
     { name = "pyexcel-xlsx", specifier = ">=0.6,<0.7" },
     { name = "pyfcm", specifier = ">=1.5.1,<2" },
-    { name = "pyotp", specifier = "==2.4.1" },
+    { name = "pyotp", specifier = ">=2.10.0,<3" },
     { name = "python-dateutil", specifier = ">=2.9,<3" },
     { name = "python-magic", specifier = ">=0.4.27,<0.5" },
     { name = "python-telegram-bot", specifier = ">=22,<23" },
     { name = "redis", specifier = ">=5.0.8,<6" },
     { name = "regex", specifier = ">=2023.10.3,<2027" },
     { name = "requests-toolbelt", specifier = ">=1,<2" },
-    { name = "setuptools", specifier = ">=83,<84" },
+    { name = "setuptools", specifier = ">=83,<85" },
     { name = "slack-sdk", specifier = "==3.17.0" },
     { name = "smartmin", specifier = ">=6.1,<6.2" },
     { name = "twilio", specifier = "==6.24.0" },
