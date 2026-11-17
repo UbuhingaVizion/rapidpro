@@ -885,6 +885,7 @@ CHANNEL_TYPES = [
     "temba.channels.types.telegram.TelegramType",
     "temba.channels.types.telesom.TelesomType",
     "temba.channels.types.thinq.ThinQType",
+    "temba.channels.types.tiktok.TikTokType",
     "temba.channels.types.twilio_messaging_service.TwilioMessagingServiceType",
     "temba.channels.types.twilio_whatsapp.TwilioWhatsappType",
     "temba.channels.types.twilio.TwilioType",
