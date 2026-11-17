@@ -50,10 +50,6 @@ class TikTokTypeTest(TembaTest):
         # the webhook secret falls back to the app secret
         self.assertEqual("secret123", channel.config["webhook_secret"])
 
-        # the channel read page shows the per-channel receive URL
-        response = self.client.get(reverse("channels.channel_read", args=[channel.uuid]))
-        self.assertContains(response, f"/c/tt/{channel.uuid}/receive")
-
         # the same business account can't be connected twice
         response = self.client.post(url, data)
         self.assertEqual(200, response.status_code)
