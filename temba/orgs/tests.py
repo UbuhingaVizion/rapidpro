@@ -51,7 +51,7 @@ from temba.utils.uuid import uuid4
 from temba.utils.views import TEMBA_MENU_SELECTION
 
 from .context_processors import RolePermsWrapper
-from .models import BackupToken, Invitation, Org, OrgImport, OrgMembership, OrgRole, User
+from .models import BackupToken, Invitation, Org, OrgImport, OrgMembership, OrgRole, User, UserSettings
 from .tasks import delete_released_orgs, resume_failed_tasks, send_user_verification_email
 
 
@@ -633,6 +633,16 @@ class UserTest(TembaTest):
         # and we take our org with us
         self.org.refresh_from_db()
         self.assertFalse(self.org.is_active)
+
+
+class UserSettingsTest(TembaTest):
+    def test_otp_secret(self):
+        user = self.create_user("otp@example.com")
+
+        user_settings = UserSettings.objects.create(user=user)
+
+        # pyotp's default secret is 32 characters, so the column has to hold that
+        self.assertEqual(32, len(user_settings.otp_secret))
 
 
 class OrgTest(TembaTest):
