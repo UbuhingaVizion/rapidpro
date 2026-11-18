@@ -92,7 +92,7 @@ class BaseExport(TembaUUIDMixin, SmartModel):
             self.update_status(self.STATUS_FAILED)
             print(f"Failed to complete {self.analytics_key} with ID {self.id}")
 
-            raise e  # log the error to sentry
+            raise e  # the Celery integration reports this
         else:
             self.update_status(self.STATUS_COMPLETE)
             elapsed = time.time() - start

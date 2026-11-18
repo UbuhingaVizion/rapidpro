@@ -997,3 +997,8 @@ WHATSAPP_FACEBOOK_BUSINESS_ID = os.environ.get(
 #
 # You need to change these to real addresses to work with these.
 IP_ADDRESSES = ("172.16.10.10", "162.16.10.20")
+
+# Error reporting is configured from the environment; a missing DSN is a no-op.
+from .sentry import init_sentry  # noqa: E402
+
+init_sentry()

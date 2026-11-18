@@ -33,6 +33,7 @@ from timezone_field import TimeZoneField
 from temba import mailroom
 from temba.archives.models import Archive
 from temba.locations.models import AdminBoundary
+from temba.sentry import capture_exception
 from temba.utils import json, languages, on_transaction_commit
 from temba.utils.dates import datetime_to_str
 from temba.utils.email import send_template_email
@@ -1483,7 +1484,8 @@ class OrgImport(SmartModel):
             self.status = self.STATUS_FAILED
             self.save(update_fields=("status",))
 
-            # this is an unexpected error, report it to sentry
+            # this is an unexpected error, report it
+            capture_exception(e)
             logger = logging.getLogger(__name__)
             logger.error(f"Exception on app import: {e!s}", exc_info=True)
 

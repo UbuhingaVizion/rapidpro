@@ -1,5 +1,6 @@
 import datetime
 import io
+import os
 from collections import OrderedDict
 from datetime import date
 from datetime import timezone as tzone
@@ -12,7 +13,7 @@ from django import forms
 from django.conf import settings
 from django.forms import ValidationError
 from django.template import Context, Template
-from django.test import TestCase, override_settings
+from django.test import SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone, translation
 from django_redis import get_redis_connection
@@ -1011,3 +1012,60 @@ class TestUUIDs(TembaTest):
 class ComposeTest(TembaTest):
     def test_empty_compose(self):
         self.assertEqual(compose_serialize(), {})
+
+
+class SentryTest(SimpleTestCase):
+    def setUp(self):
+        from temba import sentry
+
+        sentry._seen.clear()
+        sentry._initialised = False
+
+    def test_before_send_scrubs_request_and_pii(self):
+        from temba.sentry import before_send
+
+        event = {
+            "message": "failed for +254 712 345 678",
+            "request": {
+                "data": {"text": "secret"},
+                "cookies": {"session": "abc"},
+                "query_string": "phone=254712345678",
+                "headers": {
+                    "Authorization": "Token abc",
+                    "Cookie": "session=abc",
+                    "X-Hub-Signature-256": "sha256=abc",
+                    "Content-Type": "application/json",
+                },
+            },
+            "extra": {"text": "secret", "phone": "254712345678", "attempt": 2},
+            "exception": {"values": [{"type": "RuntimeError", "value": "could not send to 0712 345 678"}]},
+        }
+
+        cleaned = before_send(event, {})
+
+        self.assertNotIn("data", cleaned["request"])
+        self.assertNotIn("cookies", cleaned["request"])
+        self.assertNotIn("query_string", cleaned["request"])
+        self.assertNotIn("Authorization", cleaned["request"]["headers"])
+        self.assertNotIn("Cookie", cleaned["request"]["headers"])
+        self.assertNotIn("X-Hub-Signature-256", cleaned["request"]["headers"])
+        self.assertEqual("application/json", cleaned["request"]["headers"]["Content-Type"])
+        self.assertNotIn("text", cleaned["extra"])
+        self.assertNotIn("phone", cleaned["extra"])
+        self.assertEqual(2, cleaned["extra"]["attempt"])
+        self.assertIn("[phone]", cleaned["message"])
+        self.assertIn("[phone]", cleaned["exception"]["values"][0]["value"])
+
+    def test_duplicate_events_are_dropped(self):
+        from temba.sentry import before_send
+
+        event = {"exception": {"values": [{"type": "RuntimeError", "value": "database is locked"}]}}
+
+        self.assertIsNotNone(before_send(dict(event), {}))
+        self.assertIsNone(before_send(dict(event), {}))
+
+    def test_init_without_dsn_is_a_noop(self):
+        from temba import sentry
+
+        with patch.dict(os.environ, {"RAPIDPRO_SENTRY_DSN": "", "SENTRY_DSN": ""}):
+            self.assertFalse(sentry.init_sentry())

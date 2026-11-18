@@ -62,6 +62,7 @@ dependencies = [
     "pillow>=13.0.0,<14",
     "django-imagekit>=5,<7",
     "setuptools>=83,<85",
+    "sentry-sdk[celery,django,redis]>=2.20,<3",
 ]
 
 [project.urls]
