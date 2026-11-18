@@ -109,11 +109,15 @@ def init_sentry():
     if not dsn:
         return False
 
-    import sentry_sdk
-    from sentry_sdk.integrations.celery import CeleryIntegration
-    from sentry_sdk.integrations.django import DjangoIntegration
-    from sentry_sdk.integrations.logging import LoggingIntegration
-    from sentry_sdk.integrations.redis import RedisIntegration
+    try:
+        import sentry_sdk
+        from sentry_sdk.integrations.celery import CeleryIntegration
+        from sentry_sdk.integrations.django import DjangoIntegration
+        from sentry_sdk.integrations.logging import LoggingIntegration
+        from sentry_sdk.integrations.redis import RedisIntegration
+    except ImportError:
+        # the image may still be on a tag without sentry-sdk; a configured DSN must not break startup
+        return False
 
     sentry_sdk.init(
         dsn=dsn,
