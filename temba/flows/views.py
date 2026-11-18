@@ -46,6 +46,7 @@ from temba.orgs.views import (
     OrgObjPermsMixin,
     OrgPermsMixin,
 )
+from temba.sentry import capture_exception
 from temba.triggers.models import Trigger
 from temba.utils import analytics, gettext, json, languages, on_transaction_commit
 from temba.utils.export.views import BaseExportView
@@ -352,7 +353,8 @@ class FlowCRUDL(SmartCRUDL):
                     pass
 
                 except Exception as e:
-                    # something else, we still cull, but report it to sentry
+                    # something else, we still cull, but report it
+                    capture_exception(e)
                     logger.error(
                         f"Error validating flow revision ({flow.uuid} [{revision.id}]): {str(e)}", exc_info=True
                     )
